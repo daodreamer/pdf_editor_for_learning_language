@@ -5,6 +5,7 @@
 #include <QList>
 #include "readingconfig.h"
 #include "textpage.h"
+#include "pagegeometry.h"
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -29,6 +30,7 @@ struct PdfFrame {
     int pages = 0;
     QSizeF points;
     QImage image;
+    PageGeometry geometry;
     QString errorCode;
     QString error;
     bool preview = false;

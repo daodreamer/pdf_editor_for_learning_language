@@ -249,3 +249,11 @@ benchmarks/results/<run-id>/
 复现：SDK PATH 下运行 `build/windows/text_tests.exe boundedTextCost`。构造 65536 个不可变原生字符位置，单调 QElapsedTimer 记录 100 次扩选的 GUI 命中与字符串生成合计时间。此人工阵列用于限定数据规模与计费，真实 PDF 读取另由套件其余测试覆盖，不冒充引擎提取性能。结果保存在 `benchmarks/results/phase4-20261015/accepted-text-tests.log`：4194336 bytes 快照、314.949 ms/100 次，约 3.15 ms/次；单次诊断，不是帧分位或输入到屏幕延迟，也无 A/B 提升结论。
 
 真实超限页含 3×30000 字符文本对象，worker 的文字任务约 25.283 ms 后返回明确上限错误。该时间来自本轮单次 worker 时钟，不代表一般文档。快照 16 MiB 和单页字符上限不限制 PDFium 解析内部分配，图像、文字、选区几何与系统进程/GPU 口径分别报告。选区操作不增加 renderJobs 的行为断言、双 DPI 像素差检查和场景图后端证据见 [PHASE4_REPORT.md](PHASE4_REPORT.md)。本轮没有重新测量启动、长期滚动帧分布或系统 GPU 峰值；阶段 3 待办保留。
+
+## 阶段 5 标注验证口径
+
+新增 `annotation_tests` 检查已输入文字、原始锚点与局部方向、模型事务、IME preedit/commit/cancel、文字局部撤销、GUI 移动后 Ctrl+Z、焦点切换和活跃范围。`renderJobs` 在稳定页面编辑前后保持相同，证明该操作没有提交新的 PDF 渲染；不据此声称键入到屏幕延迟或 60 FPS 已达标。
+
+高 DPI 使用独立进程 `QT_SCALE_FACTOR=2`，日志记录窗口逻辑尺寸及实际 DPR，当前为 3；它不模拟真实跨屏移动。GUI 投影以数据中原始锚点为准，允许 ≤1 设备像素的误差，排除最初鼠标点击整数舍入，纯原始坐标矩阵往返 <1e-6 页面单位，真实旋转/CropBox/UserUnit 样本角点检查 <0.001 原始单位。这些测试不替代原生高亮的设备像素差检查，也不代表 PDF 导出位置已验证。
+
+没有新增 A/B 优化或长期性能结论，没有重测启动、滚动帧时间、系统进程/GPU 峰值；阶段 3 待办继续保留。实际运行文件和边界见 [PHASE5_REPORT.md](PHASE5_REPORT.md)。

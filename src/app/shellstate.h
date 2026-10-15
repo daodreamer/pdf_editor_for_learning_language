@@ -6,6 +6,7 @@
 #include "pdfworker.h"
 #include "readingmodel.h"
 #include "textselection.h"
+#include "annotationmodel.h"
 #include <QTimer>
 #include <QtQml/qqmlregistration.h>
 
@@ -23,6 +24,7 @@ class ShellState : public QObject {
     Q_PROPERTY(bool shutdownComplete READ shutdownComplete NOTIFY shutdownChanged)
     Q_PROPERTY(QImage pageImage READ pageImage NOTIFY imageChanged)
     Q_PROPERTY(QAbstractItemModel* readingModel READ readingModel CONSTANT)
+    Q_PROPERTY(double displayPageWidth READ pageWidth NOTIFY layoutChanged)
     Q_PROPERTY(double contentHeight READ contentHeight NOTIFY layoutChanged)
     Q_PROPERTY(double contentWidth READ contentWidth NOTIFY layoutChanged)
     Q_PROPERTY(double scrollOffset READ scrollOffset NOTIFY layoutChanged)
@@ -30,6 +32,7 @@ class ShellState : public QObject {
     Q_PROPERTY(double pageRatio READ pageRatio NOTIFY selectionChanged)
     Q_PROPERTY(QString errorCode READ errorCode NOTIFY selectionChanged)
     Q_PROPERTY(TextSelection* textSelection READ textSelection CONSTANT)
+    Q_PROPERTY(AnnotationModel* annotations READ annotations CONSTANT)
 public:
     explicit ShellState(QObject* parent = nullptr);
     ~ShellState() override;
@@ -44,6 +47,15 @@ public:
     QImage pageImage() const { return model_.image(page_); }
     QAbstractItemModel* readingModel() { return &model_; }
     ReadingModel& model() { return model_; }
+    AnnotationModel* annotations() { return &annotations_; }
+    Q_INVOKABLE bool containsPage(double x,double y) const;
+    Q_INVOKABLE QString createTextBox(double x,double y);
+    Q_INVOKABLE void finishTextEditing();
+    Q_INVOKABLE void commitInput();
+    Q_INVOKABLE void resetInput();
+    Q_INVOKABLE double pageTop(int page) const { return model_.top(page); }
+    Q_INVOKABLE double pageHeight(int page) const { return model_.height(page); }
+    Q_INVOKABLE double pageWidth() const { return model_.pageWidth(); }
     TextSelection* textSelection() { return &textSelection_; }
     Q_INVOKABLE bool beginTextSelection(double x, double y);
     Q_INVOKABLE void extendTextSelection(double x, double y);
@@ -77,8 +89,10 @@ private:
     void acceptFrame(const PdfFrame& frame);
     void schedule();
     void invalidate();
+    void syncAnnotations();
     ReadingModel model_;
     TextSelection textSelection_;
+    AnnotationModel annotations_;
     QTimer scheduleTimer_;
     QSet<int> failed_;
     bool inFlight_ = false;

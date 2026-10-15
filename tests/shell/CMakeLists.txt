@@ -40,3 +40,16 @@ if(WIN32)
 endif()
 add_test(NAME text_selection COMMAND text_tests)
 set_tests_properties(text_selection PROPERTIES TIMEOUT 120)
+
+qt_add_executable(annotation_tests annotation_tests.cpp)
+set_target_properties(annotation_tests PROPERTIES WIN32_EXECUTABLE FALSE)
+target_link_libraries(annotation_tests PRIVATE shell_ui shell_uiplugin Qt6::Test Qt6::QuickControls2)
+target_compile_definitions(annotation_tests PRIVATE LANGLERN_FIXTURES="${PROJECT_SOURCE_DIR}/tests/fixtures")
+langlern_warnings(annotation_tests)
+if(WIN32)
+    add_custom_command(TARGET annotation_tests POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:pdfium> $<TARGET_FILE_DIR:annotation_tests>)
+endif()
+add_test(NAME text_annotations COMMAND annotation_tests)
+set_tests_properties(text_annotations PROPERTIES TIMEOUT 120)

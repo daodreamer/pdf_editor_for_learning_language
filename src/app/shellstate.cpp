@@ -3,6 +3,7 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QStyleHints>
+#include <QInputMethod>
 #include <algorithm>
 #include <cmath>
 
@@ -24,7 +25,10 @@ ShellState::ShellState(QObject* parent) : QObject(parent) {
     scheduleTimer_.setSingleShot(true);
     scheduleTimer_.setInterval(ReadingConfig::viewportDelayMs);
     connect(&scheduleTimer_, &QTimer::timeout, this, &ShellState::schedule);
-    connect(&model_, &ReadingModel::geometryChanged, this, &ShellState::layoutChanged);
+    connect(&model_, &ReadingModel::geometryChanged, this, [this] {
+        syncAnnotations();
+        emit layoutChanged();
+    });
     connect(&textSelection_, &TextSelection::demandChanged, this, [this] {
         if (!inFlight_ && !scheduleTimer_.isActive()) scheduleTimer_.start();
     });
@@ -57,6 +61,8 @@ void ShellState::selectFile(const QUrl& url) {
         errorCode_ = QStringLiteral("file");
     } else {
         ++session_;
+        QGuiApplication::inputMethod()->reset();
+        annotations_.reset();
         textSelection_.reset();
         path_ = file.absoluteFilePath();
         selectedName_ = file.fileName();
@@ -74,6 +80,8 @@ void ShellState::selectFile(const QUrl& url) {
 void ShellState::clearSelection() {
     if (shuttingDown_) return;
     ++session_;
+    QGuiApplication::inputMethod()->reset();
+    annotations_.reset();
     textSelection_.reset();
     path_.clear();
     selectedName_.clear();
@@ -155,6 +163,8 @@ void ShellState::goToPage(int page) {
     if (shuttingDown_ || page < 1 || page > pageCount_) return;
     page_ = page - 1;
     model_.setViewport(model_.top(page_),viewportHeight_,viewportWidth_,zoom_);
+    finishTextEditing();
+    annotations_.setActivePages(model_.priority());
     emit layoutChanged();
     emit imageChanged();
     model_.recordDemand(page_,viewportAttached_ ? model_.targetWidth(page_,dpr_) : renderWidth_);
@@ -175,6 +185,7 @@ void ShellState::updateViewport(double y,double height,double width,double dpr) 
     viewportWidth_ = width; viewportHeight_ = height; dpr_ = dpr;
     model_.setViewport(y,height,width,zoom_);
     page_ = model_.pageAt(model_.offset());
+    if (oldPages != model_.priority()) syncAnnotations();
     busy_ = pageCount_ > 0 && !failed_.contains(page_) && !model_.ready(page_,model_.targetWidth(page_,dpr_));
     emit selectionChanged(); emit imageChanged();
     if (oldPages != model_.priority() || oldWidth != model_.targetWidth(page_,dpr_)) {
@@ -197,6 +208,10 @@ void ShellState::acceptFrame(const PdfFrame& frame) {
     if (shuttingDown_ || frame.session != session_ || frame.revision != revision_) {
         emit renderDiscarded(frame.revision);
         return;
+    }
+    if (frame.geometry.valid) {
+        annotations_.setGeometry(frame.page,frame.geometry);
+        annotations_.setActivePages(model_.priority());
     }
     if (frame.textOnly) {
         model_.setSizes(frame.page,{frame.points});
@@ -235,6 +250,8 @@ void ShellState::acceptFrame(const PdfFrame& frame) {
 void ShellState::beginShutdown() {
     if (shuttingDown_) return;
     shuttingDown_ = true;
+    QGuiApplication::inputMethod()->reset();
+    annotations_.reset();
     textSelection_.reset();
     busy_ = false;
     statusText_ = QStringLiteral("正在关闭文档…");
@@ -264,4 +281,33 @@ void ShellState::extendTextSelection(double x,double y) {
 void ShellState::cycleTheme() {
     themeMode_ = (themeMode_ + 1) % 3;
     emit themeChanged();
+}
+
+void ShellState::finishTextEditing() {
+    QGuiApplication::inputMethod()->commit();
+    annotations_.finishEditing();
+}
+QString ShellState::createTextBox(double x,double y) {
+    if(shuttingDown_ || !pageCount_ || !std::isfinite(x) || !std::isfinite(y)) return {};
+    const int page=model_.pageAt(y);
+    const double w=model_.pageWidth(), h=model_.height(page), left=(model_.contentWidth()-w)/2;
+    if(x<left || x>=left+w || y<model_.top(page) || y>=model_.top(page)+h) return {};
+    finishTextEditing(); textSelection_.clear();
+    return annotations_.create(page,(x-left)/w,(y-model_.top(page))/h);
+}
+
+bool ShellState::containsPage(double x,double y) const {
+    if(shuttingDown_ || !pageCount_ || !std::isfinite(x) || !std::isfinite(y)) return false;
+    const int page=model_.pageAt(y);
+    const double w=model_.pageWidth(), left=(model_.contentWidth()-w)/2;
+    return x>=left && x<left+w && y>=model_.top(page) && y<model_.top(page)+model_.height(page);
+}
+
+void ShellState::commitInput() { QGuiApplication::inputMethod()->commit(); }
+void ShellState::resetInput() { QGuiApplication::inputMethod()->reset(); }
+
+void ShellState::syncAnnotations() {
+    const auto active=model_.priority();
+    if (!annotations_.selectedId().isEmpty() && !active.contains(annotations_.selectedPage())) finishTextEditing();
+    annotations_.setActivePages(active);
 }

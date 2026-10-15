@@ -184,6 +184,18 @@ void PdfWorker::execute(const PdfRequest& r) {
         const double w = FPDF_GetPageWidthF(page.get()), h = FPDF_GetPageHeightF(page.get());
         require(std::isfinite(w) && std::isfinite(h) && w > 0 && h > 0, "页面尺寸无效。");
         result.points = QSizeF(w, h);
+        const auto pagePoint = [&](int x, int y) {
+            double px=0, py=0;
+            require(FPDF_DeviceToPage(page.get(),0,0,1000000,1000000,0,x,y,&px,&py), "页面坐标转换失败。");
+            require(std::isfinite(px) && std::isfinite(py), "页面坐标无效。");
+            return QPointF(px,py);
+        };
+        const auto origin=pagePoint(0,0), right=pagePoint(1000000,0)-origin, down=pagePoint(0,1000000)-origin;
+        result.geometry.displayToPdf=QTransform(right.x(),right.y(),down.x(),down.y(),origin.x(),origin.y());
+        result.geometry.pdfToDisplay=result.geometry.displayToPdf.inverted(&result.geometry.valid);
+        result.geometry.units=QSizeF(std::hypot(right.x(),right.y()),std::hypot(down.x(),down.y()));
+        require(result.geometry.valid && result.geometry.units.width()>0 && result.geometry.units.height()>0, "页面变换不可逆。");
+
         if (r.textOnly) {
             result.errorCode = QStringLiteral("text");
             auto snapshot = std::make_shared<TextPage>();

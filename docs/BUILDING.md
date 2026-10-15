@@ -1,5 +1,16 @@
 # 构建与复现
 
+## 阶段 5 文字答案
+
+```powershell
+./tools/build-windows.ps1 -BuildDir build/phase5 -Test
+./tools/run-windows.ps1 -BuildDir build/phase5
+```
+
+默认 `build/windows` 同步更新。CTest 共 5 项，新增 `text_annotations`。SDK PATH 下可运行 `build/windows/annotation_tests.exe -o annotations.log,txt` 获取详细结果；高 DPI 附加设置 `QT_SCALE_FACTOR=2`，不是物理跨屏验证。`LANGLERN_SCREENSHOT_DIR` 指向已存在的新目录可生成文字答案截图，拒绝覆盖。实际结果见 [PHASE5_REPORT.md](PHASE5_REPORT.md)。
+
+自动模式：空白单击建框并直接输入，原生文字拖动选择，空白拖动滚动；可切换选择/输入模式，输入模式允许覆盖原文处建框。单击已有答案编辑；选中后拖“移动”柄。Esc / Ctrl+Enter / 完成编辑结束事务；Ctrl+Delete 或删除按钮删除整框，普通 Delete 删除文字。Ctrl+Shift+A/S/T 切换自动/选择/输入。编辑器内 Ctrl+Z/Y 使用局部文字撤销，结束编辑后 Ctrl+Z/Y 及标注撤销/重做按钮使用事务历史。未选中不画边框或背景。答案仅存在当前会话，关闭/换文件后丢失；保存恢复和导出留在阶段 7。macOS 的快捷键前缀已按 Meta 路由，但构建/运行尚未验证。
+
 ## 阶段 4 原生文字选择与复制
 
 ```powershell
@@ -13,7 +24,7 @@
 
 普通文字测试 PDF 由 `tools/make-text-fixture.py` 用 stdlib 生成；其 ToUnicode 映射测试不代表 Helvetica 能绘制中文/emoji。`chinese.pdf` 则使用已锁定的 Noto Sans SC 子集嵌入字体，重建用开发环境 `.tools/venv/Scripts/python tools/make-cjk-fixture.py`；字体依据见 `third_party/DEPENDENCIES.md` 和 `notices/Noto-OFL.txt`。运行和测试只需提交的 PDF，不要求安装 Python 字体工具。
 
-附加 DPI 回归：在 SDK PATH 下设置 `QT_SCALE_FACTOR=2` 并运行 `build/windows/text_tests.exe`；本机实际 DPR 为 3。设置 `LANGLERN_SCREENSHOT_DIR` 到已存在的新目录可保存英文和中文选区截图，拒绝覆盖。测试运行结果见 [PHASE4_REPORT.md](PHASE4_REPORT.md)。macOS 延后；未进入阶段 5。
+附加 DPI 回归：在 SDK PATH 下设置 `QT_SCALE_FACTOR=2` 并运行 `build/windows/text_tests.exe`；本机实际 DPR 为 3。设置 `LANGLERN_SCREENSHOT_DIR` 到已存在的新目录可保存英文和中文选区截图，拒绝覆盖。测试运行结果见 [PHASE4_REPORT.md](PHASE4_REPORT.md)。该阶段当时未进入阶段 5；现阶段增量见本页开头。
 
 ## 阶段 3 连续阅读与缓存
 
