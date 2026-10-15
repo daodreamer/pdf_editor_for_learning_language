@@ -1,5 +1,9 @@
 # 阶段 0 依赖与许可审查
 
+## 阶段 4 文字选择增量
+
+运行时依赖不变，使用锁定 PDFium 的公开文本接口和 Qt Gui 剪贴板、Qt Quick 场景图几何。`text.pdf`、`text-limit.pdf` 是 MIT 原创 stdlib 生成测试文件，不嵌入字体；`chinese.pdf` 为原创文本并子集嵌入已锁定的 Noto Sans SC，约 15 KiB，仅作测试，不加入产品资源。字体来源、固定提交、OFL 嵌入依据及原始许可证沿用下文与 [Noto-OFL.txt](notices/Noto-OFL.txt)；PDF 元数据指明嵌入字体来源，生成脚本和 manifest 提供追踪。PyMuPDF 仅为既有开发生成工具，不进入 CMake 依赖或产品发行。没有复制系统字体或引入图标资源；发行许可闭包仍待阶段 8 审查。
+
 ## 阶段 2 正式引擎集成增量
 
 正式应用开始动态链接下表已审查的 PDFium 157.0.8100.0，来源、固定提交和许可证据沿用阶段 0，无新增供应商依赖。开发构建在 exe 目录复制 pdfium.dll；这只是开发运行路径，不是完整分发闭包。阶段 8 仍须随实际发行包核对 PDFium LICENSE/第三方通知、Qt 动态库及对应源码/替换义务、MSVC runtime。未向正式程序加入 Noto 字体或原型导出功能。`scan.pdf`、`password.pdf` 由 MIT 原创 geometry 派生，仅作测试；生成用 PyMuPDF 属已有开发工具，不链接/分发到应用。下文阶段 1 的“不链接 PDFium”是历史边界，本阶段已更新。

@@ -31,6 +31,7 @@ public:
     double height(int page) const { return pageWidth_ * ratio(page); }
     double ratio(int page) const;
     double contentHeight() const { return total_; }
+    double pageWidth() const { return pageWidth_; }
     double contentWidth() const { return std::max(viewWidth_, pageWidth_ + 2 * ReadingConfig::margin); }
     double offset() const { return y_; }
     int count() const { return int(sizes_.size()); }

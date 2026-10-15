@@ -1,0 +1,130 @@
+%PDF-1.7
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 8 /Kids [5 0 R 7 0 R 9 0 R 11 0 R 13 0 R 15 0 R 17 0 R 19 0 R] >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /ToUnicode 4 0 R >>
+endobj
+4 0 obj
+<< /Length 428 >>
+stream
+/CIDInit /ProcSet findresource begin 12 dict begin begincmap
+/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
+/CMapName /SelectionUnicode def /CMapType 2 def
+1 begincodespacerange <00> <FF> endcodespacerange
+1 beginbfrange <20> <7E> <0020> endbfrange
+5 beginbfchar <80> <4E2D> <81> <6587> <82> <D83DDE00> <83> <00650301> <84> <FB01> endbfchar
+endcmap CMapName currentdict /CMap defineresource pop end end
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [-20 -30 600 820] /CropBox [10 20 580 800] /Rotate 0 /UserUnit 1 /Resources << /Font << /F1 3 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 134 >>
+stream
+BT /F1 24 Tf 40 740 Td (Hello World) Tj 0 -40 Td (Second line) Tj 0 -40 Td <80818220832084> Tj ET
+BT /F1 10 Tf 0 -10 Td (HIDDEN) Tj ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [-20 -30 600 820] /CropBox [10 20 580 800] /Rotate 90 /UserUnit 1 /Resources << /Font << /F1 3 0 R >> >> /Contents 8 0 R >>
+endobj
+8 0 obj
+<< /Length 134 >>
+stream
+BT /F1 24 Tf 40 740 Td (Hello World) Tj 0 -40 Td (Second line) Tj 0 -40 Td <80818220832084> Tj ET
+BT /F1 10 Tf 0 -10 Td (HIDDEN) Tj ET
+endstream
+endobj
+9 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [-20 -30 600 820] /CropBox [10 20 580 800] /Rotate 180 /UserUnit 1 /Resources << /Font << /F1 3 0 R >> >> /Contents 10 0 R >>
+endobj
+10 0 obj
+<< /Length 134 >>
+stream
+BT /F1 24 Tf 40 740 Td (Hello World) Tj 0 -40 Td (Second line) Tj 0 -40 Td <80818220832084> Tj ET
+BT /F1 10 Tf 0 -10 Td (HIDDEN) Tj ET
+endstream
+endobj
+11 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [-20 -30 600 820] /CropBox [10 20 580 800] /Rotate 270 /UserUnit 1 /Resources << /Font << /F1 3 0 R >> >> /Contents 12 0 R >>
+endobj
+12 0 obj
+<< /Length 134 >>
+stream
+BT /F1 24 Tf 40 740 Td (Hello World) Tj 0 -40 Td (Second line) Tj 0 -40 Td <80818220832084> Tj ET
+BT /F1 10 Tf 0 -10 Td (HIDDEN) Tj ET
+endstream
+endobj
+13 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [-20 -30 600 820] /CropBox [10 20 580 800] /Rotate 0 /UserUnit 2 /Resources << /Font << /F1 3 0 R >> >> /Contents 14 0 R >>
+endobj
+14 0 obj
+<< /Length 134 >>
+stream
+BT /F1 24 Tf 40 740 Td (Hello World) Tj 0 -40 Td (Second line) Tj 0 -40 Td <80818220832084> Tj ET
+BT /F1 10 Tf 0 -10 Td (HIDDEN) Tj ET
+endstream
+endobj
+15 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [-20 -30 600 820] /CropBox [10 20 580 800] /Rotate 90 /UserUnit 2 /Resources << /Font << /F1 3 0 R >> >> /Contents 16 0 R >>
+endobj
+16 0 obj
+<< /Length 134 >>
+stream
+BT /F1 24 Tf 40 740 Td (Hello World) Tj 0 -40 Td (Second line) Tj 0 -40 Td <80818220832084> Tj ET
+BT /F1 10 Tf 0 -10 Td (HIDDEN) Tj ET
+endstream
+endobj
+17 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [-20 -30 600 820] /CropBox [10 20 580 800] /Rotate 180 /UserUnit 2 /Resources << /Font << /F1 3 0 R >> >> /Contents 18 0 R >>
+endobj
+18 0 obj
+<< /Length 134 >>
+stream
+BT /F1 24 Tf 40 740 Td (Hello World) Tj 0 -40 Td (Second line) Tj 0 -40 Td <80818220832084> Tj ET
+BT /F1 10 Tf 0 -10 Td (HIDDEN) Tj ET
+endstream
+endobj
+19 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [-20 -30 600 820] /CropBox [10 20 580 800] /Rotate 270 /UserUnit 2 /Resources << /Font << /F1 3 0 R >> >> /Contents 20 0 R >>
+endobj
+20 0 obj
+<< /Length 134 >>
+stream
+BT /F1 24 Tf 40 740 Td (Hello World) Tj 0 -40 Td (Second line) Tj 0 -40 Td <80818220832084> Tj ET
+BT /F1 10 Tf 0 -10 Td (HIDDEN) Tj ET
+endstream
+endobj
+xref
+0 21
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000162 00000 n 
+0000000249 00000 n 
+0000000728 00000 n 
+0000000905 00000 n 
+0000001090 00000 n 
+0000001268 00000 n 
+0000001453 00000 n 
+0000001633 00000 n 
+0000001819 00000 n 
+0000002000 00000 n 
+0000002186 00000 n 
+0000002365 00000 n 
+0000002551 00000 n 
+0000002731 00000 n 
+0000002917 00000 n 
+0000003098 00000 n 
+0000003284 00000 n 
+0000003465 00000 n 
+trailer
+<< /Size 21 /Root 1 0 R >>
+startxref
+3651
+%%EOF

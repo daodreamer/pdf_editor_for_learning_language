@@ -4,6 +4,7 @@
 #include <QSizeF>
 #include <QList>
 #include "readingconfig.h"
+#include "textpage.h"
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -19,6 +20,7 @@ struct PdfRequest {
     int metadataStart = -1;
     bool skipPreview = false;
     bool previewOnly = false;
+    bool textOnly = false;
 };
 struct PdfFrame {
     quint64 session = 0;
@@ -33,6 +35,8 @@ struct PdfFrame {
     bool limited = false;
     int metadataStart = -1;
     QList<QSizeF> sizes;
+    TextSnapshot text;
+    bool textOnly = false;
 };
 Q_DECLARE_METATYPE(PdfFrame)
 

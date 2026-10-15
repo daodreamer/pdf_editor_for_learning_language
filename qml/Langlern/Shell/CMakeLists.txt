@@ -7,6 +7,7 @@ qt_add_qml_module(shell_ui STATIC
     SOURCES ../../../src/app/shellstate.h ../../../src/app/shellstate.cpp
         ../../../src/app/pageitem.h ../../../src/app/pageitem.cpp
         ../../../src/app/readingmodel.h ../../../src/app/readingmodel.cpp
+        ../../../src/app/textselection.h ../../../src/app/textselection.cpp
 )
 target_include_directories(shell_ui PUBLIC ../../../src/app)
 target_link_libraries(shell_ui PUBLIC Qt6::Quick langlern_pdf PRIVATE Qt6::QuickControls2 Qt6::QuickDialogs2)

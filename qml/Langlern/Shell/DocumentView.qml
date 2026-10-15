@@ -35,7 +35,17 @@ ColumnLayout {
         Label { text: qsTr("%1%").arg(Math.round(view.shell.zoom * 100)); color: view.theme.text }
         Button { text: "+"; Accessible.name: qsTr("放大"); onClicked: view.shell.setZoom(view.shell.zoom * 1.2) }
         Button { text: qsTr("适应页宽"); onClicked: view.shell.setZoom(1) }
+        Button { objectName: "copyTextButton"; text: qsTr("复制选中文字"); enabled: view.shell.textSelection.ready; onClicked: view.shell.textSelection.copy() }
         Item { Layout.fillWidth: true }
+    }
+    Label {
+        Layout.fillWidth: true
+        Layout.leftMargin: 12
+        Layout.rightMargin: 12
+        visible: text.length > 0
+        text: view.shell.textSelection.status
+        color: view.theme.muted
+        wrapMode: Text.WordWrap
     }
     Flickable {
         id: viewport
@@ -87,6 +97,14 @@ ColumnLayout {
                     Accessible.role: Accessible.Graphic
                     Accessible.name: qsTr("PDF 第 %1 页").arg(sheet.pageNumber)
                 }
+                SelectionItem {
+                    anchors.fill: parent
+                    rectangles: {
+                        const version = view.shell.textSelection.version
+                        return view.shell.textSelection.rectangles(sheet.pageNumber - 1)
+                    }
+                    Accessible.ignored: true
+                }
             }
         }
         WheelHandler {
@@ -96,6 +114,58 @@ ColumnLayout {
                 if (delta !== 0)
                     view.shell.setZoom(view.shell.zoom * (delta > 0 ? 1.1 : 1 / 1.1))
                 event.accepted = true
+            }
+        }
+        MouseArea {
+            id: selectionMouse
+            objectName: "textSelectionMouse"
+            x: viewport.contentX
+            y: viewport.contentY
+            width: viewport.width
+            height: viewport.height
+            acceptedButtons: Qt.LeftButton
+            preventStealing: true
+            cursorShape: Qt.IBeamCursor
+            property bool dragging: false
+            property point origin
+            function extend(): void {
+                const p = mapToItem(viewport.contentItem, mouseX, mouseY)
+                view.shell.extendTextSelection(p.x, p.y)
+            }
+            onPressed: function(mouse) {
+                viewport.cancelFlick()
+                forceActiveFocus()
+                dragging = false
+                origin = Qt.point(mouse.x, mouse.y)
+                const p = mapToItem(viewport.contentItem, mouse.x, mouse.y)
+                if (!view.shell.beginTextSelection(p.x, p.y)) mouse.accepted = false
+            }
+            onPositionChanged: function(mouse) {
+                if (!pressed) return
+                if (Math.abs(mouse.x - origin.x) + Math.abs(mouse.y - origin.y) > 3) dragging = true
+                if (dragging) extend()
+            }
+            onReleased: { if (dragging) extend(); dragging = false }
+            onCanceled: dragging = false
+            Keys.onEscapePressed: view.shell.textSelection.clear()
+            Shortcut {
+                sequences: [StandardKey.Copy]
+                enabled: selectionMouse.activeFocus && view.shell.textSelection.ready
+                onActivated: view.shell.textSelection.copy()
+            }
+            Timer {
+                interval: 16
+                repeat: true
+                running: selectionMouse.pressed && selectionMouse.dragging
+                onTriggered: {
+                    const y = selectionMouse.mouseY
+                    const speed = y < 36 ? -18 : y > viewport.height - 36 ? 18 : 0
+                    if (speed !== 0) {
+                        viewport.contentY = Math.max(0, Math.min(viewport.contentHeight - viewport.height, viewport.contentY + speed))
+                        viewport.report()
+                        selectionMouse.extend()
+                    }
+                }
             }
         }
     }

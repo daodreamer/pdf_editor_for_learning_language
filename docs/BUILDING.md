@@ -1,5 +1,20 @@
 # 构建与复现
 
+## 阶段 4 原生文字选择与复制
+
+```powershell
+./tools/build-windows.ps1 -BuildDir build/phase4 -Test
+./tools/run-windows.ps1 -BuildDir build/phase4
+```
+
+默认 `build/windows` 同样已更新。CTest 增加 `text_selection`，共 4 项；测试包含真实 QML 窗口鼠标拖选、Ctrl+C、跨页、边缘自动滚动、空白拖动、像素差检查、旋转/CropBox/UserUnit、Unicode、扫描页与失败生命周期。原来的大文件与长压力仍是可选独立入口，本轮未重跑 30 分钟压力。
+
+左键从文字开始拖选；拖至上下边缘可自动滚动，滚轮和滚动条也可阅读。空白单击/Esc 清空，空白拖动交回滚动。选区就绪后用 Ctrl+C 或复制按钮；按原生字符流复制，不还原复杂多栏语义顺序。文本快照预算 16 MiB，每页上限 65536 个原生索引，一次最多 128 页；超限或错误明确提示。扫描页没有原生文字时不生成伪文本。
+
+普通文字测试 PDF 由 `tools/make-text-fixture.py` 用 stdlib 生成；其 ToUnicode 映射测试不代表 Helvetica 能绘制中文/emoji。`chinese.pdf` 则使用已锁定的 Noto Sans SC 子集嵌入字体，重建用开发环境 `.tools/venv/Scripts/python tools/make-cjk-fixture.py`；字体依据见 `third_party/DEPENDENCIES.md` 和 `notices/Noto-OFL.txt`。运行和测试只需提交的 PDF，不要求安装 Python 字体工具。
+
+附加 DPI 回归：在 SDK PATH 下设置 `QT_SCALE_FACTOR=2` 并运行 `build/windows/text_tests.exe`；本机实际 DPR 为 3。设置 `LANGLERN_SCREENSHOT_DIR` 到已存在的新目录可保存英文和中文选区截图，拒绝覆盖。测试运行结果见 [PHASE4_REPORT.md](PHASE4_REPORT.md)。macOS 延后；未进入阶段 5。
+
 ## 阶段 3 连续阅读与缓存
 
 阶段 3 沿用下文固定依赖，不增加产品第三方组件。独立验证目录：
@@ -30,7 +45,7 @@
 
 阅读操作：拖动滚动条、滚轮或触控板连续阅读；页码输入可远跳；−/+ 或 Ctrl+滚轮缩放到 25%–400%，适应页宽回到 100%。窗口和 DPR 变化重新请求清晰图像。默认 CPU 图像 128 MiB、活跃 GPU 像素估算 64 MiB、前后各 1 页，参数在 src/pdf/readingconfig.h。低预算、超大页采用动态分辨率，尚无局部分块；不保证高倍放大始终原生清晰。
 
-本轮实际执行结果及未验证边界以 PHASE3_REPORT.md 为准。macOS 运行检查按用户安排延后；阶段 4 及后续功能尚未实现。
+阶段 3 当轮实际执行结果及未验证边界以 PHASE3_REPORT.md 为准。macOS 运行检查按用户安排延后；阶段 4 增量见本页开头。
 
 ## 阶段 2 构建基础（历史记录）
 

@@ -1,0 +1,16 @@
+{
+  "source": "original MIT, no embedded font",
+  "generator": "tools/make-text-fixture.py",
+  "sha256": "b2e0ceaf74ee89e735e16c4f56f7092b3026b150951056ae396f050f98bbd938",
+  "rotations": [
+    0,
+    90,
+    180,
+    270
+  ],
+  "user_units": [
+    1,
+    2
+  ],
+  "unicode": "Chinese, supplementary, combining, ligature; ToUnicode tests mapping, not glyph appearance"
+}

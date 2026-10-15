@@ -1,0 +1,7 @@
+{
+  "generator": "tools/make-cjk-fixture.py",
+  "source": "original text; embedded locked Noto Sans SC subset",
+  "font_license": "third_party/notices/Noto-OFL.txt",
+  "sha256": "71ff5f84f238f63f2b9d91f43642f3a211b244024f79acc7ecd4e50add638c23",
+  "text": "中文练习 Bonjour"
+}

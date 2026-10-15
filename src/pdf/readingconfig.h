@@ -10,6 +10,10 @@ struct ReadingConfig {
     static constexpr int metadataSliceMs = 4;
     static constexpr int neighbors = 1;
     static constexpr int viewportDelayMs = 16;
+    static constexpr qint64 textBytes = 16 * 1024 * 1024;
+    static constexpr int textCharacters = 65536;
+    static constexpr int selectionPages = 128;
+    static constexpr int textDeviceSize = 1 << 24;
     static constexpr double margin = 20;
     static constexpr double gap = 16;
 };

@@ -25,6 +25,9 @@ ShellState::ShellState(QObject* parent) : QObject(parent) {
     scheduleTimer_.setInterval(ReadingConfig::viewportDelayMs);
     connect(&scheduleTimer_, &QTimer::timeout, this, &ShellState::schedule);
     connect(&model_, &ReadingModel::geometryChanged, this, &ShellState::layoutChanged);
+    connect(&textSelection_, &TextSelection::demandChanged, this, [this] {
+        if (!inFlight_ && !scheduleTimer_.isActive()) scheduleTimer_.start();
+    });
     connect(worker_, &PdfWorker::requestFinished, this, [this](quint64 revision) {
         if (revision != revision_ || shuttingDown_) return;
         inFlight_ = false;
@@ -54,6 +57,7 @@ void ShellState::selectFile(const QUrl& url) {
         errorCode_ = QStringLiteral("file");
     } else {
         ++session_;
+        textSelection_.reset();
         path_ = file.absoluteFilePath();
         selectedName_ = file.fileName();
         page_ = 0;
@@ -70,6 +74,7 @@ void ShellState::selectFile(const QUrl& url) {
 void ShellState::clearSelection() {
     if (shuttingDown_) return;
     ++session_;
+    textSelection_.reset();
     path_.clear();
     selectedName_.clear();
     statusText_.clear();
@@ -120,14 +125,20 @@ void ShellState::schedule() {
         }
         if (candidate >= 0) width = viewportAttached_ ? model_.targetWidth(candidate,dpr_) : renderWidth_;
     }
+    // Missing visible previews come first. Text then precedes resolution refinement and idle metadata.
+    const int textPage = pageCount_ ? textSelection_.nextPage(model_.priority()) : -1;
+    const bool textTask = textPage >= 0 && (candidate < 0 || !model_.visible(candidate) || !model_.image(candidate).isNull());
     PdfRequest r{session_,++revision_,path_,std::max(0,candidate),width};
+    if (textTask) { r.page=textPage; r.textOnly=true; }
     r.maxBytes = model_.pageBudget();
     r.skipPreview = viewportAttached_;
     if (viewportAttached_ && candidate >= 0 && model_.image(candidate).isNull() && width > ReadingConfig::previewWidth) {
         r.width = ReadingConfig::previewWidth;
         r.previewOnly = true;
     }
-    if (candidate < 0) {
+    if (textTask) {
+        // No bitmap allocation, and no renderJobs increment for text extraction.
+    } else if (candidate < 0) {
         while (metadataCursor_ < pageCount_ && model_.known(metadataCursor_)) ++metadataCursor_;
         if (metadataCursor_ >= pageCount_) {
             busy_ = false;
@@ -187,6 +198,15 @@ void ShellState::acceptFrame(const PdfFrame& frame) {
         emit renderDiscarded(frame.revision);
         return;
     }
+    if (frame.textOnly) {
+        model_.setSizes(frame.page,{frame.points});
+        if (frame.text) textSelection_.put(frame.page,frame.text);
+        else {
+            auto failure=std::make_shared<TextPage>(); failure->error=frame.error;
+            textSelection_.put(frame.page,std::move(failure));
+        }
+        return;
+    }
     if (frame.metadataStart >= 0) {
         metadataCursor_ = frame.metadataStart + int(frame.sizes.size());
         model_.setSizes(frame.metadataStart,frame.sizes);
@@ -215,10 +235,30 @@ void ShellState::acceptFrame(const PdfFrame& frame) {
 void ShellState::beginShutdown() {
     if (shuttingDown_) return;
     shuttingDown_ = true;
+    textSelection_.reset();
     busy_ = false;
     statusText_ = QStringLiteral("正在关闭文档…");
     emit selectionChanged();
     worker_->shutdown();
+}
+
+bool ShellState::beginTextSelection(double x,double y) {
+    if (shuttingDown_ || !pageCount_ || !std::isfinite(x) || !std::isfinite(y)) return false;
+    const int page=model_.pageAt(y);
+    const double width=model_.pageWidth();
+    const double left=(model_.contentWidth()-width)/2;
+    if (x<left || x>left+width || y<model_.top(page) || y>model_.top(page)+model_.height(page)) {
+        textSelection_.clear(); return false;
+    }
+    textSelection_.begin(page,(x-left)/width,(y-model_.top(page))/model_.height(page),3/width,3/model_.height(page));
+    return textSelection_.canStart();
+}
+void ShellState::extendTextSelection(double x,double y) {
+    if (shuttingDown_ || !pageCount_ || !std::isfinite(x) || !std::isfinite(y)) return;
+    const int page=model_.pageAt(y);
+    const double width=model_.pageWidth();
+    const double left=(model_.contentWidth()-width)/2;
+    textSelection_.extend(page,std::clamp((x-left)/width,0.0,1.0),std::clamp((y-model_.top(page))/model_.height(page),0.0,1.0));
 }
 
 void ShellState::cycleTheme() {

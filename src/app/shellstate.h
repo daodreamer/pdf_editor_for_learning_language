@@ -5,6 +5,7 @@
 #include <QThread>
 #include "pdfworker.h"
 #include "readingmodel.h"
+#include "textselection.h"
 #include <QTimer>
 #include <QtQml/qqmlregistration.h>
 
@@ -28,6 +29,7 @@ class ShellState : public QObject {
     Q_PROPERTY(double zoom READ zoom NOTIFY layoutChanged)
     Q_PROPERTY(double pageRatio READ pageRatio NOTIFY selectionChanged)
     Q_PROPERTY(QString errorCode READ errorCode NOTIFY selectionChanged)
+    Q_PROPERTY(TextSelection* textSelection READ textSelection CONSTANT)
 public:
     explicit ShellState(QObject* parent = nullptr);
     ~ShellState() override;
@@ -42,6 +44,9 @@ public:
     QImage pageImage() const { return model_.image(page_); }
     QAbstractItemModel* readingModel() { return &model_; }
     ReadingModel& model() { return model_; }
+    TextSelection* textSelection() { return &textSelection_; }
+    Q_INVOKABLE bool beginTextSelection(double x, double y);
+    Q_INVOKABLE void extendTextSelection(double x, double y);
     double contentHeight() const { return model_.contentHeight(); }
     double contentWidth() const { return model_.contentWidth(); }
     double scrollOffset() const { return model_.offset(); }
@@ -73,6 +78,7 @@ private:
     void schedule();
     void invalidate();
     ReadingModel model_;
+    TextSelection textSelection_;
     QTimer scheduleTimer_;
     QSet<int> failed_;
     bool inFlight_ = false;

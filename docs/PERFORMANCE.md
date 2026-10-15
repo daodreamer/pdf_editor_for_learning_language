@@ -243,3 +243,9 @@ benchmarks/results/<run-id>/
 通知优化控制 A 与最终 B 使用相同帧驱动、65 秒、前台激活、设备/构建类型/预算及固定输入；A 恢复每次滚动发全 role 通知，B 仅在几何或图像变化时发对应通知。A 的完整源码快照在 `.tools/phase3-control-source/`，runner 的 `--source-root` 只指定散列来源，绝不把当前源码冒作旧二进制源码。A 单轮与 B 多轮只能作初步比较，不能证明稳定性能收益。
 
 阶段 3 最终 Windows 数值见 [PHASE3_REPORT.md](PHASE3_REPORT.md)：5×65 s 固定速度轨迹 P95 6.47–16.20 ms、P99 7.50–17.26 ms；长压力及系统 GPU 计数单列。3+30 热启动外部交互代理 P95 396.10 ms，未达 300 ms 目标；P3-START-1 等任务明确保留。macOS 和冷启动未验证。
+
+## 阶段 4 文字选择诊断
+
+复现：SDK PATH 下运行 `build/windows/text_tests.exe boundedTextCost`。构造 65536 个不可变原生字符位置，单调 QElapsedTimer 记录 100 次扩选的 GUI 命中与字符串生成合计时间。此人工阵列用于限定数据规模与计费，真实 PDF 读取另由套件其余测试覆盖，不冒充引擎提取性能。结果保存在 `benchmarks/results/phase4-20261015/accepted-text-tests.log`：4194336 bytes 快照、314.949 ms/100 次，约 3.15 ms/次；单次诊断，不是帧分位或输入到屏幕延迟，也无 A/B 提升结论。
+
+真实超限页含 3×30000 字符文本对象，worker 的文字任务约 25.283 ms 后返回明确上限错误。该时间来自本轮单次 worker 时钟，不代表一般文档。快照 16 MiB 和单页字符上限不限制 PDFium 解析内部分配，图像、文字、选区几何与系统进程/GPU 口径分别报告。选区操作不增加 renderJobs 的行为断言、双 DPI 像素差检查和场景图后端证据见 [PHASE4_REPORT.md](PHASE4_REPORT.md)。本轮没有重新测量启动、长期滚动帧分布或系统 GPU 峰值；阶段 3 待办保留。

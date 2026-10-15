@@ -5,6 +5,7 @@
 #include <QThread>
 #include <cpp/fpdf_scopers.h>
 #include <fpdfview.h>
+#include <fpdf_text.h>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -124,6 +125,7 @@ void PdfWorker::execute(const PdfRequest& r) {
     result.session = r.session;
     result.revision = r.revision;
     result.page = r.page;
+    result.textOnly = r.textOnly;
     QElapsedTimer timer;
     timer.start();
     try {
@@ -182,6 +184,43 @@ void PdfWorker::execute(const PdfRequest& r) {
         const double w = FPDF_GetPageWidthF(page.get()), h = FPDF_GetPageHeightF(page.get());
         require(std::isfinite(w) && std::isfinite(h) && w > 0 && h > 0, "页面尺寸无效。");
         result.points = QSizeF(w, h);
+        if (r.textOnly) {
+            result.errorCode = QStringLiteral("text");
+            auto snapshot = std::make_shared<TextPage>();
+            TrackedHandle<ScopedFPDFTextPage> text(FPDFText_LoadPage(page.get()));
+            require(bool(text), "无法读取页面文字层。");
+            const int count = FPDFText_CountChars(text.get());
+            require(count >= 0, "读取文字字符数失败。");
+            if (count > ReadingConfig::textCharacters) {
+                snapshot->error = QStringLiteral("此页文字超过选择上限（65536 字符）。");
+            } else {
+                snapshot->characters.reserve(count);
+                constexpr int device = ReadingConfig::textDeviceSize;
+                const auto map = [&](double x, double y) {
+                    int dx = 0, dy = 0;
+                    require(FPDF_PageToDevice(page.get(),0,0,device,device,0,x,y,&dx,&dy), "文字坐标转换失败。");
+                    return QPointF(double(dx)/device,double(dy)/device);
+                };
+                for (int i=0; i<count; ++i) {
+                    if (!current(r.revision)) return;
+                    TextCharacter c;
+                    c.unicode = char32_t(FPDFText_GetUnicode(text.get(),i));
+                    double left=0,right=0,bottom=0,top=0;
+                    if (FPDFText_GetCharBox(text.get(),i,&left,&right,&bottom,&top)
+                        && std::isfinite(left) && std::isfinite(right) && std::isfinite(bottom) && std::isfinite(top)) {
+                        c.box = QRectF(map(left,top),map(right,bottom)).normalized().intersected(QRectF(0,0,1,1));
+                        c.visible = !c.box.isEmpty();
+                    }
+                    snapshot->characters.append(c);
+                }
+            }
+            result.text = std::move(snapshot);
+            result.errorCode.clear();
+            qInfo("pdf_text session=%llu page=%d chars=%lld worker_ms=%.3f",r.session,r.page,
+                  qint64(result.text->characters.size()),timer.nsecsElapsed()/1e6);
+            if (current(r.revision)) emit frameReady(std::move(result));
+            return;
+        }
         result.errorCode = QStringLiteral("render");
         require(QSysInfo::ByteOrder == QSysInfo::LittleEndian, "当前图像路径需要 little-endian BGRA。");
         const qint64 imageBudget = std::clamp(r.maxBytes,qint64(4),maxImageBytes);

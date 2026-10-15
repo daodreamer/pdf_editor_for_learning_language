@@ -27,3 +27,16 @@ if(WIN32)
 endif()
 add_test(NAME reading_invariants COMMAND reading_tests)
 set_tests_properties(reading_invariants PROPERTIES TIMEOUT 120)
+
+qt_add_executable(text_tests text_tests.cpp)
+set_target_properties(text_tests PROPERTIES WIN32_EXECUTABLE FALSE)
+target_link_libraries(text_tests PRIVATE shell_ui shell_uiplugin Qt6::Test Qt6::QuickControls2)
+target_compile_definitions(text_tests PRIVATE LANGLERN_FIXTURES="${PROJECT_SOURCE_DIR}/tests/fixtures")
+langlern_warnings(text_tests)
+if(WIN32)
+    add_custom_command(TARGET text_tests POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:pdfium> $<TARGET_FILE_DIR:text_tests>)
+endif()
+add_test(NAME text_selection COMMAND text_tests)
+set_tests_properties(text_selection PROPERTIES TIMEOUT 120)
