@@ -1,5 +1,11 @@
 # 阶段 0 依赖与许可审查
 
+## 阶段 1 增量审查（2026-10-15）
+
+正式外壳继续动态使用固定 Qt 6.8.3，新增 QuickDialogs2 公开模块用于本地系统文件选择；维护成本为随 Qt 一起更新/复测，不新增独立供应商。实际 SDK SBOM 中 QuickDialogs2、QuickDialogs2Utils、QuickDialogs2QuickImpl 和 qtquickdialogsplugin 均提供 LGPL-3.0-only 选项，摘录、SPDX ID 和来源 SHA-256 见 [qt-phase1-license-evidence.json](qt-phase1-license-evidence.json)。适用已有 Qt 通知、对应源码和动态替换义务；最终部署闭包仍需阶段 8 核对。应用没有直接包含或链接 Qt 私有 API。
+
+Windows 界面指定系统 Microsoft YaHei UI 字体，不复制、打包或嵌入系统字体文件。没有新增图标或第三方美术资源，工具区使用文字标签；后续引入 Lucide 资源仍须审查。应用自有静态 QML 模块为 MIT 源码，不表示静态链接 Qt。阶段 0 PDFium/字体仅在显式构建原型时使用；阶段 1 正式程序不链接它们。尚未制作独立发行包，不能宣称发行许可闭环完成。
+
 审查日期：2026-10-15。审查方式：本地包内容、供应商 SPDX、固定源码及通知文件核对。此文件记录技术和许可证据，不宣称尚未制作的发行包合规。
 
 ## 实际选用与来源

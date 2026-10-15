@@ -2,7 +2,16 @@
 
 面向 Windows / macOS 的离线 PDF 阅读与语言练习工具。固定技术栈为 C++20、Qt Quick、PDFium、CMake。
 
-当前只有**阶段 0 技术验证原型**，没有正式阅读器、连续滚动或标注产品。Windows 本地构建、真实 PDF 和微软拼音输入验证已执行；macOS/Metal 留待用户实机检查，查看器完整验收与发行许可闭环尚未完成。见 [阶段报告](docs/PHASE0_REPORT.md)。阶段 1–8 未实施。
+当前已实现**阶段 1 桌面应用外壳**：基础窗口、本地文件选择、浅色/深色/系统主题、键盘快捷键和启动诊断。选中文件会明确提示“尚未加载”；PDF 显示、连续阅读和标注尚未实现。Windows 构建与自动化验证见 [阶段 1 报告](docs/PHASE1_REPORT.md)。macOS 按用户要求延至整个项目完成后检查，阶段 2–8 尚未实施。原型与既有风险见 [阶段 0 报告](docs/PHASE0_REPORT.md)。
+
+已有本项目固定 Qt/MSVC 开发依赖时：
+
+```powershell
+./tools/build-windows.ps1 -Test
+./tools/run-windows.ps1
+```
+
+默认构建正式应用，不要求 PDFium。首次依赖获取、保留原型的构建选项及验证限制见编译说明。当前使用开发环境的 Qt 运行库；尚未提供可脱离 Qt SDK 双击运行的发行包。
 
 - [编译与实验复现](docs/BUILDING.md)
 - [架构](docs/ARCHITECTURE.md)、[路线图](docs/ROADMAP.md)、[性能方法](docs/PERFORMANCE.md)

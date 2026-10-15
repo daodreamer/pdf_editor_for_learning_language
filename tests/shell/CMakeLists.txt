@@ -1,0 +1,8 @@
+qt_add_executable(shell_tests shell_tests.cpp)
+set_target_properties(shell_tests PROPERTIES WIN32_EXECUTABLE FALSE)
+target_link_libraries(shell_tests PRIVATE shell_ui shell_uiplugin Qt6::Test Qt6::QuickControls2)
+langlern_warnings(shell_tests)
+add_test(NAME shell_interactions COMMAND shell_tests -o ${CMAKE_CURRENT_BINARY_DIR}/interactions.txt,txt)
+set_tests_properties(shell_interactions PROPERTIES TIMEOUT 40)
+add_test(NAME shell_startup COMMAND langlern --startup-probe --quit-after-ready)
+set_tests_properties(shell_startup PROPERTIES TIMEOUT 20)

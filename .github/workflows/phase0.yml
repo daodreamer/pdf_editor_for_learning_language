@@ -13,7 +13,7 @@ jobs:
           python -m venv .tools/venv
           .tools/venv/Scripts/python -m pip install -r tools/requirements-phase0.lock.txt
           .tools/venv/Scripts/python tools/bootstrap.py --platform windows
-          ./tools/build-windows.ps1 -Test
+          ./tools/build-windows.ps1 -Test -Phase0
           .tools/venv/Scripts/python tools/make-fixtures.py
           $env:PATH = "$pwd/.deps/Qt/6.8.3/msvc2022_64/bin;" + $env:PATH
           .tools/venv/Scripts/python tests/integration.py --exe build/windows/phase0_pdf_probe.exe --font .deps/fonts/NotoSansSC-Regular.ttf --out benchmarks/results/ci-windows
@@ -34,7 +34,7 @@ jobs:
           .tools/venv/bin/python -m pip install aqtinstall==3.3.0 cmake==3.31.6 ninja==1.11.1.3 fonttools==4.60.1 PyMuPDF==1.26.5
           .tools/venv/bin/python tools/bootstrap.py --platform mac
           export PATH="$PWD/.tools/venv/bin:$PATH"
-          .deps/Qt/6.8.3/macos/bin/qt-cmake -S . -B build/macos -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DPDFium_DIR="$PWD/.deps/pdfium-mac"
+          .deps/Qt/6.8.3/macos/bin/qt-cmake -S . -B build/macos -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DLANGLERN_BUILD_PHASE0=ON -DPDFium_DIR="$PWD/.deps/pdfium-mac"
           cmake --build build/macos --parallel 4
           ctest --test-dir build/macos --output-on-failure
           .tools/venv/bin/python tools/make-fixtures.py

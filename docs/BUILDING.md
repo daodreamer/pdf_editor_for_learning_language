@@ -1,4 +1,28 @@
-# 阶段 0 构建与复现
+# 构建与复现
+
+## 阶段 1 正式应用（Windows 已验证）
+
+复用下文固定 Qt 6.8.3 / MSVC / CMake / Ninja 开发环境；新增 Qt Quick Dialogs 使用同一 SDK，无新增外部依赖。默认不查找、不链接 PDFium，也不分发原型字体。首次获取仍可复用下文 bootstrap（会额外获取阶段 0 依赖）；只构建外壳时也可以用锁定版本 aqt 获取 Qt：`.tools/venv/Scripts/python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 -O .deps/Qt`。该精简获取路径已写入 CI，但未重新下载完整 SDK。
+
+```powershell
+./tools/build-windows.ps1 -Test
+./tools/run-windows.ps1
+```
+
+两个脚本的默认目录均为 `build/windows`。指定另一目录时，两处都传入相同 `-BuildDir`。正式目标 `langlern.exe`，自动化目标 `shell_tests.exe`。开发启动脚本为子进程补充 Qt bin PATH；发行部署留阶段 8。
+
+本次全新构建目录 `build/phase1-clean` 和保留原型构建的真实结果见 PHASE1_REPORT。启动测量及空闲采样（必须使用新输出目录）：
+
+```powershell
+.tools/venv/Scripts/python benchmarks/run-startup.py --exe build/windows/langlern.exe --run benchmarks/results/my-new-startup
+.tools/venv/Scripts/python benchmarks/check-shell-idle.py --exe build/windows/langlern.exe --run benchmarks/results/my-new-idle
+```
+
+启动脚本默认 3 次预热 + 30 个新进程样本；不刷新系统缓存，不能称冷启动。指标是首帧提交后合成 F6 快捷键往返的接收代理，详见 PERFORMANCE。普通运行不会发送 F6，也无诊断 watchdog；`--startup-probe --quit-after-ready` 仅供采样。
+
+CTest 的文件对话框自动化使用 `AA_DontUseNativeDialogs`，覆盖 Qt 对话框取消/重开、选中结果信号路由；产品默认使用原生系统对话框。原生对话框实际点击选文件仍需人工检查，不能把合成 accepted 信号算成 OS 选文件通过。
+
+原型现在须显式启用：`./tools/build-windows.ps1 -Phase0 -Test`。直接 CMake 使用 `-DLANGLERN_BUILD_PHASE0=ON -DPDFium_DIR=<固定包路径>`；默认 OFF。下文旧复现命令中的构建步骤须加 `-Phase0`，PDF/字体实验命令不变。
 
 ## 本机已执行的 Windows 路径
 
@@ -10,7 +34,7 @@ Windows 11 x64，Visual Studio Community 2026 / MSVC 19.51.36257.0 / SDK 10.0.26
 python -m venv .tools/venv
 .tools/venv/Scripts/python -m pip install -r tools/requirements-phase0.lock.txt
 .tools/venv/Scripts/python tools/bootstrap.py --platform windows
-./tools/build-windows.ps1 -Test
+./tools/build-windows.ps1 -Phase0 -Test
 .tools/venv/Scripts/python tools/make-fixtures.py
 ```
 

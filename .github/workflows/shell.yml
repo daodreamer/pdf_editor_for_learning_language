@@ -1,0 +1,23 @@
+name: Desktop shell (Windows)
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - shell: pwsh
+        run: |
+          python -m venv .tools/venv
+          .tools/venv/Scripts/python -m pip install -r tools/requirements-phase0.lock.txt
+          .tools/venv/Scripts/python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 -O .deps/Qt
+          ./tools/build-windows.ps1 -BuildDir build/phase1 -Test
+          .tools/venv/Scripts/cmake --build build/phase1 --target all_qmllint
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shell-test-results
+          path: build/phase1/Testing/Temporary/
+  # macOS execution is deferred by the user until the complete project is ready.

@@ -1,6 +1,16 @@
 # 性能工程与验收方案
 
-日期：2026-10-15。状态：实验设计，尚未进行性能测量；本文无已测性能结论。
+日期：2026-10-15。状态：方法与门槛保留；阶段 0 初始测量见 PHASE0_REPORT.md，阶段 1 Windows 启动和空闲样本见 PHASE1_REPORT.md。其余指标不能因已有局部数据而视为通过。
+
+## 阶段 1 实际采样口径
+
+`benchmarks/run-startup.py` 以 `time.monotonic_ns()` 记录每个新进程启动请求，经管道接收 `interactive_proxy` 时记录外部时间；程序以同一 QElapsedTimer 记录 QApplication ready、engine ready、QML ready、show 请求/返回、首个 frameSwapped 和合成 F6 响应。外部时间包含创建进程和日志/管道调度开销，内部时间不包含 main 以前的加载，两者分列。`interactive_proxy` 只证明首帧提交后 Qt 主线程能处理合成快捷键，**不是**系统键盘往返或实际呈现，也不能代替本文目标定义的完整 window_interactive 验收。
+
+固定 3 次丢弃预热 + 30 次新进程，warm OS/Qt cache，无截图/大量 QSG 日志，Release；逐次保留 JSONL 日志、源码与可执行文件 SHA-256、实际 build_type、Qt/API 和 DPR，P95 使用 nearest-rank。冷启动必须另用受控重启/缓存策略采样；本次不称冷启动通过。窗口 1120×760 逻辑像素，默认 DPR 1.5；当前 Windows 构建显式选择 D3D11。
+
+`benchmarks/check-shell-idle.py` 对无参数正常程序等待 2 秒后做一次 5 秒进程 CPU 时间差和末点 RSS/private 采样，并检查加载模块中没有 PDFium。0 CPU 增量只表示系统采样粒度内未见增加，不证明绝对零开销；RSS/private 不是自有缓存或 GPU 显存。采样结束强制终止脚本自建子进程，正常关窗由交互测试覆盖。程序无应用自建持续轮询由代码审查和该单次样本共同支持；不推导所有设备/长期空闲表现。
+
+阶段 1 启动目标若未达到，保留差距，并用 show 前后日志继续定位窗口/字体/图形初始化；不得改成只计算 QML ready 来宣布达标。阶段 8 补完整可交互、冷启动、实际呈现和多设备复测。
 
 模块与线程见 [ARCHITECTURE.md](ARCHITECTURE.md)，实施阶段见 [ROADMAP.md](ROADMAP.md)。目标是让大型扫描教材的阅读、输入和手写保持低资源消耗与即时响应，不能由技术栈直接推断实际速度。
 

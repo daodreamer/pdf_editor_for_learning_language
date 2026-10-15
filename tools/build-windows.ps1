@@ -1,4 +1,4 @@
-param([string]$BuildDir = 'build/windows', [switch]$Test)
+param([string]$BuildDir = 'build/windows', [switch]$Test, [switch]$Phase0)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 Push-Location $root
@@ -10,7 +10,10 @@ try {
     & $dev -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
     if ($LASTEXITCODE) { throw 'DevShell failed' }
     $env:PATH = "$root/.tools/venv/Scripts;$root/.deps/Qt/6.8.3/msvc2022_64/bin;" + $env:PATH
-    & "$root/.deps/Qt/6.8.3/msvc2022_64/bin/qt-cmake.bat" -S . -B $BuildDir -G Ninja -DCMAKE_BUILD_TYPE=Release "-DPDFium_DIR=$root/.deps/pdfium-win"
+    $options = @('-DLANGLERN_BUILD_PHASE0=OFF')
+    if ($Phase0) { $options = @('-DLANGLERN_BUILD_PHASE0=ON', "-DPDFium_DIR=$root/.deps/pdfium-win") }
+    if ($Test) { $options += '-DBUILD_TESTING=ON' }
+    & "$root/.deps/Qt/6.8.3/msvc2022_64/bin/qt-cmake.bat" -S . -B $BuildDir -G Ninja -DCMAKE_BUILD_TYPE=Release @options
     if ($LASTEXITCODE) { throw 'Configure failed' }
     cmake --build $BuildDir --parallel 6
     if ($LASTEXITCODE) { throw 'Build failed' }

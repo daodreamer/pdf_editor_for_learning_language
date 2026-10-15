@@ -1,5 +1,17 @@
 # 系统架构设计
 
+## 阶段 1 实施契约（2026-10-15，编码前）
+
+用户授权阶段 1，macOS 全部实机检查延至整个项目完成后。正式入口为 `src/app/`，QML 模块位于 `qml/Langlern/Shell/`；`langlern` 只链接 Qt，不链接、初始化或调用 PDFium。阶段 0 adapter 保留原型目录，待阶段 2 文档服务接口落地时迁移，避免现在把实验导出/调度接口固化为产品服务。共用的 C++20、Qt 版本与警告配置在根 CMake 管理，原型通过显式选项开启。
+
+`ShellState` 在 UI 线程由入口栈拥有，先于 QML engine 创建、后于 engine 销毁。QML 通过必需的强类型属性访问它。它仅接收系统文件选择返回的本地 URL，校验路径/扩展名并保存文件名及诚实的“尚未加载”提示；不读取 PDF 内容，不创建文档会话或工作线程。文件路径不进入诊断日志。浅/深/跟随系统主题由一个状态源驱动，token 负责颜色；不在此阶段写配置文件。
+
+普通启动没有应用自建周期 Timer、动画、字体扫描、后台预热或缓存。只记录 main、QML ready、首帧提交及一次合成快捷键往返；后三者使用同一单调时钟。首帧跨渲染线程通过 queued connection 回 UI，日志仅在 UI 线程输出。自动诊断的合成输入只表示 Qt 事件链响应代理，不等于系统输入或屏幕呈现。启动测量由进程外脚本记录启动请求和接收标记时间，保留采集延迟边界。文件对话框与帮助弹窗按需 Loader 创建。只使用 Qt 6.8 公共 API。
+
+接口：`selectFile(QUrl)`、`clearSelection()`、`cycleTheme()`；状态 `selectedName`、`statusText`、`themeMode`、`dark`。快捷键：标准 Open/Quit、Ctrl/Command+W 清除选择、F1 帮助、Ctrl/Command+Shift+L 切换主题；禁用的未来工具不出现为可执行操作。窗口关闭无需等待 PDF 工作。系统 FileDialog 默认使用本机实现，取消不改变已有状态；首次创建后复用，以免在原生关闭回调内立即销毁 helper。帮助弹窗关闭后卸载。Qt 的 `Ctrl` 描述在 Apple 平台自动映射为 Command，不能改成 `Meta`，依据 [Qt 6.8 QKeySequence](https://doc.qt.io/qt-6.8/qkeysequence.html#detailed-description)。
+
+使用 [qt_add_qml_module](https://doc.qt.io/qt-6.8/qt-add-qml-module.html) 的静态应用自有 QML 模块，Qt 本身保持动态链接；[FileDialog](https://doc.qt.io/qt-6.8/qml-qtquick-dialogs-filedialog.html) 默认本机实现；首帧来自 [QQuickWindow::frameSwapped](https://doc.qt.io/qt-6.8/qquickwindow.html#frameSwapped) 提交代理。仅供诊断的 F6 信号不读取文件或改变产品状态。
+
 日期：2026-10-15。状态：规划已审阅；阶段 0 实施与验证记录见 PHASE0_REPORT.md，不代表产品功能完成。
 
 ## 阶段 0 实施契约（编码前确认）
