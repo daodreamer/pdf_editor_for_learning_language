@@ -1,5 +1,7 @@
 # 系统架构设计
 
+当前正式实现以文末“阶段 2 实现契约”为准；前文阶段 0/1 契约保留历史验证边界，完整架构章节描述后续方向。
+
 ## 阶段 1 实施契约（2026-10-15，编码前）
 
 用户授权阶段 1，macOS 全部实机检查延至整个项目完成后。正式入口为 `src/app/`，QML 模块位于 `qml/Langlern/Shell/`；`langlern` 只链接 Qt，不链接、初始化或调用 PDFium。阶段 0 adapter 保留原型目录，待阶段 2 文档服务接口落地时迁移，避免现在把实验导出/调度接口固化为产品服务。共用的 C++20、Qt 版本与警告配置在根 CMake 管理，原型通过显式选项开启。
@@ -300,3 +302,15 @@ QML 编辑器只为活跃编辑项及必要可见项创建，其他文字使用�
 - [S6a：PDFium 编辑与字体接口](https://pdfium.googlesource.com/pdfium/+/refs/heads/main/public/fpdf_edit.h)，[S6b：保存接口](https://pdfium.googlesource.com/pdfium/+/refs/heads/main/public/fpdf_save.h)。
 - [S7：PDFium 上游构建说明](https://pdfium.googlesource.com/pdfium/+/refs/heads/main/README.md)。
 - [S8a：Qt 授权概览](https://doc.qt.io/qt-6/licensing.html)，[S8b：Qt LGPL 注意事项](https://doc.qt.io/qt-6/lgpl.html)，[S8c：PDFium LICENSE](https://pdfium.googlesource.com/pdfium/+/refs/heads/main/LICENSE)。
+
+## 阶段 2 实现契约（2026-10-15）
+
+本轮用户授权阶段 2；macOS 执行延至完整项目完成后。正式应用沿用阶段 0 的 Qt 6.8.3 与 PDFium 157.0.8100.0，不增加第三方依赖。
+
+`ShellState` 兼任当前 Document Manager 的 UI 门面，持有唯一 `PdfWorker` 的专用 QThread。QML 仅接收状态、页数、页码、页面比例与不可变 QImage；PDFium 句柄不离开 `src/pdf/pdfworker.cpp`。worker 按需初始化库，通过 QFile 只读随机访问回调支持 Unicode 路径，持有文件和文档直至关闭/切换。页面和位图使用 RAII，位图借用 QImage 缓冲，只在调用期间有效；缓冲发布后不再修改。
+
+线程安全 latest-only 邮箱只保留一个待执行需求；需求含 session、revision、路径、零基页码与像素宽度。UI 开关文件递增 session，页码/宽度变更递增 revision；worker 在阶段边界检查原子 revision，UI 在接收时再次检查两者。PDFium 的同步调用不能抢占，取消表示排队需求替换和过期结果丢弃。页面信息仅针对当前页；预览宽 480，随后目标宽，单张最多 64 MiB、边长最多 8192（超大比例页面降低分辨率并明确报告）。不实现阶段 3 的多页缓存/调度。
+
+`PageItem` 在 GUI 线程接收 QImage，在 updatePaintNode 同步阶段生成场景图纹理；节点拥有纹理，销毁和失效后重建均在 Qt 渲染执行域。尺寸变化只调整矩形，不重复上传；图像版本变化才替换纹理。逻辑尺寸由已含 PDF 固有旋转的宽高比例决定，目标像素宽考虑 DPR。此阶段只显示 PDF 内容，不建立标注坐标转换。
+
+关闭窗口先拒绝 close 事件，标记 shutdown、停止接收需求、使在途结果失效；worker 清理页面/文档/文件/库后退出线程，finished 再允许关窗。析构的 wait 仅是异常离开事件循环时的资源安全兜底，正常窗口关闭不在 UI 同步等 PDF。

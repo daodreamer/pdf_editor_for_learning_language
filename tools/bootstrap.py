@@ -11,6 +11,7 @@ import urllib.request
 
 p = argparse.ArgumentParser()
 p.add_argument("--platform", choices=("windows", "mac"), required=True)
+p.add_argument("--pdfium-only", action="store_true", help="Fetch and verify only the locked PDFium archive")
 a = p.parse_args()
 root = Path(__file__).resolve().parents[1]
 lock = json.loads((root / "third_party/dependencies.lock.json").read_text())
@@ -31,6 +32,9 @@ for entry in lock["archives"]:
         dest.mkdir(parents=True, exist_ok=True)
         with tarfile.open(archive) as tar:
             tar.extractall(dest, filter="data")
+if a.pdfium_only:
+    print("Locked PDFium ready.")
+    sys.exit(0)
 qt_dest = root / ".deps/Qt"
 arch = "win64_msvc2022_64" if a.platform == "windows" else "clang_64"
 host = "windows" if a.platform == "windows" else "mac"

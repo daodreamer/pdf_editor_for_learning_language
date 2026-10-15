@@ -1,6 +1,6 @@
 # 性能工程与验收方案
 
-日期：2026-10-15。状态：方法与门槛保留；阶段 0 初始测量见 PHASE0_REPORT.md，阶段 1 Windows 启动和空闲样本见 PHASE1_REPORT.md。其余指标不能因已有局部数据而视为通过。
+日期：2026-10-15。状态：方法与门槛保留；阶段 0 初始测量见 PHASE0_REPORT.md，阶段 1 Windows 启动和空闲样本见 PHASE1_REPORT.md。阶段 2 单页和句柄回归见 PHASE2_REPORT.md。其余指标不能因已有局部数据而视为通过。
 
 ## 阶段 1 实际采样口径
 
@@ -210,3 +210,14 @@ benchmarks/results/<run-id>/
 5. 首份基线、工具误差和环境限制；为首页和资源预算提出下一阶段待确认目标。
 
 阶段 0 已执行 Windows 真实教材和合成大文件基线，权威结果见 [PHASE0_REPORT.md](PHASE0_REPORT.md) 与 `benchmarks/results/phase0-20261015/baseline/`。已采集 worker 打开/渲染/清理耗时及进程 RSS；冷启动、可交互时间、实际呈现帧时间 P95/P99、GPU 显存、缓存命中率仍未测，不据此宣称达到产品性能目标。
+
+
+## 阶段 2 实际口径（2026-10-15）
+
+正式 worker 的 `pdf_opened`、`pdf_frame` 使用每次需求内 QElapsedTimer 单调时钟；`worker_ms` 是需求执行至当前图像产生的累计时间，含打开/页面加载/预览等此前工作，不是单独 PDFium render 时长，也不是屏幕呈现时间。session/revision/page（零基）和 preview 标记区分文件、请求与清晰度；不记录路径或正文。
+
+`tests/shell` 对每次关闭等待 `documentClosed`，核对实际 RAII 文档/页/位图计数归零；50 次循环在第 1/10/25/50 次用 GetProcessMemoryInfo 记录 working set/private/peak working set。该计数不包括 PDFium 内部缓存或 OS 句柄，CPU 进程内存不等于缓存预算；Qt/GPU 与分配器可保留高水位，短循环和小幅增长不能证明长期无泄漏。场景图纹理的 bytes_estimate 是图像尺寸估算，不是实测 GPU 显存。
+
+本轮用 839,214,902 bytes / 800 页原创 raw 灰度图像 PDF 验证首页和末页按需加载。它不覆盖 JPEG/JPX 等真实扫描教材解码，也不验证连续阅读帧率。默认回归的单次首页 worker 预览/目标累计时间为 3.719/9.789 ms，末页 12.680/18.994 ms；OS 文件缓存已热且样本数为 1，不能称 P95、冷启动或正式性能基线。早期同样本打开曾测到 375.805 ms、末页累计约 2.9 s，保留于 budget-fixed.log，不能择优后宣称稳定性能。
+
+证据根目录 `benchmarks/results/phase2-20261015/`，环境/散列/运行步骤见 PHASE2_REPORT。尚未新增冷启动、可交互完整验收、实际帧时间分布或 GPU 显存测量；阶段 1 的启动统计保持历史结果，不能用于代表已接入 PDFium 的阶段 2。

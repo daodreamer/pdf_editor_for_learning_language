@@ -15,19 +15,29 @@ ApplicationWindow {
     height: 760
     minimumWidth: 640
     minimumHeight: 480
-    title: "Langlern"
-    color: theme.canvas
+    title: shell.selectedName.length > 0 ? qsTr("%1 — Langlern").arg(shell.selectedName) : "Langlern"
+    color: shellTheme.canvas
+    onClosing: function(close) {
+        if (!window.shell.shutdownComplete) {
+            close.accepted = false
+            window.shell.beginShutdown()
+        }
+    }
+    Connections {
+        target: window.shell
+        function onShutdownChanged(): void { if (window.shell.shutdownComplete) window.close() }
+    }
     font.pixelSize: 14
-    palette.window: theme.surface
-    palette.windowText: theme.text
-    palette.base: theme.surface
-    palette.text: theme.text
-    palette.button: theme.surface
-    palette.buttonText: theme.text
-    palette.highlight: theme.accent
-    palette.highlightedText: theme.surface
+    palette.window: shellTheme.surface
+    palette.windowText: shellTheme.text
+    palette.base: shellTheme.surface
+    palette.text: shellTheme.text
+    palette.button: shellTheme.surface
+    palette.buttonText: shellTheme.text
+    palette.highlight: shellTheme.accent
+    palette.highlightedText: shellTheme.surface
 
-    Theme { id: theme; dark: window.shell.dark }
+    Theme { id: shellTheme; dark: window.shell.dark }
 
     Action {
         id: openAction
@@ -37,7 +47,7 @@ ApplicationWindow {
     }
     Action {
         id: closeAction
-        text: qsTr("清除选择")
+        text: qsTr("关闭文档")
         shortcut: "Ctrl+W"
         enabled: window.shell.selectedName.length > 0
         onTriggered: window.shell.clearSelection()
@@ -96,11 +106,11 @@ ApplicationWindow {
                 onClosed: helpLoader.active = false
                 contentItem: Label {
                     text: (Qt.platform.os === "osx" ? "⌘" : "Ctrl") + qsTr("+O  选择 PDF\n")
-                        + (Qt.platform.os === "osx" ? "⌘" : "Ctrl") + qsTr("+W  清除选择\n")
+                        + (Qt.platform.os === "osx" ? "⌘" : "Ctrl") + qsTr("+W  关闭文档\n")
                         + (Qt.platform.os === "osx" ? "⌘" : "Ctrl") + qsTr("+Shift+L  切换主题\nF1  快捷键\nTab / Shift+Tab  切换焦点\nEsc  关闭对话框")
                     lineHeight: 1.6
                     wrapMode: Text.WordWrap
-                    color: theme.text
+                    color: shellTheme.text
                 }
             }
         }
@@ -108,18 +118,25 @@ ApplicationWindow {
 
     header: ToolBar {
         padding: 16
-        background: Rectangle { color: theme.surface }
+        background: Rectangle { color: shellTheme.surface }
         contentItem: RowLayout {
             spacing: 16
-            Label { text: "Langlern"; font.pixelSize: 20; font.weight: Font.DemiBold; color: theme.text }
-            Label { text: qsTr("阅读 · 练习"); color: theme.muted; visible: window.width > 800 }
+            Label { text: "Langlern"; font.pixelSize: 20; font.weight: Font.DemiBold; color: shellTheme.text }
+            Label { text: qsTr("阅读 · 练习"); color: shellTheme.muted; visible: window.width > 800 }
             Item { Layout.fillWidth: true }
             ToolButton { objectName: "openButton"; action: openAction; activeFocusOnTab: true }
             ToolButton { action: themeAction; activeFocusOnTab: true; Accessible.name: qsTr("切换主题：") + window.themeLabel }
             ToolButton { action: helpAction; activeFocusOnTab: true }
         }
     }
+    DocumentView {
+        anchors.fill: parent
+        shell: window.shell
+        theme: shellTheme
+        visible: window.shell.pageCount > 0
+    }
     ColumnLayout {
+        visible: window.shell.pageCount === 0
         anchors.centerIn: parent
         width: Math.min(520, window.width - 80)
         spacing: 18
@@ -130,13 +147,13 @@ ApplicationWindow {
             font.weight: Font.DemiBold
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
-            color: theme.text
+            color: shellTheme.text
         }
         Label {
             Layout.fillWidth: true
             text: qsTr("本地 PDF 阅读与语言练习工具")
             horizontalAlignment: Text.AlignHCenter
-            color: theme.muted
+            color: shellTheme.muted
         }
         Button {
             id: chooseButton
@@ -145,13 +162,13 @@ ApplicationWindow {
             highlighted: true
             padding: 16
             activeFocusOnTab: true
-            palette.buttonText: theme.surface
-            palette.highlightedText: theme.surface
+            palette.buttonText: shellTheme.surface
+            palette.highlightedText: shellTheme.surface
             background: Rectangle {
                 radius: 6
-                color: chooseButton.down ? Qt.darker(theme.accent, 1.12) : theme.accent
+                color: chooseButton.down ? Qt.darker(shellTheme.accent, 1.12) : shellTheme.accent
                 border.width: chooseButton.visualFocus ? 2 : 0
-                border.color: theme.text
+                border.color: shellTheme.text
             }
         }
         Label {
@@ -160,16 +177,16 @@ ApplicationWindow {
             visible: text.length > 0
             horizontalAlignment: Text.AlignHCenter
             elide: Text.ElideMiddle
-            color: theme.text
+            color: shellTheme.text
             textFormat: Text.PlainText
         }
         Label {
             Layout.fillWidth: true
             text: window.shell.statusText.length > 0 ? window.shell.statusText
-                  : qsTr("当前版本提供基础窗口与文件选择，PDF 阅读功能尚未接入。")
+                  : qsTr("打开本地 PDF，开始阅读。")
             wrapMode: Text.WordWrap
             horizontalAlignment: Text.AlignHCenter
-            color: theme.muted
+            color: shellTheme.muted
             textFormat: Text.PlainText
         }
         Button {
@@ -182,11 +199,18 @@ ApplicationWindow {
     }
     footer: ToolBar {
         padding: 12
-        background: Rectangle { color: theme.surface }
+        background: Rectangle { color: shellTheme.surface }
         contentItem: RowLayout {
-            Label { text: qsTr("离线 · 本地文件"); color: theme.muted }
+            Label { text: qsTr("离线 · 本地文件"); color: shellTheme.muted }
             Item { Layout.fillWidth: true }
-            Label { text: qsTr("尚未加载文档"); color: theme.muted }
+            Label {
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignRight
+                text: window.shell.statusText
+                textFormat: Text.PlainText
+                elide: Text.ElideMiddle
+                color: shellTheme.muted
+            }
         }
     }
 }

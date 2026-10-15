@@ -1,4 +1,4 @@
-name: Desktop shell (Windows)
+name: Desktop PDF reader (Windows)
 on: [push, pull_request, workflow_dispatch]
 jobs:
   windows:
@@ -13,11 +13,14 @@ jobs:
           python -m venv .tools/venv
           .tools/venv/Scripts/python -m pip install -r tools/requirements-phase0.lock.txt
           .tools/venv/Scripts/python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 -O .deps/Qt
-          ./tools/build-windows.ps1 -BuildDir build/phase1 -Test
-          .tools/venv/Scripts/cmake --build build/phase1 --target all_qmllint
+          .tools/venv/Scripts/python tools/bootstrap.py --platform windows --pdfium-only
+          ./tools/build-windows.ps1 -BuildDir build/phase2 -Test
+          .tools/venv/Scripts/cmake --build build/phase2 --target all_qmllint
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: shell-test-results
-          path: build/phase1/Testing/Temporary/
+          name: reader-test-results
+          path: |
+            build/phase2/Testing/Temporary/
+            build/phase2/tests/shell/interactions.txt
   # macOS execution is deferred by the user until the complete project is ready.

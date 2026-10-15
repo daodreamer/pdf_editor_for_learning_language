@@ -33,7 +33,8 @@ int main(int argc, char* argv[]) {
     QQuickWindow::setGraphicsApi(QSGRendererInterface::Metal);
 #endif
     QCommandLineParser parser;
-    parser.setApplicationDescription(QStringLiteral("Langlern desktop shell"));
+    parser.setApplicationDescription(QStringLiteral("Langlern PDF reader"));
+    parser.addPositionalArgument(QStringLiteral("pdf"), QStringLiteral("Local PDF to open after showing the window"));
     parser.addHelpOption();
     parser.addVersionOption();
     parser.addOption({QStringLiteral("startup-probe"), QStringLiteral("Measure a synthetic Qt input roundtrip after the first frame")});
@@ -83,6 +84,10 @@ int main(int argc, char* argv[]) {
     }
     log(QStringLiteral("window_show_requested"));
     window->show();
+    if (!parser.positionalArguments().isEmpty()) {
+        const auto path = parser.positionalArguments().first();
+        QTimer::singleShot(0, &shell, [&shell, path] { shell.selectFile(QUrl::fromLocalFile(path)); });
+    }
     log(QStringLiteral("window_show_returned"));
     return app.exec();
 }

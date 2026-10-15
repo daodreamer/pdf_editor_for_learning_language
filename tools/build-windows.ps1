@@ -10,7 +10,7 @@ try {
     & $dev -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
     if ($LASTEXITCODE) { throw 'DevShell failed' }
     $env:PATH = "$root/.tools/venv/Scripts;$root/.deps/Qt/6.8.3/msvc2022_64/bin;" + $env:PATH
-    $options = @('-DLANGLERN_BUILD_PHASE0=OFF')
+    $options = @('-DLANGLERN_BUILD_PHASE0=OFF', "-DPDFium_DIR=$root/.deps/pdfium-win")
     if ($Phase0) { $options = @('-DLANGLERN_BUILD_PHASE0=ON', "-DPDFium_DIR=$root/.deps/pdfium-win") }
     if ($Test) { $options += '-DBUILD_TESTING=ON' }
     & "$root/.deps/Qt/6.8.3/msvc2022_64/bin/qt-cmake.bat" -S . -B $BuildDir -G Ninja -DCMAKE_BUILD_TYPE=Release @options

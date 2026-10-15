@@ -1,5 +1,10 @@
 # 阶段 0 依赖与许可审查
 
+## 阶段 2 正式引擎集成增量
+
+正式应用开始动态链接下表已审查的 PDFium 157.0.8100.0，来源、固定提交和许可证据沿用阶段 0，无新增供应商依赖。开发构建在 exe 目录复制 pdfium.dll；这只是开发运行路径，不是完整分发闭包。阶段 8 仍须随实际发行包核对 PDFium LICENSE/第三方通知、Qt 动态库及对应源码/替换义务、MSVC runtime。未向正式程序加入 Noto 字体或原型导出功能。`scan.pdf`、`password.pdf` 由 MIT 原创 geometry 派生，仅作测试；生成用 PyMuPDF 属已有开发工具，不链接/分发到应用。下文阶段 1 的“不链接 PDFium”是历史边界，本阶段已更新。
+
+
 ## 阶段 1 增量审查（2026-10-15）
 
 正式外壳继续动态使用固定 Qt 6.8.3，新增 QuickDialogs2 公开模块用于本地系统文件选择；维护成本为随 Qt 一起更新/复测，不新增独立供应商。实际 SDK SBOM 中 QuickDialogs2、QuickDialogs2Utils、QuickDialogs2QuickImpl 和 qtquickdialogsplugin 均提供 LGPL-3.0-only 选项，摘录、SPDX ID 和来源 SHA-256 见 [qt-phase1-license-evidence.json](qt-phase1-license-evidence.json)。适用已有 Qt 通知、对应源码和动态替换义务；最终部署闭包仍需阶段 8 核对。应用没有直接包含或链接 Qt 私有 API。

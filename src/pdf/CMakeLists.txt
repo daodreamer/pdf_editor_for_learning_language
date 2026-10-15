@@ -1,0 +1,7 @@
+qt_add_library(langlern_pdf STATIC pdfworker.h pdfworker.cpp)
+target_include_directories(langlern_pdf PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(langlern_pdf PUBLIC Qt6::Gui PRIVATE pdfium)
+langlern_warnings(langlern_pdf)
+if(WIN32)
+    target_compile_definitions(langlern_pdf PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+endif()

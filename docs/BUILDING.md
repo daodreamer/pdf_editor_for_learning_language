@@ -1,8 +1,14 @@
 # 构建与复现
 
-## 阶段 1 正式应用（Windows 已验证）
+## 阶段 2 正式应用（Windows 已验证）
 
-复用下文固定 Qt 6.8.3 / MSVC / CMake / Ninja 开发环境；新增 Qt Quick Dialogs 使用同一 SDK，无新增外部依赖。默认不查找、不链接 PDFium，也不分发原型字体。首次获取仍可复用下文 bootstrap（会额外获取阶段 0 依赖）；只构建外壳时也可以用锁定版本 aqt 获取 Qt：`.tools/venv/Scripts/python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 -O .deps/Qt`。该精简获取路径已写入 CI，但未重新下载完整 SDK。
+复用固定 Qt 6.8.3 / MSVC / CMake / Ninja 环境，正式应用现在动态链接 PDFium 157.0.8100.0；无需原型字体。已具备 Qt 的环境可仅获取锁定引擎：
+
+```powershell
+.tools/venv/Scripts/python tools/bootstrap.py --platform windows --pdfium-only
+```
+
+该增量命令在本机执行并核对归档 SHA-256，通过后解压固定包。全新环境仍需下文 venv/锁定工具与 Qt 获取步骤。
 
 ```powershell
 ./tools/build-windows.ps1 -Test
@@ -11,11 +17,10 @@
 
 两个脚本的默认目录均为 `build/windows`。指定另一目录时，两处都传入相同 `-BuildDir`。正式目标 `langlern.exe`，自动化目标 `shell_tests.exe`。开发启动脚本为子进程补充 Qt bin PATH；发行部署留阶段 8。
 
-本次全新构建目录 `build/phase1-clean` 和保留原型构建的真实结果见 PHASE1_REPORT。启动测量及空闲采样（必须使用新输出目录）：
+阶段 2 新目录 `build/phase2` 和默认 `build/windows` 的实际构建/回归见 PHASE2_REPORT。启动采样（必须使用新输出目录）：
 
 ```powershell
 .tools/venv/Scripts/python benchmarks/run-startup.py --exe build/windows/langlern.exe --run benchmarks/results/my-new-startup
-.tools/venv/Scripts/python benchmarks/check-shell-idle.py --exe build/windows/langlern.exe --run benchmarks/results/my-new-idle
 ```
 
 启动脚本默认 3 次预热 + 30 个新进程样本；不刷新系统缓存，不能称冷启动。指标是首帧提交后合成 F6 快捷键往返的接收代理，详见 PERFORMANCE。普通运行不会发送 F6，也无诊断 watchdog；`--startup-probe --quit-after-ready` 仅供采样。
@@ -74,3 +79,21 @@ ctest --test-dir build/macos --output-on-failure
 ```
 
 以上是待验证命令，不是构建成功记录。macOS 不使用 Windows 的 DLL copy，需在真机核实 PDFium dylib install-name/RPATH；若失败保留日志并修复。CI macOS job 使用 self-hosted/macOS/ARM64 标签，尚无已注册 runner 的证据。YAML 未在远程执行；CI 不代替 GPU/IME 真机验收。
+
+
+## 阶段 2 真实引擎回归
+
+```powershell
+$env:LANGLERN_LARGE_PDF = "$pwd/.deps/samples/synthetic-800.pdf"
+./tools/build-windows.ps1 -Test
+$env:PATH = "$pwd/.tools/venv/Scripts;" + $env:PATH
+.tools/venv/Scripts/cmake --build build/windows --target all_qmllint
+```
+
+大型样本由 `tools/make-large-fixture.py` 生成；不存在时不要设置环境变量，普通测试仍可运行，largeFileSmoke 会明确标记 skipped。本轮实际运行了该本地样本。扫描页/密码测试输入已提交，来源为原创 geometry；再生脚本 `tools/make-phase2-fixtures.py` 使用已有开发依赖 PyMuPDF，不属于产品运行依赖。
+
+应用支持 `langlern.exe <本地PDF路径>`，窗口显示后异步打开。使用开发 SDK PATH 后可运行 `./build/windows/langlern.exe ./tests/fixtures/geometry.pdf`；启动脚本仍为无参数文件对话框入口。
+
+`LANGLERN_SCREENSHOT_DIR` 指向已存在的新目录时，交互测试保存空窗口浅/深主题、PDF 和旋转深色截图，拒绝覆盖旧图。`QT_SCALE_FACTOR=2` 可用于附加 DPI 回归。文件对话框的原生 OS 点击选取仍属于人工检查；自动化验证 Qt 对话框及 accepted 到真实引擎的路由。
+
+`check-shell-idle.py` 保留为阶段 1 历史隔离实验，会要求不加载 PDFium，不适用于阶段 2 正式程序。macOS 和远程 CI 均未在本轮执行。Windows FPDF_FILEACCESS 长度为 unsigned long，明确拒绝空文件和超过 4 GiB 的文件；密码输入尚未提供，受密码保护文件显示明确反馈。只检查当前页，暂无连续布局、正式缓存或分块。
