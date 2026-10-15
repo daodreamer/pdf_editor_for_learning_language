@@ -1,0 +1,24 @@
+{
+  "source": "original deterministic synthetic fixture, MIT",
+  "generator": "tools/make-fixtures.py",
+  "pages": 8,
+  "bytes": 4625,
+  "sha256": "13a814f9835bf5d744bec5f3f58c1fe7c10a059e13c2e6070bd8712358068e8e",
+  "text_layer": true,
+  "rotations": [
+    0,
+    90,
+    180,
+    270
+  ],
+  "user_units": [
+    1,
+    2
+  ],
+  "crop_box": [
+    10,
+    20,
+    580,
+    800
+  ]
+}

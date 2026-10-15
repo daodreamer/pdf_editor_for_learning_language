@@ -1,0 +1,32 @@
+{
+  "exit_code": 0,
+  "source_sha256_unchanged": true,
+  "warmup_count": 3,
+  "formal_count": 30,
+  "os_cache": "warm after source hash; cold unmeasured",
+  "open_ms": {
+    "count": 30,
+    "median": 0.59135,
+    "p95": 0.8193,
+    "min": 0.5449,
+    "max": 0.8482
+  },
+  "render_ms": {
+    "count": 30,
+    "median": 4.911,
+    "p95": 5.2866,
+    "min": 4.757,
+    "max": 5.2906
+  },
+  "total_worker_ms": {
+    "count": 30,
+    "median": 8.768149999999999,
+    "p95": 9.5267,
+    "min": 8.5785,
+    "max": 9.5822
+  },
+  "peak_sampled_rss_bytes": 32645120,
+  "sampling_interval_ms": 10,
+  "gpu_memory": "unmeasured",
+  "ui_frame_time": "unmeasured"
+}

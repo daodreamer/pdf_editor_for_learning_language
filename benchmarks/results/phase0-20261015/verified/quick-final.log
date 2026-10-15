@@ -1,0 +1,58 @@
+qt.scenegraph.general: threaded render loop
+qt.scenegraph.general: Using sg animation driver
+qt.scenegraph.general: Animation Driver: using vsync: 6.25 ms
+qt.scenegraph.general: Using sg animation driver
+qt.scenegraph.general: Animation Driver: using vsync: 6.25 ms
+qt.scenegraph.general: Creating QRhi with backend D3D11 for window 0x29195ba2420 (wflags 0x1)
+  Graphics API debug/validation layers: 0
+  Debug markers: 0
+  Timestamps: 0
+  Prefer software device: 0
+  Shader/pipeline cache collection: 1
+qt.rhi.general: FLIP_* swapchain supported = true, ALLOW_TEARING supported = true, use legacy (non-FLIP) model = false, max frame latency = 2
+qt.rhi.general: Adapter 0: 'NVIDIA GeForce RTX 5070' (vendor 0x10DE device 0x2F04 flags 0x0)
+qt.rhi.general:   using this adapter
+qt.rhi.general: Adapter 1: 'Intel(R) Graphics' (vendor 0x8086 device 0x7D67 flags 0x0)
+qt.rhi.general: Adapter 2: 'Microsoft Basic Render Driver' (vendor 0x1414 device 0x8C flags 0x2)
+qt.scenegraph.general: Created QRhi 0x29195f920a0 for window 0x29195ba2420
+qt.scenegraph.general: MSAA sample count for the swapchain is 1. Alpha channel requested = no.
+qt.scenegraph.general: rhi texture atlas dimensions: 2048x2048
+request_ns 53950952631100 generation 1
+first_frame_submitted_ms 597.607
+worker_trace {"before_output_cleanup_ms":5.0538,"coordinate_max_pixel_error":0,"crop_box":[10,20,580,800],"file_bytes":4625,"finished_ns":"53950958793700","generation":1,"height":958,"image_bytes":2682400,"native_scope_closed":true,"open_ms":1.0809,"page_height":780,"page_width":570,"pages":8,"render_ms":0.3825,"rotation":0,"started_ns":"53950953486800","text_characters":20,"total_worker_ms":5.3069,"width":700,"worker_thread":"48760"}
+{"before_output_cleanup_ms":5.0538,"coordinate_max_pixel_error":0,"crop_box":[10,20,580,800],"file_bytes":4625,"finished_ns":"53950958793700","generation":1,"height":958,"image_bytes":2682400,"native_scope_closed":true,"open_ms":1.0809,"page_height":780,"page_width":570,"pages":8,"render_ms":0.3825,"rotation":0,"started_ns":"53950953486800","text_characters":20,"total_worker_ms":5.3069,"width":700,"worker_thread":"48760"}
+image_delivered_ms 602.806 generation 1
+request_ns 53950958931000 generation 2
+request_ns 53950959006200 generation 3
+texture_created bytes_estimate=2682400
+worker_trace {"before_output_cleanup_ms":13.4731,"coordinate_max_pixel_error":0,"crop_box":[10,20,580,800],"file_bytes":4625,"finished_ns":"53950972623200","generation":2,"height":3558,"image_bytes":37003200,"native_scope_closed":true,"open_ms":0.2183,"page_height":780,"page_width":570,"pages":8,"render_ms":1.4925,"rotation":0,"started_ns":"53950958978000","text_characters":20,"total_worker_ms":13.6452,"width":2600,"worker_thread":"48760"}
+discarded 2
+worker_trace {"before_output_cleanup_ms":6.1768,"coordinate_max_pixel_error":0,"crop_box":[10,20,580,800],"file_bytes":4625,"finished_ns":"53950979900900","generation":3,"height":1916,"image_bytes":10729600,"native_scope_closed":true,"open_ms":0.2687,"page_height":780,"page_width":570,"pages":8,"render_ms":0.544,"rotation":0,"started_ns":"53950973572500","text_characters":20,"total_worker_ms":6.3284,"width":1400,"worker_thread":"48760"}
+{"before_output_cleanup_ms":6.1768,"coordinate_max_pixel_error":0,"crop_box":[10,20,580,800],"file_bytes":4625,"finished_ns":"53950979900900","generation":3,"height":1916,"image_bytes":10729600,"native_scope_closed":true,"open_ms":0.2687,"page_height":780,"page_width":570,"pages":8,"render_ms":0.544,"rotation":0,"started_ns":"53950973572500","text_characters":20,"total_worker_ms":6.3284,"width":1400,"worker_thread":"48760"}
+image_delivered_ms 624.321 generation 3
+qml: ime_composing true
+qml: ime_committed_length 2
+qml: ime_composing false
+synthetic_ime_preedit_ok true commit_ok true
+texture_created bytes_estimate=10729600
+qt.scenegraph.general: Total time spent on pipeline creation during the lifetime of the QRhi 0x29195f920a0 was 0 ms
+qt.scenegraph.general: Using sg animation driver
+qt.scenegraph.general: Animation Driver: using vsync: 6.25 ms
+qt.scenegraph.general: Creating QRhi with backend D3D11 for window 0x29195ba2420 (wflags 0x1)
+  Graphics API debug/validation layers: 0
+  Debug markers: 0
+  Timestamps: 0
+  Prefer software device: 0
+  Shader/pipeline cache collection: 1
+qt.rhi.general: FLIP_* swapchain supported = true, ALLOW_TEARING supported = true, use legacy (non-FLIP) model = false, max frame latency = 2
+qt.rhi.general: Adapter 0: 'NVIDIA GeForce RTX 5070' (vendor 0x10DE device 0x2F04 flags 0x0)
+qt.rhi.general:   using this adapter
+qt.rhi.general: Adapter 1: 'Intel(R) Graphics' (vendor 0x8086 device 0x7D67 flags 0x0)
+qt.rhi.general: Adapter 2: 'Microsoft Basic Render Driver' (vendor 0x1414 device 0x8C flags 0x2)
+qt.scenegraph.general: Created QRhi 0x291c1ff7810 for window 0x29195ba2420
+qt.scenegraph.general: rhi texture atlas dimensions: 2048x2048
+actual_graphics_api 4 dpr 1.5
+qt.scenegraph.general: MSAA sample count for the swapchain is 1. Alpha channel requested = no.
+texture_created bytes_estimate=10729600
+screenshot_saved true
+qt.scenegraph.general: Total time spent on pipeline creation during the lifetime of the QRhi 0x291c1ff7810 was 0 ms

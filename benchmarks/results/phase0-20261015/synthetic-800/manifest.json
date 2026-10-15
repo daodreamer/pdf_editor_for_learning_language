@@ -1,0 +1,17 @@
+{
+  "sample_id": "synthetic-raw-images-800",
+  "sample_sha256": "be2b255dbc4aa8a776248ebd03a795006cd450014ab554864efd6edf36b5e2c8",
+  "sample_bytes": 839214902,
+  "platform": "Windows-11-10.0.26200-SP0",
+  "cpu": "Intel64 Family 6 Model 198 Stepping 2, GenuineIntel",
+  "ram_bytes": 50873622528,
+  "qt": "6.8.3",
+  "pdfium": "157.0.8100.0",
+  "build": "Release / MSVC 19.51 / C++20",
+  "width": 1400,
+  "repeat": 33,
+  "notes": "No document path or extracted text recorded. RSS sampled, may miss short peaks. Hash read warmed file cache.",
+  "synthetic": true,
+  "pages": 800,
+  "source": "tools/make-large-fixture.py; MIT; seed=20261015; 1024x1024 gray; no image compression"
+}

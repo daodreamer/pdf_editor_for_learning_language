@@ -1,0 +1,3 @@
+# Preserve exact bytes for fixture offsets and recorded license/skill checksums.
+* -text
+*.pdf binary

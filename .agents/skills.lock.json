@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "installedAt": "2026-10-15",
+  "scope": "project",
+  "skills": [
+    {
+      "name": "cpp-pro",
+      "repository": "https://github.com/Jeffallan/claude-skills",
+      "commit": "1be15d8064f88fc25216442406d40add8fd23b53",
+      "sourcePath": "skills/cpp-pro",
+      "destination": ".agents/skills/cpp-pro",
+      "upstreamLicense": "MIT",
+      "selectedLicense": "MIT",
+      "localChanges": [
+        "Added LICENSE.txt from upstream repository root at the pinned commit."
+      ],
+      "sha256": {
+        "LICENSE.txt": "06dcddbb6908a0c6dd4a9e8ec822eea41d5a460a53089fecccc8a68049e99241",
+        "references/build-tooling.md": "337ae8b622628fafae86f89d914561ee6176b8d74073db2d5580e91ddd240f30",
+        "references/concurrency.md": "cb772cec134530ed7ca4af25c261d42850ce27e92133657849e09d6cb2544891",
+        "references/memory-performance.md": "9bf813632158c49f3843d1b0d803aa710a5ae67a5f37df6420bee42f4f161caa",
+        "references/modern-cpp.md": "7410851bb066f5e6d825fab2efe7d767ed0ca2ea44cd377ff4f6ef7f90a21736",
+        "references/templates.md": "d7a8e294439879126cd5df5b415eecf171d193f97368a2142607162c106a3ee8",
+        "SKILL.md": "53017f862c526df6080210a1a00e6678c2cd5382b5d1a51026bf3b0bde7f7ed2"
+      }
+    },
+    {
+      "name": "qt-cmake-project",
+      "repository": "https://github.com/TheQtCompanyRnD/agent-skills",
+      "commit": "a784c48445e34f126760f17ba0600a25f2d19968",
+      "sourcePath": "skills/qt-cmake-project",
+      "destination": ".agents/skills/qt-cmake-project",
+      "upstreamLicense": "LicenseRef-Qt-Commercial OR BSD-3-Clause",
+      "selectedLicense": "BSD-3-Clause",
+      "localChanges": [],
+      "sha256": {
+        "LICENSE.txt": "886cf7a2a54af4903496fe19ad022766525b7612d8b1adfd59dac7e90a483604",
+        "references/common-mistakes.md": "2418dc828083b462bf21f8eeff7a0534a39d30047749f12e094b91b41e5443fd",
+        "references/configure.md": "d8632924af1388241b11e6addebc80d575ea65faeaabdb8b25e9c2c9352ac127",
+        "references/modular-architecture.md": "de132330bf93c3833fdc064d38e504d9f81a83c13b527475c28c877df5e76ea8",
+        "references/qml-integration.md": "a667c98cb4a5f0326ac42e5f88b4e8a56975d648c0806bc8d730d2cea48da01b",
+        "references/resources.md": "94b5b6e31660198486d31857f24b9b034b6192b163f06ecd970cf8b2cf8f3328",
+        "references/simple-project.md": "4b71580e1039089eb6e49c4e79a47f8ed7fc3a7618b9c31b8752128fe2a847a3",
+        "SKILL.md": "ab55f9ced2a898db26519bba1283090cf1af985f83e6137195a34d7f2aedcc35"
+      }
+    },
+    {
+      "name": "qt-qml",
+      "repository": "https://github.com/TheQtCompanyRnD/agent-skills",
+      "commit": "a784c48445e34f126760f17ba0600a25f2d19968",
+      "sourcePath": "skills/qt-qml",
+      "destination": ".agents/skills/qt-qml",
+      "upstreamLicense": "LicenseRef-Qt-Commercial OR BSD-3-Clause",
+      "selectedLicense": "BSD-3-Clause",
+      "localChanges": [],
+      "sha256": {
+        "LICENSE.txt": "886cf7a2a54af4903496fe19ad022766525b7612d8b1adfd59dac7e90a483604",
+        "platforms/windsurf.md": "dc346d0ba6c6fb786b4b8e500e6f0cfc8cc127d83b4afda0310936cbdc9c10e0",
+        "references/qmlpreview.md": "485745cd67e7239a17b7da785e774bda1bf9460cc295cbea73d8fc4476ad925a",
+        "SKILL.md": "39b4a26d125d8a904f77e3d9a45644ac39823beab04c52051e3c8d4390bc0760"
+      }
+    },
+    {
+      "name": "qt-qml-profiler",
+      "repository": "https://github.com/TheQtCompanyRnD/agent-skills",
+      "commit": "a784c48445e34f126760f17ba0600a25f2d19968",
+      "sourcePath": "skills/qt-qml-profiler",
+      "destination": ".agents/skills/qt-qml-profiler",
+      "upstreamLicense": "LicenseRef-Qt-Commercial OR BSD-3-Clause",
+      "selectedLicense": "BSD-3-Clause",
+      "localChanges": [],
+      "sha256": {
+        "LICENSE.txt": "886cf7a2a54af4903496fe19ad022766525b7612d8b1adfd59dac7e90a483604",
+        "references/qml-performance-anti-patterns.md": "19addcabc26d0ac719213ab6b954d414836191869acd0cd37b65b80f984c89cf",
+        "references/scripts/parse-qmlprofiler-trace.py": "9a0002b82b7c51c5628c0ddd74ca50c691da76019aae18ebba6845df7b362be9",
+        "SKILL.md": "6cfdceefbe0ac465c32f0b53d603129ee143fb2b41072d61eda49ba3181cdab8"
+      }
+    }
+  ]
+}

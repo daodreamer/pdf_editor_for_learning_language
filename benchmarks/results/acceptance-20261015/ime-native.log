@@ -1,0 +1,39 @@
+request_ns 54698567301200 generation 1
+qml: ime_focus true
+first_frame_submitted_ms 706.538
+worker_trace {"before_output_cleanup_ms":5.7069,"coordinate_max_pixel_error":0,"crop_box":[10,20,580,800],"file_bytes":4625,"finished_ns":"54698605959900","generation":1,"height":958,"image_bytes":2682400,"native_scope_closed":true,"open_ms":1.2453,"page_height":780,"page_width":570,"pages":8,"render_ms":0.3323,"rotation":0,"started_ns":"54698600111800","text_characters":20,"total_worker_ms":5.8481,"width":700,"worker_thread":"42956"}
+{"before_output_cleanup_ms":5.7069,"coordinate_max_pixel_error":0,"crop_box":[10,20,580,800],"file_bytes":4625,"finished_ns":"54698605959900","generation":1,"height":958,"image_bytes":2682400,"native_scope_closed":true,"open_ms":1.2453,"page_height":780,"page_width":570,"pages":8,"render_ms":0.3323,"rotation":0,"started_ns":"54698600111800","text_characters":20,"total_worker_ms":5.8481,"width":700,"worker_thread":"42956"}
+image_delivered_ms 739.79 generation 1
+request_ns 54698659584200 generation 2
+request_ns 54698661975300 generation 3
+texture_created bytes_estimate=2682400
+worker_trace {"before_output_cleanup_ms":15.3008,"coordinate_max_pixel_error":0,"crop_box":[10,20,580,800],"file_bytes":4625,"finished_ns":"54698675508800","generation":2,"height":3558,"image_bytes":37003200,"native_scope_closed":true,"open_ms":0.2863,"page_height":780,"page_width":570,"pages":8,"render_ms":1.2495,"rotation":0,"started_ns":"54698660017700","text_characters":20,"total_worker_ms":15.4911,"width":2600,"worker_thread":"42956"}
+discarded 2
+worker_trace {"before_output_cleanup_ms":6.492,"coordinate_max_pixel_error":0,"crop_box":[10,20,580,800],"file_bytes":4625,"finished_ns":"54698683415600","generation":3,"height":1916,"image_bytes":10729600,"native_scope_closed":true,"open_ms":0.2647,"page_height":780,"page_width":570,"pages":8,"render_ms":0.4775,"rotation":0,"started_ns":"54698676770600","text_characters":20,"total_worker_ms":6.645,"width":1400,"worker_thread":"42956"}
+{"before_output_cleanup_ms":6.492,"coordinate_max_pixel_error":0,"crop_box":[10,20,580,800],"file_bytes":4625,"finished_ns":"54698683415600","generation":3,"height":1916,"image_bytes":10729600,"native_scope_closed":true,"open_ms":0.2647,"page_height":780,"page_width":570,"pages":8,"render_ms":0.4775,"rotation":0,"started_ns":"54698676770600","text_characters":20,"total_worker_ms":6.645,"width":1400,"worker_thread":"42956"}
+image_delivered_ms 765.91 generation 3
+texture_created bytes_estimate=10729600
+qml: ime_focus false
+qml: ime_focus true
+qml: ime_preedit_length 1
+qml: ime_composing true
+qml: ime_preedit_length 2
+qml: ime_preedit_length 0
+qml: ime_committed_length 1
+qml: ime_composing false
+qml: ime_committed_length 0
+qml: ime_committed_length 1
+qml: ime_preedit_length 1
+qml: ime_composing true
+qml: ime_preedit_length 0
+qml: ime_composing false
+qml: ime_preedit_length 1
+qml: ime_composing true
+qml: ime_preedit_length 0
+qml: ime_committed_length 2
+qml: ime_composing false
+qml: ime_focus false
+qml: ime_focus true
+qml: ime_committed_length 3
+qml: ime_focus false
+qml: ime_focus true

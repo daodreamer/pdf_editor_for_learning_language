@@ -1,0 +1,14 @@
+{
+  "sample_id": "user-local-textbook",
+  "sample_sha256": "745299d35e2dbe31713b873f7e45f87dc172c254426ba6d3e81541a62ad14a03",
+  "sample_bytes": 119895877,
+  "platform": "Windows-11-10.0.26200-SP0",
+  "cpu": "Intel64 Family 6 Model 198 Stepping 2, GenuineIntel",
+  "ram_bytes": 50873622528,
+  "qt": "6.8.3",
+  "pdfium": "157.0.8100.0",
+  "build": "Release / MSVC 19.51 / C++20",
+  "width": 1400,
+  "repeat": 33,
+  "notes": "No document path or extracted text recorded. RSS sampled, may miss short peaks. Hash read warmed file cache."
+}

@@ -1,0 +1,9 @@
+********* Start testing of Contracts *********
+Config: Using QtTest library 6.8.3, Qt 6.8.3 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2022), windows 11
+PASS   : Contracts::initTestCase()
+PASS   : Contracts::processDeathBeforeCommit()
+PASS   : Contracts::coordinateTransforms()
+PASS   : Contracts::atomicSnapshot()
+PASS   : Contracts::cleanupTestCase()
+Totals: 5 passed, 0 failed, 0 skipped, 0 blacklisted, 48ms
+********* Finished testing of Contracts *********

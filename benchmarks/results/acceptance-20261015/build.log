@@ -1,0 +1,33 @@
+**********************************************************************
+** Visual Studio 2026 Developer PowerShell v18.10.0
+** Copyright (c) 2026 Microsoft Corporation
+**********************************************************************
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR) 
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR) 
+-- Configuring done (0.8s)
+-- Generating done (0.2s)
+-- Build files have been written to: E:/dev/langlern_pdf_editor/build/windows
+[1/25] Copying phase0_quick_probe qml sources into build dir
+[2/25] Automatic MOC and UIC for target phase0_engine
+[3/23] Running qmlimportscanner for phase0_quick_probe
+[4/23] Automatic MOC and UIC for target phase0_contract_tests
+[5/21] Running AUTOMOC file extraction for target phase0_engine
+[6/21] Running moc --collect-json for target phase0_engine
+[7/21] Automatic MOC and UIC for target phase0_pdf_probe
+[8/19] Automatic MOC and UIC for target phase0_quick_probe
+[9/18] Running rcc for resource phase0_quick_probe_raw_qml_0
+[10/18] Running AUTOMOC file extraction for target phase0_quick_probe
+[11/18] Running moc --collect-json for target phase0_quick_probe
+[12/16] Generating .rcc/qmlcache/phase0_quick_probe_Main_qml.cpp, .rcc/qmlcache/phase0_quick_probe_Main_qml.cpp.aotstats
+[13/16] Building CXX object prototypes\phase0\CMakeFiles\phase0_quick_probe.dir\.qt\rcc\qrc_phase0_quick_probe_raw_qml_0.cpp.obj
+[14/16] Building CXX object prototypes\phase0\CMakeFiles\phase0_quick_probe.dir\.rcc\qmlcache\phase0_quick_probe_Main_qml.cpp.obj
+[15/16] Building CXX object prototypes\phase0\CMakeFiles\phase0_quick_probe.dir\quick.cpp.obj
+[16/16] Linking CXX executable phase0_quick_probe.exe
+Internal ctest changing into directory: E:/dev/langlern_pdf_editor/build/windows
+Test project E:/dev/langlern_pdf_editor/build/windows
+    Start 1: phase0_contracts
+1/1 Test #1: phase0_contracts .................   Passed    0.07 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.07 sec

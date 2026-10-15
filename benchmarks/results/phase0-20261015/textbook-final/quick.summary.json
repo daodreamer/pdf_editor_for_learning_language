@@ -1,0 +1,21 @@
+{
+  "trace_generations": [
+    1,
+    2,
+    3
+  ],
+  "discarded_2": true,
+  "actual_d3d11": true,
+  "resource_rebuild_count": 2,
+  "synthetic_ime_pass": false,
+  "screenshot_saved": true,
+  "first_frame_submitted_ms": 590.443,
+  "image_delivered_ms": {
+    "1": 699.012,
+    "3": 1069.16
+  },
+  "note": "one diagnostic run; no system presentation, interactive-startup or FPS claim",
+  "replacement_to_next_task_start_ms": 224.7436,
+  "stale_task_full_occupancy_ms": 223.6976,
+  "replacement_during_task_2": true
+}

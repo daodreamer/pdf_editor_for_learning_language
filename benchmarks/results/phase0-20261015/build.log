@@ -1,0 +1,25 @@
+**********************************************************************
+** Visual Studio 2026 Developer PowerShell v18.10.0
+** Copyright (c) 2026 Microsoft Corporation
+**********************************************************************
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR) 
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR) 
+-- Configuring done (0.8s)
+-- Generating done (0.2s)
+-- Build files have been written to: E:/dev/langlern_pdf_editor/build/windows
+[1/20] Automatic MOC and UIC for target phase0_engine
+[2/18] Automatic MOC and UIC for target phase0_contract_tests
+[3/16] Running AUTOMOC file extraction for target phase0_engine
+[4/16] Running moc --collect-json for target phase0_engine
+[5/16] Automatic MOC and UIC for target phase0_pdf_probe
+[6/14] Automatic MOC and UIC for target phase0_quick_probe
+[7/13] Running AUTOMOC file extraction for target phase0_quick_probe
+[8/13] Running moc --collect-json for target phase0_quick_probe
+Internal ctest changing into directory: E:/dev/langlern_pdf_editor/build/windows
+Test project E:/dev/langlern_pdf_editor/build/windows
+    Start 1: phase0_contracts
+1/1 Test #1: phase0_contracts .................   Passed    0.09 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.09 sec

@@ -1,0 +1,102 @@
+[
+  {
+    "file": "notices/Noto-OFL.txt",
+    "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+  },
+  {
+    "file": "notices/pdfium/abseil.txt",
+    "sha256": "f54fff0b905df5b3464527c652a30e903b172d6dcab4d89b5e6f105d5e4a4603"
+  },
+  {
+    "file": "notices/pdfium/agg23.txt",
+    "sha256": "c110d3ea2ad77467ce0dcff7d3337e6c8be8049a5103f4b9bd5fd911a77972e5"
+  },
+  {
+    "file": "notices/pdfium/dragonbox-Apache2-LLVM.txt",
+    "sha256": "4964a7aaf2801a42d2342d2f5bbccd2126be7a5d8d46150e1338a43ea70da5de"
+  },
+  {
+    "file": "notices/pdfium/dragonbox-Boost.txt",
+    "sha256": "beb8e42e9d6b4284e03304d05a81a0755200a965fc8d0a5e0aea1e84cf805d6e"
+  },
+  {
+    "file": "notices/pdfium/fast_float.txt",
+    "sha256": "bf1b57355feca8fce77ee95f48002f8d4789fb71b30ec7599c06cda4901fbb2b"
+  },
+  {
+    "file": "notices/pdfium/fpdfview-upstream.h",
+    "sha256": "bb9e359d39c132807f731dd2b3c8d5b29dc311f2127aee8f206b5f2ef06f7cc2"
+  },
+  {
+    "file": "notices/pdfium/freetype.txt",
+    "sha256": "f4b133e25df1f86ad3ffea453aa0e613f0474f34778dbbb3e437e7b2724937d8"
+  },
+  {
+    "file": "notices/pdfium/harfbuzz.txt",
+    "sha256": "bd836c0ddca8ea0bab54a03cd32b6ff7256cbb3840fca2edc1249a4ed92c5b02"
+  },
+  {
+    "file": "notices/pdfium/icu.txt",
+    "sha256": "93679f4389d53b6835d89843f251844fb9bc455b35bab036d3c8e7abe497a47a"
+  },
+  {
+    "file": "notices/pdfium/lcms.txt",
+    "sha256": "7312b68c5b25e9bf2b828706fb4e29588f22705112f411fd42e1f7d84c3d139a"
+  },
+  {
+    "file": "notices/pdfium/libjpeg_turbo.ijg",
+    "sha256": "db16a04128171879c60708d171b88d97345a2dd20f9bfc173680a4497c73f704"
+  },
+  {
+    "file": "notices/pdfium/libjpeg_turbo.md",
+    "sha256": "be2b2b5ab168bce87bc3e31f2a5c5adba4b7f6e9e51d618e958d1d46972ebd95"
+  },
+  {
+    "file": "notices/pdfium/libopenjpeg.txt",
+    "sha256": "c5ab0890a737c2dfa7ba675036554f6d17741d98629b0c2a145354d00617e6b2"
+  },
+  {
+    "file": "notices/pdfium/libpng.txt",
+    "sha256": "452390433ba0f88aa3e2b122c647741b72a0c117cd6ed7a329b49785aecb5511"
+  },
+  {
+    "file": "notices/pdfium/LICENSE",
+    "sha256": "8854f4388f1ca13b3ad9baa42e95f5546b4c0b17109c159256d3eca7be39b09b"
+  },
+  {
+    "file": "notices/pdfium/llvm-libc.txt",
+    "sha256": "3b6226c32e168c83b891d8d6f0d3c29c2116dc3ef93dc93c307b54f279ecf383"
+  },
+  {
+    "file": "notices/pdfium/pdfium.txt",
+    "sha256": "961eacd9633fff6d051db7208b755e9210e30efac7adec3e6a6d52798f0ccf0e"
+  },
+  {
+    "file": "notices/pdfium/simdutf.txt",
+    "sha256": "c172a0ba936ff31230febb5dad869e25cb7c1a07480c7a381be8cf011bb52719"
+  },
+  {
+    "file": "notices/pdfium/zlib.txt",
+    "sha256": "33fd641c9f3b0e0be64bc78fea9e94807674cdd70c48477599226cb8956565fe"
+  },
+  {
+    "file": "notices/qt/BSD-3-Clause.txt",
+    "sha256": "9f0490f18656c6f2435bd14f603ef0c96434d1825615363dce43abb42ed1dcce"
+  },
+  {
+    "file": "notices/qt/GPL-2.0-only.txt",
+    "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
+  },
+  {
+    "file": "notices/qt/GPL-3.0-only.txt",
+    "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+  },
+  {
+    "file": "notices/qt/LGPL-3.0-only.txt",
+    "sha256": "da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768"
+  },
+  {
+    "file": "notices/qt/Qt-GPL-exception-1.0.txt",
+    "sha256": "40678d338ce53cd93f8b22b281a2ecbcaa3ee65ce60b25ffb0c462b0530846b2"
+  }
+]

@@ -1,0 +1,267 @@
+[
+  {
+    "before_output_cleanup_ms": 368.4509,
+    "coordinate_max_pixel_error": 0,
+    "crop_box": [
+      10,
+      20,
+      580,
+      800
+    ],
+    "export_space_normalized": true,
+    "export_text_roundtrip": true,
+    "file_bytes": 4625,
+    "finished_ns": "53630989835500",
+    "generation": 1,
+    "height": 1369,
+    "image_bytes": 5476000,
+    "native_scope_closed": true,
+    "open_ms": 1.4244,
+    "page_height": 780,
+    "page_width": 570,
+    "pages": 8,
+    "render_ms": 0.5979,
+    "rotation": 0,
+    "started_ns": "53630585502400",
+    "text_characters": 20,
+    "total_worker_ms": 404.3331,
+    "width": 1000,
+    "worker_thread": "61312",
+    "independent_mupdf_text_and_path": true,
+    "export_sha256": "7bd7ac602f85cb164245a922667a9281aed9ad467992c4b3d8aec578e8739726",
+    "bgra_alpha_color_checks": true
+  },
+  {
+    "before_output_cleanup_ms": 377.7365,
+    "coordinate_max_pixel_error": 0,
+    "crop_box": [
+      10,
+      20,
+      580,
+      800
+    ],
+    "export_space_normalized": true,
+    "export_text_roundtrip": true,
+    "file_bytes": 4625,
+    "finished_ns": "53631489314100",
+    "generation": 1,
+    "height": 731,
+    "image_bytes": 2924000,
+    "native_scope_closed": true,
+    "open_ms": 0.9366,
+    "page_height": 570,
+    "page_width": 780,
+    "pages": 8,
+    "render_ms": 0.3926,
+    "rotation": 1,
+    "started_ns": "53631087881800",
+    "text_characters": 20,
+    "total_worker_ms": 401.4323,
+    "width": 1000,
+    "worker_thread": "12616",
+    "independent_mupdf_text_and_path": true,
+    "export_sha256": "869adda8071dffee2e5bdd01f1ab3662ada07baeee4baebe5bae1221c13d2569"
+  },
+  {
+    "before_output_cleanup_ms": 6.5463,
+    "coordinate_max_pixel_error": 0,
+    "crop_box": [
+      10,
+      20,
+      580,
+      800
+    ],
+    "file_bytes": 4625,
+    "finished_ns": "53631611773200",
+    "generation": 1,
+    "height": 1369,
+    "image_bytes": 5476000,
+    "native_scope_closed": true,
+    "open_ms": 0.9452,
+    "page_height": 780,
+    "page_width": 570,
+    "pages": 8,
+    "render_ms": 0.5392,
+    "rotation": 2,
+    "started_ns": "53631572431300",
+    "text_characters": 20,
+    "total_worker_ms": 39.3419,
+    "width": 1000,
+    "worker_thread": "50236"
+  },
+  {
+    "before_output_cleanup_ms": 5.1565,
+    "coordinate_max_pixel_error": 0,
+    "crop_box": [
+      10,
+      20,
+      580,
+      800
+    ],
+    "file_bytes": 4625,
+    "finished_ns": "53631665914700",
+    "generation": 1,
+    "height": 731,
+    "image_bytes": 2924000,
+    "native_scope_closed": true,
+    "open_ms": 0.9953,
+    "page_height": 570,
+    "page_width": 780,
+    "pages": 8,
+    "render_ms": 0.5154,
+    "rotation": 3,
+    "started_ns": "53631640296400",
+    "text_characters": 20,
+    "total_worker_ms": 25.6183,
+    "width": 1000,
+    "worker_thread": "60108"
+  },
+  {
+    "before_output_cleanup_ms": 348.9369,
+    "coordinate_max_pixel_error": 0,
+    "crop_box": [
+      10,
+      20,
+      580,
+      800
+    ],
+    "export_space_normalized": true,
+    "export_text_roundtrip": true,
+    "file_bytes": 4625,
+    "finished_ns": "53632078685100",
+    "generation": 1,
+    "height": 1369,
+    "image_bytes": 5476000,
+    "native_scope_closed": true,
+    "open_ms": 0.8611,
+    "page_height": 780,
+    "page_width": 570,
+    "pages": 8,
+    "render_ms": 0.5851,
+    "rotation": 0,
+    "started_ns": "53631693275900",
+    "text_characters": 20,
+    "total_worker_ms": 385.4092,
+    "width": 1000,
+    "worker_thread": "55608",
+    "independent_mupdf_text_and_path": true,
+    "export_sha256": "8c85d41016dce40839280caf770172c23e0598b4fc040c4bf19ff9e851777e22"
+  },
+  {
+    "before_output_cleanup_ms": 5.2947,
+    "coordinate_max_pixel_error": 0,
+    "crop_box": [
+      10,
+      20,
+      580,
+      800
+    ],
+    "file_bytes": 4625,
+    "finished_ns": "53632204035400",
+    "generation": 1,
+    "height": 731,
+    "image_bytes": 2924000,
+    "native_scope_closed": true,
+    "open_ms": 1.381,
+    "page_height": 570,
+    "page_width": 780,
+    "pages": 8,
+    "render_ms": 0.3996,
+    "rotation": 1,
+    "started_ns": "53632176875900",
+    "text_characters": 20,
+    "total_worker_ms": 27.1595,
+    "width": 1000,
+    "worker_thread": "34680"
+  },
+  {
+    "before_output_cleanup_ms": 6.1433,
+    "coordinate_max_pixel_error": 0,
+    "crop_box": [
+      10,
+      20,
+      580,
+      800
+    ],
+    "file_bytes": 4625,
+    "finished_ns": "53632269897200",
+    "generation": 1,
+    "height": 1369,
+    "image_bytes": 5476000,
+    "native_scope_closed": true,
+    "open_ms": 0.834,
+    "page_height": 780,
+    "page_width": 570,
+    "pages": 8,
+    "render_ms": 0.4588,
+    "rotation": 2,
+    "started_ns": "53632231274200",
+    "text_characters": 20,
+    "total_worker_ms": 38.623,
+    "width": 1000,
+    "worker_thread": "11472"
+  },
+  {
+    "before_output_cleanup_ms": 5.405,
+    "coordinate_max_pixel_error": 0,
+    "crop_box": [
+      10,
+      20,
+      580,
+      800
+    ],
+    "file_bytes": 4625,
+    "finished_ns": "53632333755800",
+    "generation": 1,
+    "height": 731,
+    "image_bytes": 2924000,
+    "native_scope_closed": true,
+    "open_ms": 0.9276,
+    "page_height": 570,
+    "page_width": 780,
+    "pages": 8,
+    "render_ms": 0.3867,
+    "rotation": 3,
+    "started_ns": "53632307249400",
+    "text_characters": 20,
+    "total_worker_ms": 26.5064,
+    "width": 1000,
+    "worker_thread": "51588"
+  },
+  {
+    "negative_case": [
+      "damaged"
+    ],
+    "exit_code": 1
+  },
+  {
+    "negative_case": [
+      "--width",
+      "999999"
+    ],
+    "exit_code": 1
+  },
+  {
+    "negative_case": [
+      "--export",
+      "E:\\dev\\langlern_pdf_editor\\tests\\fixtures\\geometry.pdf",
+      "--font",
+      "E:\\dev\\langlern_pdf_editor\\.deps\\fonts\\NotoSansSC-Regular.ttf"
+    ],
+    "exit_code": 1
+  },
+  {
+    "negative_case": [
+      "--page",
+      "9999"
+    ],
+    "exit_code": 1
+  },
+  {
+    "latest_only_burst": 100,
+    "source_sha256_unchanged": true
+  },
+  {
+    "diagnostic_hardlink_collisions_rejected": true
+  }
+]

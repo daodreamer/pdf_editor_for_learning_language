@@ -1,0 +1,7 @@
+.deps/
+.tools/
+build/
+aqtinstall.log
+# Raw runs stay local; only explicitly reviewed evidence is force-added to Git.
+benchmarks/results/
+__pycache__/

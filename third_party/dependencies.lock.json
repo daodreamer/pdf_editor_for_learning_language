@@ -1,0 +1,53 @@
+{
+  "recorded": "2026-10-15",
+  "qt": "6.8.3",
+  "qt_minimum": "6.8.3",
+  "pdfium": "157.0.8100.0",
+  "pdfium_commit": "f51279699cb59754d1f49aef10eb8e825fe56532",
+  "pdfium_binary_source": "https://github.com/bblanchon/pdfium-binaries/tree/chromium/8100",
+  "archives": [
+    {
+      "file": "pdfium-mac-arm64.tgz",
+      "url": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/8100/pdfium-mac-arm64.tgz",
+      "bytes": 3529672,
+      "sha256": "7ea647c7a7a9c1169be3f947000bc071ece2fade2cd6bd7e401e3675c6560cce"
+    },
+    {
+      "file": "pdfium-win-x64.tgz",
+      "url": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/8100/pdfium-win-x64.tgz",
+      "bytes": 3875218,
+      "sha256": "51621bcc1d9be9ea448f4b84b0516862b928e3968d3fca899af1a6d6e2848d6d"
+    },
+    {
+      "file": "qtbase-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z",
+      "url": "https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_683/qt6_683/qt.qt6.683.win64_msvc2022_64/6.8.3-0-202503201308qtbase-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z",
+      "bytes": 39484220,
+      "sha256": "41688269fac0565db956c66d9eecae777d16197e0c02cd81b88640c1f5d73d3f"
+    },
+    {
+      "file": "qtdeclarative-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z",
+      "url": "https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_683/qt6_683/qt.qt6.683.win64_msvc2022_64/6.8.3-0-202503201308qtdeclarative-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z",
+      "bytes": 148212802,
+      "sha256": "c2f9f481bf6e8fb004530f20b820fbc77d4ee6dcca24d1ea1d1863d99c5dabf1"
+    },
+    {
+      "file": "qttools-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z",
+      "url": "https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_683/qt6_683/qt.qt6.683.win64_msvc2022_64/6.8.3-0-202503201308qttools-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z",
+      "bytes": 25405796,
+      "sha256": "76ac7b8c86ca72b6608f1d41ee848aeab19663536990b4968ce52db8ec980bc3"
+    }
+  ],
+  "font": {
+    "commit": "f8d157532fbfaeda587e826d4cd5b21a49186f7c",
+    "url": "https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/Variable/TTF/Subset/NotoSansSC-VF.ttf",
+    "sha256": "d68bafcb48a2707749396aa12bbbd833cb70401f3a9a689fd2902c7e0d295964",
+    "regular_sha256": "2b4a06fde0544928c3715b0b71e2ded7e45981fb376bd0841c891668705cf629",
+    "derivation": "fonttools 4.60.1 varLib.instancer wght=400 (development only)"
+  },
+  "tool_versions": {
+    "python": "3.13.5",
+    "cmake": "3.31.6",
+    "ninja": "1.11.1.3",
+    "aqtinstall": "3.3.0"
+  }
+}

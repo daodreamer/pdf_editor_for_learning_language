@@ -1,0 +1,5 @@
+{
+  "document_text": "你",
+  "focused_element": "7 text 技术原型 · 通过命令行指定 PDF · 下方仅用于 IME 实验 ID: QGuiApplication.Main_QMLTYPE_0.Label_QMLTYPE_2",
+  "tree": "Window: \"阶段 0：PDFium / Scene Graph 验证\", App: phase0_quick_probe.exe.\n\t0 window (settable, string) 阶段 0：PDFium / Scene Graph 验证 Secondary Actions: Raise ID: QGuiApplication.Main_QMLTYPE_0\n\t\t1 title bar (settable, string) Value: 阶段 0：PDFium / Scene Graph 验证\n\t\t\t2 menu bar System ID: MenuBar\n\t\t\t\t3 menu item System\n\t\t\t4 button Minimize\n\t\t\t5 button Maximize\n\t\t\t6 button Close\n\t\t7 text 技术原型 · 通过命令行指定 PDF · 下方仅用于 IME 实验 ID: QGuiApplication.Main_QMLTYPE_0.Label_QMLTYPE_2\n\t\t8 edit (settable, string) Value: 你 ID: QGuiApplication.Main_QMLTYPE_0.imeInput\n\t\t9 button (settable, string) 切换焦点（验收） ID: QGuiApplication.Main_QMLTYPE_0.focusTarget\n\nDocument text: ```\n你\n```"
+}
