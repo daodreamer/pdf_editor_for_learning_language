@@ -6,6 +6,8 @@ Item {
     signal editingFinished()
     required property ShellState shell
     required property string noteId
+    required property real noteOrder
+    z: 1 + noteOrder / (noteOrder + 1)
     required property int notePage
     required property point noteAnchor
     required property real noteWidth

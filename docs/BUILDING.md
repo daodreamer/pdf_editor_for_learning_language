@@ -1,5 +1,19 @@
 # 构建与复现
 
+## 阶段 7 保存恢复与导出
+
+```powershell
+./tools/build-windows.ps1 -BuildDir build/windows -Test
+./tools/run-windows.ps1 -BuildDir build/windows
+```
+
+CTest 共 7 项，新增 `storage_export`。CMake 将仓库 `assets/fonts/NotoSansSC-Regular.ttf` 与 `OFL.txt` 复制到构建目录 `fonts/`，开发运行需保留与 exe 的相对位置。尚不是完整发行包，macOS bundle 字体部署留待平台验证。
+
+自动保存位置、格式和故障恢复见 [STORAGE_FORMAT.md](STORAGE_FORMAT.md)。Ctrl+S 可立即调度保存；写失败时关闭/切换不会继续，修复空间/目录权限后再保存或关闭即可重试。导出选择尚不存在的新 PDF 名称；已有目标一律拒绝。
+
+独立文件验证：先将 `LANGLERN_PHASE7_ARTIFACT_DIR` 设为全新、已存在的目录，再于 Qt SDK PATH 下运行 `build/windows/storage_tests.exe -o <日志>,txt`，然后用开发环境 `.tools/venv/Scripts/python -X utf8 tools/verify-phase7-export.py <该目录>`。该脚本仅用现有开发用 MuPDF，不进入产品。失败运行应保留证据并换新目录重试。最终执行结果见 [PHASE7_REPORT.md](PHASE7_REPORT.md)。
+
+
 ## 阶段 5 文字答案
 
 ```powershell

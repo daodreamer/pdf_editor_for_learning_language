@@ -1,4 +1,5 @@
 #include "pdfworker.h"
+#include "exporttext.h"
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QFile>
@@ -6,6 +7,18 @@
 #include <cpp/fpdf_scopers.h>
 #include <fpdfview.h>
 #include <fpdf_text.h>
+#include <fpdf_edit.h>
+#include <fpdf_save.h>
+#include <fpdf_ppo.h>
+#include <QBuffer>
+#include <QCryptographicHash>
+#include <QFileInfo>
+#include <QPainter>
+#include <QPainterPath>
+#include <QPdfWriter>
+#include <QPageSize>
+#include <QTemporaryFile>
+#include <QSet>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -39,6 +52,7 @@ int readBlock(void* context, unsigned long offset, unsigned char* data, unsigned
     auto& file = *static_cast<QFile*>(context);
     return file.seek(offset) && file.read(reinterpret_cast<char*>(data), size) == size;
 }
+
 void require(bool condition, const char* message) {
     if (!condition) throw std::runtime_error(message);
 }
@@ -217,10 +231,10 @@ void PdfWorker::execute(const PdfRequest& r) {
                     if (!current(r.revision)) return;
                     TextCharacter c;
                     c.unicode = char32_t(FPDFText_GetUnicode(text.get(),i));
-                    double left=0,right=0,bottom=0,top=0;
-                    if (FPDFText_GetCharBox(text.get(),i,&left,&right,&bottom,&top)
-                        && std::isfinite(left) && std::isfinite(right) && std::isfinite(bottom) && std::isfinite(top)) {
-                        c.box = QRectF(map(left,top),map(right,bottom)).normalized().intersected(QRectF(0,0,1,1));
+                    double left=0,charRight=0,bottom=0,top=0;
+                    if (FPDFText_GetCharBox(text.get(),i,&left,&charRight,&bottom,&top)
+                        && std::isfinite(left) && std::isfinite(charRight) && std::isfinite(bottom) && std::isfinite(top)) {
+                        c.box = QRectF(map(left,top),map(charRight,bottom)).normalized().intersected(QRectF(0,0,1,1));
                         c.visible = !c.box.isEmpty();
                     }
                     snapshot->characters.append(c);
@@ -279,4 +293,96 @@ void PdfWorker::execute(const PdfRequest& r) {
         }
         if (current(r.revision)) emit frameReady(std::move(result));
     }
+}
+
+void PdfWorker::exportPdf(quint64 session,QString source,QString target,QByteArray identity,AnnotationSnapshot snapshot) {
+    Q_ASSERT(QThread::currentThread()==thread());
+    QString error;
+    try {
+        require(!stopping_, "正在关闭，未导出。");
+        require(!target.isEmpty() && !QFileInfo::exists(target) && !QFileInfo(target).isSymLink(), "导出只接受新文件名，禁止覆盖原文件、别名或已有文件。");
+        QFile input(source); require(input.open(QIODevice::ReadOnly), "无法读取原 PDF。");
+        QCryptographicHash hash(QCryptographicHash::Sha256);
+        require(hash.addData(&input) && hash.result().toHex()==identity, "原 PDF 已改变，已取消导出。");
+        require(input.size()>0 && quint64(input.size())<=std::numeric_limits<unsigned long>::max(), "原 PDF 大小不受支持。");
+        if(!engine_) engine_=std::make_unique<Engine>();
+        FPDF_FILEACCESS access{}; access.m_FileLen=static_cast<unsigned long>(input.size()); access.m_GetBlock=readBlock; access.m_Param=&input;
+        ScopedFPDFDocument document(FPDF_LoadCustomDocument(&access,nullptr));
+        require(bool(document), "导出无法打开独立 PDF 会话。");
+        const int pages=FPDF_GetPageCount(document.get());
+        QSet<int> changed;
+        for(const auto& n:snapshot.notes) changed.insert(n.page);
+        for(const auto& i:snapshot.ink) changed.insert(i.page);
+        for(int p:changed) require(p>=0 && p<pages, "标注页码超出文档范围。");
+        auto ordered=changed.values(); std::sort(ordered.begin(),ordered.end());
+        const auto prepared=prepareExportText(snapshot.notes);
+        ScopedFPDFFont font;
+        if(!prepared.notes.isEmpty()) {
+            font.reset(FPDFText_LoadCidType2Font(document.get(),reinterpret_cast<const uint8_t*>(prepared.font.constData()),
+                uint32_t(prepared.font.size()),prepared.cmap.constData(),reinterpret_cast<const uint8_t*>(prepared.cidToGid.constData()),uint32_t(prepared.cidToGid.size())));
+            require(bool(font),"嵌入字体和 Unicode 映射失败。");
+        }
+        int completed=0;
+        for(int index:ordered) {
+            require(!stopping_, "关闭时取消了导出。");
+            ScopedFPDFPage page(FPDF_LoadPage(document.get(),index)); require(bool(page), "无法打开导出页面。");
+            auto map=[&](int x,int y) { double px=0,py=0; require(FPDF_DeviceToPage(page.get(),0,0,1000000,1000000,0,x,y,&px,&py), "导出坐标转换失败。"); return QPointF(px,py); };
+            const auto origin=map(0,0), right=map(1000000,0)-origin, down=map(0,1000000)-origin;
+            const double w=std::hypot(right.x(),right.y()),h=std::hypot(down.x(),down.y());
+            require(w>0 && h>0 && std::isfinite(w) && std::isfinite(h), "导出页面尺寸无效。");
+            QTransform display(right.x()/w,right.y()/w,down.x()/h,down.y()/h,origin.x(),origin.y());
+            bool invertible=false; const auto local=display.inverted(&invertible); require(invertible,"页面变换不可逆。");
+            QByteArray overlay; QBuffer buffer(&overlay); require(buffer.open(QIODevice::WriteOnly), "无法创建矢量标注缓冲区。");
+            {
+                QPdfWriter writer(&buffer);
+                writer.setResolution(720);
+                writer.setPageSize(QPageSize(QSizeF(w,h),QPageSize::Point,QString(),QPageSize::ExactMatch));
+                writer.setPageMargins(QMarginsF(0,0,0,0),QPageLayout::Point);
+                writer.setTitle(QStringLiteral("Langlern annotations"));
+                QPainter painter(&writer); require(painter.isActive(),"无法启动 PDF 矢量绘制。");
+                painter.scale(writer.width()/w,writer.height()/h);
+                auto ink=snapshot.ink;
+                std::sort(ink.begin(),ink.end(),[](const auto& a,const auto& b){return a.order<b.order;});
+                for(const auto& i:ink) if(i.page==index && !i.points.isEmpty()) {
+                    QPen pen(i.color,i.width,Qt::SolidLine,Qt::RoundCap,Qt::RoundJoin); painter.setPen(pen); painter.setBrush(Qt::NoBrush);
+                    if(i.points.size()==1) { painter.setPen(Qt::NoPen); painter.setBrush(i.color); painter.drawEllipse(local.map(i.points.first()),i.width/2,i.width/2); }
+                    else { QPainterPath path(local.map(i.points.first())); for(qsizetype j=1;j<i.points.size();++j) path.lineTo(local.map(i.points[j])); painter.drawPath(path); }
+                }
+                require(painter.end(),"矢量 PDF 写入失败。");
+            }
+            ScopedFPDFDocument overlayDoc(FPDF_LoadMemDocument64(overlay.constData(),size_t(overlay.size()),nullptr));
+            require(bool(overlayDoc),"无法读取矢量标注 PDF。");
+            ScopedFPDFPage overlayPage(FPDF_LoadPage(overlayDoc.get(),0)); require(bool(overlayPage),"矢量页面无效。");
+            const double ow=FPDF_GetPageWidthF(overlayPage.get()),oh=FPDF_GetPageHeightF(overlayPage.get());
+            std::unique_ptr<std::remove_pointer_t<FPDF_XOBJECT>,decltype(&FPDF_CloseXObject)> form(FPDF_NewXObjectFromPage(document.get(),overlayDoc.get(),0),&FPDF_CloseXObject); require(bool(form),"无法导入标注矢量对象。");
+            ScopedFPDFPageObject object(FPDF_NewFormObjectFromXObject(form.get())); require(bool(object),"无法创建标注对象。");
+            const auto bottom=origin+down;
+            FPDFPageObj_Transform(object.get(),right.x()/ow,right.y()/ow,-down.x()/oh,-down.y()/oh,bottom.x(),bottom.y());
+            FPDFPage_InsertObject(page.get(),object.release());
+            for(const auto& note:prepared.notes) if(note.note.page==index) insertExportText(document.get(),page.get(),font.get(),note);
+            require(FPDFPage_GenerateContent(page.get()),"生成 PDF 页面内容失败。");
+            emit exportProgress(session,++completed,int(ordered.size()));
+        }
+        struct Writer : FPDF_FILEWRITE {
+            QTemporaryFile file;
+            explicit Writer(const QString& target) : file(QFileInfo(target).absolutePath()+"/.langlern-export-XXXXXX") {
+                version=1; WriteBlock=[](FPDF_FILEWRITE* base,const void* data,unsigned long size)->int {
+                    return static_cast<Writer*>(base)->file.write(static_cast<const char*>(data),size)==size;
+                };
+            }
+        } writer(target);
+        require(writer.file.open(),"无法在目标目录创建导出临时文件。");
+        require(FPDF_SaveAsCopy(document.get(),&writer,FPDF_NO_INCREMENTAL),"PDF 写入失败，请检查磁盘空间。");
+        require(writer.file.flush(),"PDF 临时文件刷新失败。");
+        require(quint64(writer.file.size())<=std::numeric_limits<unsigned long>::max(),"导出文件超过当前回读接口的大小限制，未提交。");
+        FPDF_FILEACCESS verifyAccess{}; verifyAccess.m_FileLen=static_cast<unsigned long>(writer.file.size()); verifyAccess.m_GetBlock=readBlock; verifyAccess.m_Param=&writer.file;
+        { ScopedFPDFDocument check(FPDF_LoadCustomDocument(&verifyAccess,nullptr)); require(bool(check) && FPDF_GetPageCount(check.get())==pages,"导出回读校验失败。"); }
+        require(!stopping_,"关闭时取消了导出。");
+        hash.reset();
+        require(input.seek(0) && hash.addData(&input) && hash.result().toHex()==identity,"原 PDF 在导出期间改变，未提交输出。");
+        // QFile::rename never replaces an existing target; racing creators and hardlink aliases are safe.
+        require(writer.file.rename(target),"无法提交导出文件；目标可能已存在或目录不可写。");
+        writer.file.setAutoRemove(false);
+    } catch(const std::exception& e) { error=QString::fromUtf8(e.what()); }
+    emit exportFinished(session,snapshot.revision,error);
 }

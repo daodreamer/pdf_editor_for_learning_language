@@ -1,6 +1,8 @@
 #include "shellstate.h"
 
 #include <QFileInfo>
+#include <QStandardPaths>
+#include <QFontDatabase>
 #include <QGuiApplication>
 #include <QStyleHints>
 #include <QInputMethod>
@@ -37,11 +39,13 @@ ShellState::ShellState(QObject* parent) : QObject(parent) {
         inFlight_ = false;
         scheduleTimer_.start();
     });
+    initializeStorage();
     thread_.setObjectName(QStringLiteral("PDFium"));
     thread_.start();
 }
 
 ShellState::~ShellState() {
+    storageThread_.quit(); storageThread_.wait();
     if (thread_.isRunning()) {
         if (!shuttingDown_) worker_->shutdown();
         thread_.wait(); // safety fallback; normal window closing is asynchronous
@@ -55,6 +59,7 @@ bool ShellState::dark() const {
 
 void ShellState::selectFile(const QUrl& url) {
     if (url.isEmpty() || shuttingDown_) return;
+    if(!applyingTransition_) { flushBefore([this,url] { selectFile(url); }); return; }
     const QFileInfo file(url.toLocalFile());
     if (!url.isLocalFile() || url.toLocalFile().isEmpty()) {
         statusText_ = QStringLiteral("请选择可读取的本地 PDF 文件。");
@@ -62,10 +67,15 @@ void ShellState::selectFile(const QUrl& url) {
     } else {
         ++session_;
         QGuiApplication::inputMethod()->reset();
-        annotations_.reset();
+        restoring_=true; annotations_.reset(); restoring_=false;
+        storageReady_=false; loadingStorage_=true; editRevision_=savedRevision_=0; identity_.clear();
+        exportStatus_.clear();
+        storageStatus_=QStringLiteral("正在校验 PDF 并恢复练习…"); emit storageChanged();
         textSelection_.reset();
         path_ = file.absoluteFilePath();
         selectedName_ = file.fileName();
+        const auto storageSession=session_; const auto storagePath=path_;
+        QMetaObject::invokeMethod(storage_,[this,storageSession,storagePath] { storage_->open(storageSession,storagePath); },Qt::QueuedConnection);
         page_ = 0;
         pageCount_ = 0;
         model_.reset(0);
@@ -79,9 +89,13 @@ void ShellState::selectFile(const QUrl& url) {
 
 void ShellState::clearSelection() {
     if (shuttingDown_) return;
+    if(!applyingTransition_) { flushBefore([this] { clearSelection(); }); return; }
+    storageReady_=false; loadingStorage_=false; editRevision_=savedRevision_=0;
+    QMetaObject::invokeMethod(storage_,&StorageWorker::close,Qt::QueuedConnection);
+    storageStatus_.clear(); exportStatus_.clear(); emit storageChanged();
     ++session_;
     QGuiApplication::inputMethod()->reset();
-    annotations_.reset();
+    restoring_=true; annotations_.reset(); restoring_=false;
     textSelection_.reset();
     path_.clear();
     selectedName_.clear();
@@ -251,9 +265,11 @@ void ShellState::acceptFrame(const PdfFrame& frame) {
 }
 void ShellState::beginShutdown() {
     if (shuttingDown_) return;
+    if(!applyingTransition_) { flushBefore([this] { beginShutdown(); }); return; }
+    QMetaObject::invokeMethod(storage_,&StorageWorker::close,Qt::QueuedConnection);
     shuttingDown_ = true;
     QGuiApplication::inputMethod()->reset();
-    annotations_.reset();
+    restoring_=true; annotations_.reset(); restoring_=false;
     textSelection_.reset();
     busy_ = false;
     statusText_ = QStringLiteral("正在关闭文档…");
@@ -290,7 +306,7 @@ void ShellState::finishTextEditing() {
     annotations_.finishEditing();
 }
 QString ShellState::createTextBox(double x,double y) {
-    if(shuttingDown_ || !pageCount_ || !std::isfinite(x) || !std::isfinite(y)) return {};
+    if(shuttingDown_ || !storageReady_ || transitioning_ || !pageCount_ || !std::isfinite(x) || !std::isfinite(y)) return {};
     const int page=model_.pageAt(y);
     const double w=model_.pageWidth(), h=model_.height(page), left=(model_.contentWidth()-w)/2;
     if(x<left || x>=left+w || y<model_.top(page) || y>=model_.top(page)+h) return {};
@@ -299,7 +315,7 @@ QString ShellState::createTextBox(double x,double y) {
 }
 
 bool ShellState::containsPage(double x,double y) const {
-    if(shuttingDown_ || !pageCount_ || !std::isfinite(x) || !std::isfinite(y)) return false;
+    if(shuttingDown_ || !storageReady_ || transitioning_ || !pageCount_ || !std::isfinite(x) || !std::isfinite(y)) return false;
     const int page=model_.pageAt(y);
     const double w=model_.pageWidth(), left=(model_.contentWidth()-w)/2;
     return x>=left && x<left+w && y>=model_.top(page) && y<model_.top(page)+model_.height(page);
@@ -312,4 +328,89 @@ void ShellState::syncAnnotations() {
     const auto active=model_.priority();
     if (!annotations_.selectedId().isEmpty() && !active.contains(annotations_.selectedPage())) finishTextEditing();
     annotations_.setActivePages(active);
+}
+
+static bool initializeAnnotationFont() {
+    static int font=-1;
+    if(font<0) font=QFontDatabase::addApplicationFont(QCoreApplication::applicationDirPath()+QStringLiteral("/fonts/NotoSansSC-Regular.ttf"));
+    return font>=0;
+}
+void ShellState::initializeStorage() {
+    qRegisterMetaType<AnnotationSnapshot>();
+    const auto overrideRoot=qEnvironmentVariable("LANGLERN_WORKSPACE_DIR");
+    const auto root=overrideRoot.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)+"/workspaces" : overrideRoot;
+    storage_=new StorageWorker(root);
+    storage_->moveToThread(&storageThread_);
+    connect(&storageThread_,&QThread::finished,storage_,&QObject::deleteLater);
+    storageThread_.setObjectName(QStringLiteral("WorkspaceIO")); storageThread_.start(QThread::LowPriority);
+    saveTimer_.setSingleShot(true); saveTimer_.setInterval(750);
+    maxSaveTimer_.setSingleShot(true); maxSaveTimer_.setInterval(5000);
+    connect(&saveTimer_,&QTimer::timeout,this,&ShellState::saveNow);
+    connect(&maxSaveTimer_,&QTimer::timeout,this,&ShellState::saveNow);
+    connect(&annotations_,&AnnotationModel::contentChanged,this,[this] {
+        if(restoring_ || !storageReady_) return;
+        ++editRevision_; storageStatus_=QStringLiteral("练习已编辑，等待自动保存…"); emit storageChanged();
+        saveTimer_.start(); if(!maxSaveTimer_.isActive()) maxSaveTimer_.start();
+    });
+    connect(storage_,&StorageWorker::loaded,this,[this](quint64 session,AnnotationSnapshot snapshot,QByteArray identity,QString message,bool writable) {
+        if(session!=session_ || shuttingDown_) return;
+        if(writable && !initializeAnnotationFont()) { writable=false; message=QStringLiteral("缺少答案字体，请检查程序 fonts 目录；PDF 阅读仍可用。"); }
+        loadingStorage_=false; identity_=identity; storageReady_=writable;
+        if(writable) { restoring_=true; annotations_.restore(snapshot); restoring_=false; editRevision_=savedRevision_=snapshot.revision; }
+        storageStatus_=message.isEmpty() ? QStringLiteral("练习已恢复，自动保存已就绪") : message;
+        emit storageChanged();
+        if(pendingTransition_) { auto action=std::move(pendingTransition_); pendingTransition_={}; transitioning_=false; flushBefore(std::move(action)); }
+    });
+    connect(storage_,&StorageWorker::saved,this,[this](quint64 session,quint64 revision,QString error) {
+        if(session!=session_) return;
+        saving_=false;
+        if(!error.isEmpty()) {
+            storageStatus_=error; pendingTransition_={}; transitioning_=false;
+        } else {
+            savedRevision_=revision;
+            storageStatus_=savedRevision_==editRevision_ ? QStringLiteral("练习已保存 · 修订 %1").arg(revision) : QStringLiteral("仍有新修改等待保存…");
+            if(savedRevision_!=editRevision_) saveNow();
+            else if(pendingTransition_) {
+                auto action=std::move(pendingTransition_); pendingTransition_={};
+                transitioning_=false; applyingTransition_=true; action(); applyingTransition_=false;
+            }
+        }
+        emit storageChanged();
+    });
+    connect(worker_,&PdfWorker::exportProgress,this,[this](quint64 session,int page,int pages) {
+        if(session!=session_) return;
+        exportStatus_=QStringLiteral("正在导出标注页 %1/%2；保存 PDF 期间页面任务可能等待…").arg(page).arg(pages); emit storageChanged();
+    });
+    connect(worker_,&PdfWorker::exportFinished,this,[this](quint64 session,quint64 revision,QString error) {
+        exporting_=false;
+        if(session==session_) exportStatus_=error.isEmpty() ? QStringLiteral("已导出修订 %1 为新 PDF").arg(revision) : error;
+        emit storageChanged();
+        if(pendingTransition_) { auto action=std::move(pendingTransition_); pendingTransition_={}; transitioning_=false; flushBefore(std::move(action)); }
+    });
+}
+AnnotationSnapshot ShellState::annotationSnapshot() const {
+    return {annotations_.snapshot(),annotations_.inkSnapshot(),editRevision_};
+}
+void ShellState::saveNow() {
+    if(!storageReady_ || saving_ || editRevision_==savedRevision_) return;
+    saveTimer_.stop(); maxSaveTimer_.stop(); saving_=true;
+    storageStatus_=QStringLiteral("正在保存练习…"); emit storageChanged();
+    const auto session=session_; const auto snapshot=annotationSnapshot();
+    QMetaObject::invokeMethod(storage_,[this,session,snapshot] { storage_->save(session,snapshot); },Qt::QueuedConnection);
+}
+void ShellState::flushBefore(std::function<void()> action) {
+    if(transitioning_) return;
+    finishTextEditing(); annotations_.cancelGesture();
+    if(loadingStorage_ || exporting_ || saving_ || (storageReady_ && editRevision_!=savedRevision_)) {
+        pendingTransition_=std::move(action); transitioning_=true; emit storageChanged(); saveNow(); return;
+    }
+    applyingTransition_=true; action(); applyingTransition_=false;
+}
+void ShellState::exportPdf(const QUrl& target) {
+    if(shuttingDown_ || transitioning_ || exporting_ || !storageReady_ || !pageCount_) return;
+    finishTextEditing(); annotations_.cancelGesture();
+    if(!target.isLocalFile()) { exportStatus_=QStringLiteral("请选择本地新 PDF 文件。"); emit storageChanged(); return; }
+    exporting_=true; exportStatus_=QStringLiteral("正在导出当前修订；可以继续编辑…"); emit storageChanged();
+    const auto session=session_; const auto path=path_; const auto destination=target.toLocalFile(); const auto identity=identity_; const auto snapshot=annotationSnapshot();
+    QMetaObject::invokeMethod(worker_,[this,session,path,destination,identity,snapshot] { worker_->exportPdf(session,path,destination,identity,snapshot); },Qt::QueuedConnection);
 }

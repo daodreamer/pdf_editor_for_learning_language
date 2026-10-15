@@ -7,6 +7,8 @@
 #include "readingmodel.h"
 #include "textselection.h"
 #include "annotationmodel.h"
+#include "storageworker.h"
+#include <functional>
 #include <QTimer>
 #include <QtQml/qqmlregistration.h>
 
@@ -33,6 +35,11 @@ class ShellState : public QObject {
     Q_PROPERTY(QString errorCode READ errorCode NOTIFY selectionChanged)
     Q_PROPERTY(TextSelection* textSelection READ textSelection CONSTANT)
     Q_PROPERTY(AnnotationModel* annotations READ annotations CONSTANT)
+    Q_PROPERTY(QString storageStatus READ storageStatus NOTIFY storageChanged)
+    Q_PROPERTY(QString exportStatus READ exportStatus NOTIFY storageChanged)
+    Q_PROPERTY(bool storageReady READ storageReady NOTIFY storageChanged)
+    Q_PROPERTY(bool transitioning READ transitioning NOTIFY storageChanged)
+    Q_PROPERTY(bool exporting READ exporting NOTIFY storageChanged)
 public:
     explicit ShellState(QObject* parent = nullptr);
     ~ShellState() override;
@@ -73,8 +80,16 @@ public:
     Q_INVOKABLE void goToPage(int page);
     Q_INVOKABLE void setRenderWidth(int pixels);
     Q_INVOKABLE void beginShutdown();
+    QString storageStatus() const { return storageStatus_; }
+    QString exportStatus() const { return exportStatus_; }
+    bool storageReady() const { return storageReady_; }
+    bool transitioning() const { return transitioning_; }
+    bool exporting() const { return exporting_; }
+    Q_INVOKABLE void saveNow();
+    Q_INVOKABLE void exportPdf(const QUrl& target);
     Q_INVOKABLE void acknowledgeProbe() { emit startupAcknowledged(); }
 signals:
+    void storageChanged();
     void startupAcknowledged();
     void selectionChanged();
     void themeChanged();
@@ -90,6 +105,19 @@ private:
     void schedule();
     void invalidate();
     void syncAnnotations();
+    void flushBefore(std::function<void()> action);
+    void initializeStorage();
+    AnnotationSnapshot annotationSnapshot() const;
+    QThread storageThread_;
+    StorageWorker* storage_ = nullptr;
+    QTimer saveTimer_, maxSaveTimer_;
+    quint64 editRevision_ = 0, savedRevision_ = 0;
+    QByteArray identity_;
+    QString storageStatus_, exportStatus_;
+    bool storageReady_ = false, loadingStorage_ = false, restoring_ = false;
+    bool saving_ = false, transitioning_ = false, exporting_ = false;
+    bool applyingTransition_ = false;
+    std::function<void()> pendingTransition_;
     ReadingModel model_;
     TextSelection textSelection_;
     AnnotationModel annotations_;

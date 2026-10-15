@@ -91,6 +91,22 @@ ApplicationWindow {
         }
     }
     Loader {
+        id: exportLoader
+        active: false
+        sourceComponent: Component {
+            FileDialog {
+                title: qsTr("导出为新 PDF（请选择未使用的文件名）")
+                fileMode: FileDialog.SaveFile
+                nameFilters: [qsTr("PDF 文件 (*.pdf)")]
+                defaultSuffix: "pdf"
+                Component.onCompleted: open()
+                onAccepted: { window.shell.exportPdf(selectedFile); exportLoader.active = false }
+                onRejected: exportLoader.active = false
+            }
+        }
+    }
+    Shortcut { sequences: [StandardKey.Save]; onActivated: window.shell.saveNow() }
+    Loader {
         id: helpLoader
         objectName: "helpLoader"
         active: false
@@ -125,12 +141,15 @@ ApplicationWindow {
             Label { text: qsTr("阅读 · 练习"); color: shellTheme.muted; visible: window.width > 800 }
             Item { Layout.fillWidth: true }
             ToolButton { objectName: "openButton"; action: openAction; activeFocusOnTab: true }
+            ToolButton { text: qsTr("保存"); enabled: window.shell.storageReady && !window.shell.transitioning; onClicked: window.shell.saveNow() }
+            ToolButton { objectName: "exportButton"; text: qsTr("导出 PDF…"); enabled: window.shell.storageReady && window.shell.pageCount > 0 && !window.shell.exporting && !window.shell.transitioning; onClicked: exportLoader.active = true }
             ToolButton { action: themeAction; activeFocusOnTab: true; Accessible.name: qsTr("切换主题：") + window.themeLabel }
             ToolButton { action: helpAction; activeFocusOnTab: true }
         }
     }
     DocumentView {
         anchors.fill: parent
+        enabled: !window.shell.transitioning
         shell: window.shell
         theme: shellTheme
         visible: window.shell.pageCount > 0
@@ -206,7 +225,7 @@ ApplicationWindow {
             Label {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
-                text: window.shell.statusText
+                text: window.shell.exportStatus.length > 0 ? window.shell.exportStatus : window.shell.storageStatus.length > 0 ? window.shell.storageStatus : window.shell.statusText
                 textFormat: Text.PlainText
                 elide: Text.ElideMiddle
                 color: shellTheme.muted

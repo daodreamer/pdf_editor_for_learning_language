@@ -51,6 +51,7 @@ ColumnLayout {
         Button { text: qsTr("适应页宽"); onClicked: view.shell.setZoom(1) }
         Button { objectName: "copyTextButton"; text: qsTr("复制选中文字"); enabled: view.shell.textSelection.ready; onClicked: view.shell.textSelection.copy() }
         ComboBox {
+            enabled: view.shell.storageReady
             objectName: "inputMode"
             model: [qsTr("自动：空白输入 / 文字拖选"), qsTr("选择原文"), qsTr("输入答案"), qsTr("画笔"), qsTr("整笔橡皮擦"), qsTr("选择 / 移动笔迹")]
             currentIndex: view.inputMode
@@ -76,12 +77,13 @@ ColumnLayout {
         }
         Button { text: qsTr("撤销标注"); focusPolicy: Qt.NoFocus; enabled: view.shell.annotations.canUndo; onClicked: { view.shell.finishTextEditing(); view.shell.annotations.undo() } }
         Button { text: qsTr("重做标注"); focusPolicy: Qt.NoFocus; enabled: view.shell.annotations.canRedo; onClicked: view.shell.annotations.redo() }
-        Label { text: qsTr("答案仅保存在本次会话，关闭后丢失"); color: view.theme.muted }
+        Label { text: view.shell.storageStatus; textFormat: Text.PlainText; Layout.fillWidth: true; elide: Text.ElideRight; color: view.theme.muted }
     }
     RowLayout {
         Layout.leftMargin: 12
         Label { text: qsTr("笔色"); color: view.theme.text }
         ComboBox {
+            enabled: view.shell.storageReady
             id: inkColors
             objectName: "inkColors"
             model: [qsTr("蓝"), qsTr("红"), qsTr("绿"), qsTr("黑")]
@@ -254,7 +256,7 @@ ColumnLayout {
             delegate: TextNote {
                 onEditingFinished: selectionMouse.forceActiveFocus()
                 shell: view.shell
-                enabled: view.inputMode < 3
+                enabled: view.inputMode < 3 && view.shell.storageReady
                 pageWidth: view.shell.displayPageWidth
                 pageHeight: pageWidth * notePageUnits.height / notePageUnits.width
                 pageTop: view.shell.contentHeight >= 0 ? view.shell.pageTop(notePage) : 0
@@ -262,13 +264,14 @@ ColumnLayout {
             }
         }
         InkInput {
+            z: 3
             id: inkInput
             objectName: "inkInput"
             x: viewport.contentX
             y: viewport.contentY
             width: viewport.width
             height: viewport.height
-            enabled: view.inputMode >= 3
+            enabled: view.inputMode >= 3 && view.shell.storageReady
             visible: enabled
             shell: view.shell
             mode: view.inputMode

@@ -1,14 +1,14 @@
 # 开发路线图与阶段验收
 
-日期：2026-10-15。状态：阶段 0–3 Windows 交付记录保留；阶段 4 原生文字选择与复制、阶段 5 文字答案与坐标系统已按 Windows 范围交付；阶段 6 画笔/擦除/统一历史已按 Windows 范围交付；阶段 7–8 未实施。macOS 全部实机检查依用户要求延至整个项目完成后。阶段 3 的启动目标未达等待办保留。实际结果见 [PHASE0_REPORT.md](PHASE0_REPORT.md)、[PHASE1_REPORT.md](PHASE1_REPORT.md)、[PHASE2_REPORT.md](PHASE2_REPORT.md)、[PHASE3_REPORT.md](PHASE3_REPORT.md)、[PHASE4_REPORT.md](PHASE4_REPORT.md)、[PHASE5_REPORT.md](PHASE5_REPORT.md)、[PHASE6_REPORT.md](PHASE6_REPORT.md)。
+日期：2026-10-15。状态：阶段 0–3 Windows 交付记录保留；阶段 4 原生文字选择与复制、阶段 5 文字答案与坐标系统已按 Windows 范围交付；阶段 6 画笔/擦除/统一历史已按 Windows 范围交付；阶段 7 已按 Windows 范围交付；阶段 8 未实施。macOS 全部实机检查依用户要求延至整个项目完成后。阶段 3 的启动目标未达等待办保留。实际结果见 [PHASE0_REPORT.md](PHASE0_REPORT.md)、[PHASE1_REPORT.md](PHASE1_REPORT.md)、[PHASE2_REPORT.md](PHASE2_REPORT.md)、[PHASE3_REPORT.md](PHASE3_REPORT.md)、[PHASE4_REPORT.md](PHASE4_REPORT.md)、[PHASE5_REPORT.md](PHASE5_REPORT.md)、[PHASE6_REPORT.md](PHASE6_REPORT.md)、[PHASE7_REPORT.md](PHASE7_REPORT.md)。
 
 约束来源：[AGENTS.md](../AGENTS.md)。架构与接口见 [ARCHITECTURE.md](ARCHITECTURE.md)，测试口径与目标见 [PERFORMANCE.md](PERFORMANCE.md)。本文件列出的命令、目标与产物是后续任务，不是执行记录。
 
 ## 1. 执行原则与依赖
 
-**最新授权覆盖原停止位置**：用户明确要求使用 goal 模式完成阶段 6，并将全部 macOS 实机检查推迟到整个项目完成后。阶段 6 按 Windows 范围交付；不把 macOS 待验收作为本轮阻断，也不宣称双平台通过。原阶段 0–5 停止要求仅为历史授权范围。阶段 0 字体导出等风险按既有报告保留，不在本阶段提前实现阶段 7。
+**最新授权覆盖原停止位置**：用户要求以 goal 模式完成阶段 7，全部 macOS 实机检查推迟到整个项目完成后。阶段 7 按 Windows 范围交付，不把 macOS 待验收作为本轮阻断，也不宣称双平台通过。原阶段 0–6 停止要求属于历史授权范围。本次结束后不自动进入阶段 8。
 
-本轮最新授权为 goal 模式完成阶段 6；Windows 验证，macOS 在项目完成后检查。结束后不自动进入阶段 7。
+阶段 7 实际结果见 [PHASE7_REPORT.md](PHASE7_REPORT.md)，格式和恢复边界见 [STORAGE_FORMAT.md](STORAGE_FORMAT.md)。
 
 阶段顺序保持用户要求。坐标系统、字体导出和恢复方案的可行性验证前移到阶段 0，完整实现仍放在阶段 5/7，避免基础架构成型后才发现无法准确导出。性能埋点从阶段 0/1 开始，阶段 8 汇总而不是首次测试。
 

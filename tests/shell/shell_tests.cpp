@@ -1,3 +1,4 @@
+#include <QTemporaryDir>
 #include "shellstate.h"
 
 #include <QFile>
@@ -23,7 +24,10 @@ Q_IMPORT_QML_PLUGIN(LanglernShellPlugin)
 
 class ShellTests : public QObject {
     Q_OBJECT
+    std::unique_ptr<QTemporaryDir> caseWorkspace;
 private slots:
+    void init() { caseWorkspace=std::make_unique<QTemporaryDir>(); qputenv("LANGLERN_WORKSPACE_DIR",caseWorkspace->path().toUtf8()); }
+
     void shutdownOnPreview() {
         ShellState shell;
         QSignalSpy closed(&shell, &ShellState::documentClosed);
@@ -370,6 +374,8 @@ private slots:
 };
 
 int main(int argc, char** argv) {
+    QTemporaryDir workspace; qputenv("LANGLERN_WORKSPACE_DIR",workspace.path().toUtf8());
+
     // Deterministic Qt dialog automation; the product keeps the system-native default.
     QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
     QGuiApplication app(argc, argv);

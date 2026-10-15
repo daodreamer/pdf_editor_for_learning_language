@@ -67,3 +67,16 @@ if(WIN32)
 endif()
 add_test(NAME ink_annotations COMMAND ink_tests -o ${CMAKE_CURRENT_BINARY_DIR}/ink.txt,txt)
 set_tests_properties(ink_annotations PROPERTIES TIMEOUT 120)
+
+qt_add_executable(storage_tests storage_tests.cpp)
+set_target_properties(storage_tests PROPERTIES WIN32_EXECUTABLE FALSE)
+target_link_libraries(storage_tests PRIVATE shell_ui shell_uiplugin Qt6::Test Qt6::QuickControls2)
+target_compile_definitions(storage_tests PRIVATE LANGLERN_FIXTURES="${PROJECT_SOURCE_DIR}/tests/fixtures")
+langlern_warnings(storage_tests)
+if(WIN32)
+    add_custom_command(TARGET storage_tests POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:pdfium> $<TARGET_FILE_DIR:storage_tests>)
+endif()
+add_test(NAME storage_export COMMAND storage_tests)
+set_tests_properties(storage_export PROPERTIES TIMEOUT 180)

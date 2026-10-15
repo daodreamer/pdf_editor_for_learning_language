@@ -7,7 +7,7 @@
 
 QHash<int,QByteArray> AnnotationModel::roleNames() const {
     return {{Id,"noteId"},{Page,"notePage"},{Anchor,"noteAnchor"},{BoxWidth,"noteWidth"},{BoxHeight,"noteHeight"},
-        {FontSize,"noteFontSize"},{Text,"noteText"},{Family,"noteFamily"},{Color,"noteColor"},{PageUnits,"notePageUnits"}};
+        {FontSize,"noteFontSize"},{Text,"noteText"},{Family,"noteFamily"},{Color,"noteColor"},{PageUnits,"notePageUnits"},{Order,"noteOrder"}};
 }
 QVariant AnnotationModel::data(const QModelIndex& index,int role) const {
     if (!index.isValid() || index.row()<0 || index.row()>=visible_.size()) return {};
@@ -24,6 +24,7 @@ QVariant AnnotationModel::data(const QModelIndex& index,int role) const {
     case Family: return n.family;
     case Color: return n.color;
     case PageUnits: return g.units;
+    case Order: return double(n.order);
     default: return {};
     }
 }
@@ -44,9 +45,9 @@ void AnnotationModel::refreshRows() {
 void AnnotationModel::reset() {
     cancelGesture();
     const auto oldPages=geometry_.keys();
-    strokes_.clear(); nextInkOrder_=0; clearInkSelection();
+    strokes_.clear(); nextInkOrder_=0; nextTextOrder_=0; clearInkSelection();
     beginResetModel(); notes_.clear(); visible_.clear(); geometry_.clear(); active_.clear(); selected_.clear();
-    beforeEdit_={}; undo_.clear(); redo_.clear(); endResetModel(); emit selectionChanged(); emit historyChanged();
+    beforeEdit_={}; undo_.clear(); redo_.clear(); endResetModel(); emit selectionChanged(); emit historyChanged(); emit contentChanged();
     for(int page:oldPages) emit inkChanged(page);
 }
 void AnnotationModel::setGeometry(int page,const PageGeometry& geometry) {
@@ -70,6 +71,7 @@ QString AnnotationModel::create(int page,double x,double y) {
     x=std::min(x,std::max(0.0,1-48/g.units.width()));
     y=std::min(y,std::max(0.0,1-24/g.units.height()));
     TextAnnotation n;
+    n.order=nextTextOrder_++;
     n.id=QUuid::createUuid().toString(QUuid::WithoutBraces); n.page=page;
     n.anchor=g.displayToPdf.map(QPointF(x,y)); n.right=g.right(); n.down=g.down();
     n.width=std::min(200.0,(1-x)*g.units.width());
@@ -86,7 +88,7 @@ void AnnotationModel::finishEditing() {
     if(selected_.isEmpty()) return;
     const auto id=selected_;
     auto after=notes_.value(id);
-    if(after.text.isEmpty()) { notes_.remove(id); after={}; }
+    if(after.text.isEmpty()) { notes_.remove(id); after={}; emit contentChanged(); }
     selected_.clear(); record(beforeEdit_,after); beforeEdit_={};
     emit selectionChanged(); refreshRows();
 }
@@ -95,6 +97,7 @@ void AnnotationModel::setText(const QString& id,const QString& text,double heigh
     auto& n=notes_[id]; n.text=text;
     const double h=std::max(24.0,height);
     if(n.height!=h) { n.height=h; notify(id,{BoxHeight}); }
+    emit contentChanged();
     // No Text role notification: resetting the TextEdit would destroy its local undo/IME state.
 }
 void AnnotationModel::move(const QString& id,double x,double y) {
@@ -120,12 +123,12 @@ void AnnotationModel::apply(const TextAnnotation& from,const TextAnnotation& to)
 void AnnotationModel::undo() {
     cancelGesture(); clearInkSelection();
     finishEditing(); if(undo_.isEmpty()) return;
-    const auto c=undo_.takeLast(); apply(c.after,c.before); applyInk(c.inkAfter,c.inkBefore); redo_.append(c); trimHistory(); emit historyChanged();
+    const auto c=undo_.takeLast(); apply(c.after,c.before); applyInk(c.inkAfter,c.inkBefore); redo_.append(c); trimHistory(); emit historyChanged(); emit contentChanged();
 }
 void AnnotationModel::redo() {
     cancelGesture(); clearInkSelection();
     finishEditing(); if(redo_.isEmpty()) return;
-    const auto c=redo_.takeLast(); apply(c.before,c.after); applyInk(c.inkBefore,c.inkAfter); undo_.append(c); trimHistory(); emit historyChanged();
+    const auto c=redo_.takeLast(); apply(c.before,c.after); applyInk(c.inkBefore,c.inkAfter); undo_.append(c); trimHistory(); emit historyChanged(); emit contentChanged();
 }
 
 
@@ -172,7 +175,7 @@ qsizetype AnnotationModel::historyBytes() const {
 void AnnotationModel::record(Command command) {
     redo_.clear(); undo_.append(std::move(command));
     trimHistory();
-    emit historyChanged();
+    emit historyChanged(); emit contentChanged();
 }
 void AnnotationModel::trimHistory() {
     undo_.squeeze(); redo_.squeeze();
@@ -298,4 +301,16 @@ void AnnotationModel::removeInk() {
     if(!strokes_.contains(selectedInk_)) return;
     const auto stroke=strokes_.value(selectedInk_); clearInkSelection(); strokes_.remove(stroke.id);
     Command c; c.inkBefore={stroke}; record(std::move(c)); emit inkChanged(stroke.page);
+}
+
+void AnnotationModel::restore(const AnnotationSnapshot& snapshot) {
+    cancelGesture();
+    beginResetModel(); notes_.clear(); strokes_.clear(); visible_.clear();
+    selected_.clear(); beforeEdit_={}; undo_.clear(); redo_.clear(); nextInkOrder_=0;
+    nextTextOrder_=0;
+    for(const auto& n:snapshot.notes) { notes_[n.id]=n; nextTextOrder_=std::max(nextTextOrder_,n.order+1); }
+    for(const auto& s:snapshot.ink) { strokes_[s.id]=s; nextInkOrder_=std::max(nextInkOrder_,s.order+1); }
+    endResetModel(); refreshRows(); clearInkSelection();
+    emit selectionChanged(); emit historyChanged();
+    for(int page:geometry_.keys()) emit inkChanged(page);
 }

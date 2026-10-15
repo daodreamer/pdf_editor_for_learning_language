@@ -1,3 +1,4 @@
+#include <QTemporaryDir>
 #include "shellstate.h"
 #include <QAbstractItemModelTester>
 #include <QElapsedTimer>
@@ -31,7 +32,10 @@ Q_IMPORT_QML_PLUGIN(LanglernShellPlugin)
 class ReadingTests : public QObject {
     Q_OBJECT
     const QString fixture = QStringLiteral(LANGLERN_FIXTURES) + "/geometry.pdf";
+    std::unique_ptr<QTemporaryDir> caseWorkspace;
 private slots:
+    void init() { caseWorkspace=std::make_unique<QTemporaryDir>(); qputenv("LANGLERN_WORKSPACE_DIR",caseWorkspace->path().toUtf8()); }
+
     void geometryAndBudgets() {
         ReadingModel m;
         QAbstractItemModelTester tester(&m,QAbstractItemModelTester::FailureReportingMode::QtTest);
@@ -291,6 +295,8 @@ private slots:
     }
 };
 int main(int argc,char** argv) {
+    QTemporaryDir workspace; qputenv("LANGLERN_WORKSPACE_DIR",workspace.path().toUtf8());
+
     QGuiApplication app(argc,argv);
     QQuickStyle::setStyle("Basic");
 #ifdef Q_OS_WIN

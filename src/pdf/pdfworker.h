@@ -6,6 +6,7 @@
 #include "readingconfig.h"
 #include "textpage.h"
 #include "pagegeometry.h"
+#include "annotationdata.h"
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -50,7 +51,10 @@ public:
     void submit(PdfRequest request);
     void shutdown();
     void cancel(quint64 revision);
+    void exportPdf(quint64 session, QString source, QString target, QByteArray identity, AnnotationSnapshot snapshot);
 signals:
+    void exportProgress(quint64 session, int page, int pages);
+    void exportFinished(quint64 session, quint64 revision, QString error);
     void frameReady(PdfFrame frame);
     void nativeClosed(quint64 session, int handles);
     void requestStarted(quint64 revision);

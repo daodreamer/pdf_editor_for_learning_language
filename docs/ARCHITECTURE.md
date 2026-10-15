@@ -1,6 +1,6 @@
 # 系统架构设计
 
-当前正式实现以文末阶段 2–6 契约及实现补充为准；前文阶段 0/1 契约保留历史验证边界，完整架构章节描述后续方向。
+当前正式实现以文末阶段 2–7 契约及实现补充为准；前文阶段 0/1 契约保留历史验证边界，完整架构章节描述后续方向。
 
 ## 阶段 1 实施契约（2026-10-15，编码前）
 
@@ -404,3 +404,20 @@ API 依据：[QQuickItem](https://doc.qt.io/qt-6.8/qquickitem.html)、[QSGGeomet
 历史按 points、QString、命令列表与笔迹列表的 capacity 保守重复计费，隐式共享不去重；16 MiB 是受管数据容量预算，不含分配器头、临时命令副本、当前标注、Qt TextEdit 局部历史或进程/GPU 总内存。超大单次文字事务超过预算时整条历史淘汰，当前内容保留。undo/redo 互转后也检查预算，不使 redo 绕过上限。
 
 擦除时 displayStrokes 隐藏命中的笔迹，但 inkSnapshot 返回原始已提交状态；取消可恢复，完成才进入历史。绘制/移动预览不进入快照。滚动 contentX/Y 的 setter、布局、工具/颜色/粗细变化、失焦、抓取丢失均取消手势；新手势先停止惯性滚动。鼠标和窗口 tablet 事件送入同一数据路径，测试使用注入的 Qt tablet 事件，未代表物理设备通过。
+
+
+## 阶段 7 实施设计（2026-10-15）
+
+本轮授权阶段 7，Windows 验证，macOS 实机延期；阶段 8 不在本轮范围。
+
+- `StorageWorker` 在独立低优先级文件线程执行全内容 SHA-256、版本化 JSON 编解码、锁与原子快照写入。`ShellState` 在 GUI 线程维护编辑/落盘修订、750 ms 去抖及 5 s 最长调度间隔；磁盘任务不回到 GUI。加载完成前只显示底图，禁止练习编辑，避免恢复覆盖新输入。关闭/切换先提交 IME、取消在途手势，异步落盘成功后再释放会话；失败留在原文档重试。
+- 工作区按全内容散列寻址，移动同一文件可自动恢复，内容不同绝不套用旧答案。同内容副本共享工作区并由 `QLockFile` 排他锁定；这明确选择内容身份而非路径身份。存储在应用本地数据目录，不要求教材目录可写。修订号字符串避免 JSON 整数精度损失。
+- `QSaveFile` 禁止直接写回退；先原子保存前一个有效版本为 `.bak`，再提交主文件。主文件坏时回退备份，先把损坏主文件重命名为唯一 `.corrupt-*` 证据；不能保留则只读。未来 schema 禁止覆盖。恢复只保证最后成功提交修订，去抖窗口和磁盘失败期间修改可能丢失。
+- 产品开始随程序部署既有固定来源 OFL Noto Sans SC 静态字体；答案统一使用它，避免系统字体替代破坏导出版式和嵌入许可。`assets/fonts/OFL.txt` 同目录部署保留。尚不支持的字符在导出时明确失败。
+- 导出快照以值复制固定修订，提交唯一 PDFium 线程。独立 `FPDF_LoadCustomDocument` 校验原内容散列；Qt Gui `QPdfWriter` 只生成透明矢量笔迹页，由 PDFium form import 合入原页面。`QTextDocument` / `QTextLayout::glyphRuns` 复用 TextEdit shaping、换行与基线，构建显式 ToUnicode/CIDToGIDMap，通过 `FPDFText_LoadCidType2Font` 嵌入完整已锁定字体，按连续基线用 `SetCharcodes` / `SetPositions` 写入原生文字，最后 `FPDF_SaveAsCopy`。不同 Unicode 可对应同一 glyph 而保留不同 CID，避免空格和组合字符的自动映射歧义。实测 Qt 6.8.3 Windows 应用字体经 QPdfWriter 走轮廓路径，因此不使用该路径输出文字。未引入新引擎或栅格化底图。Qt/PDFium 全部使用公开 API；PDFium form import 为锁定版本 experimental API，升级须回归。
+- PDF form 矩阵使用页面 DeviceToPage 基底转换顶部原点、CropBox、固有旋转和 UserUnit；文字/笔宽仍为原始页面单位。显示层次保持笔迹在下、文字在上；两类内部保存创建顺序，恢复和导出共用该顺序。
+- 导出临时文件位于目标目录，保存后在 PDF 线程回读页数，`QFile::rename` 提交且绝不替换目标；原文件、符号链接、硬链接及任意已有文件均拒绝。整个过程只读打开原文档。导出允许继续编辑，状态注明所导出修订。PDF 保存单次调用不可抢占，阅读任务可能等待，GUI 不等待。
+
+API 依据：[QSaveFile](https://doc.qt.io/qt-6.8/qsavefile.html)、[QTextDocument](https://doc.qt.io/qt-6.8/qtextdocument.html)、[QPdfWriter](https://doc.qt.io/qt-6.8/qpdfwriter.html)，以及锁定 PDFium 包 `fpdf_ppo.h` / `fpdf_save.h` 的接口与所有权注释。在线 Qt 文档可能为更高补丁版本，以本地 6.8.3 头文件/实际构建为准。
+
+保存格式、实际限制和恢复流程见 [STORAGE_FORMAT.md](STORAGE_FORMAT.md)。

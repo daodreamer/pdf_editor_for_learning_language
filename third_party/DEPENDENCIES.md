@@ -1,5 +1,12 @@
 # 阶段 0 依赖与许可审查
 
+## 阶段 7 产品字体增量
+
+产品开始部署 `assets/fonts/NotoSansSC-Regular.ttf`（10,596,288 bytes；SHA-256 `2b4a06fde0544928c3715b0b71e2ded7e45981fb376bd0841c891668705cf629`），由下表固定上游 Noto VF 经已锁定 fonttools 实例化 wght=400 得到，与阶段 0 `regular_sha256` 一致。保留原始命名表，内部 PostScript 名称仍可显示 `NotoSansSC-Thin`；实际为固定 wght=400 实例，不据名字改用系统字体。PDFium 将该完整字体压缩嵌入一次（当前约增加 6 MiB），配合 Qt glyph ID/基线及显式 ToUnicode/CIDToGIDMap 保留可提取文字。
+
+SIL OFL 1.1 允许随软件再分发及嵌入文档；`assets/fonts/OFL.txt` 和字体元数据保留版权许可，CMake 将两者复制到开发 exe 邻近 fonts 目录。项目 MIT 不覆盖字体。无新增产品库依赖；QPdfWriter 属既有 Qt Gui，PDFium 接口来自已锁定包。阶段 8 仍须核对完整部署闭包，本阶段不宣称整个发行包已完成合规确认。
+
+
 ## 阶段 4 文字选择增量
 
 运行时依赖不变，使用锁定 PDFium 的公开文本接口和 Qt Gui 剪贴板、Qt Quick 场景图几何。`text.pdf`、`text-limit.pdf` 是 MIT 原创 stdlib 生成测试文件，不嵌入字体；`chinese.pdf` 为原创文本并子集嵌入已锁定的 Noto Sans SC，约 15 KiB，仅作测试，不加入产品资源。字体来源、固定提交、OFL 嵌入依据及原始许可证沿用下文与 [Noto-OFL.txt](notices/Noto-OFL.txt)；PDF 元数据指明嵌入字体来源，生成脚本和 manifest 提供追踪。PyMuPDF 仅为既有开发生成工具，不进入 CMake 依赖或产品发行。没有复制系统字体或引入图标资源；发行许可闭包仍待阶段 8 审查。

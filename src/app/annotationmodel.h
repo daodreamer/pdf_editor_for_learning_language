@@ -7,17 +7,6 @@
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 
-struct TextAnnotation {
-    QString id;
-    int page = 0;
-    QPointF anchor, right, down;
-    double width = 200, height = 24, fontSize = 14;
-    QString text;
-    QString family = QStringLiteral("Segoe UI");
-    QColor color = QColor(30,70,140);
-    bool operator==(const TextAnnotation&) const = default;
-};
-
 class AnnotationModel : public QAbstractListModel {
     Q_OBJECT
     QML_ELEMENT
@@ -28,7 +17,7 @@ class AnnotationModel : public QAbstractListModel {
     Q_PROPERTY(QString inkSelection READ inkSelection NOTIFY inkSelectionChanged)
     Q_PROPERTY(QString gestureError READ gestureError NOTIFY gestureErrorChanged)
 public:
-    enum Role { Id=Qt::UserRole+1, Page, Anchor, BoxWidth, BoxHeight, FontSize, Text, Family, Color, PageUnits };
+    enum Role { Id=Qt::UserRole+1, Page, Anchor, BoxWidth, BoxHeight, FontSize, Text, Family, Color, PageUnits, Order };
     explicit AnnotationModel(QObject* parent=nullptr) : QAbstractListModel(parent) {}
     int rowCount(const QModelIndex& parent={}) const override { return parent.isValid()?0:int(visible_.size()); }
     QVariant data(const QModelIndex&,int role) const override;
@@ -38,6 +27,7 @@ public:
     bool canUndo() const { return !undo_.isEmpty(); }
     bool canRedo() const { return !redo_.isEmpty(); }
     void reset();
+    void restore(const AnnotationSnapshot& snapshot);
     void setGeometry(int page,const PageGeometry& geometry);
     PageGeometry geometry(int page) const { return geometry_.value(page); }
     void setActivePages(const QList<int>& pages);
@@ -64,6 +54,7 @@ public:
     Q_INVOKABLE void undo();
     Q_INVOKABLE void redo();
 signals:
+    void contentChanged();
     void selectionChanged();
     void historyChanged();
     void inkChanged(int page);
@@ -101,4 +92,5 @@ private:
     double eraserRadius_ = 0;
     QString selectedInk_, gestureError_;
     quint64 nextInkOrder_ = 0;
+    quint64 nextTextOrder_ = 0;
 };

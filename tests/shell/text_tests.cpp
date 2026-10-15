@@ -1,3 +1,4 @@
+#include <QTemporaryDir>
 #include "shellstate.h"
 #include <QClipboard>
 #include <QGuiApplication>
@@ -23,7 +24,10 @@ class TextTests : public QObject {
             if(data->characters[i].unicode==U'H' && data->characters[i+1].unicode==U'e') return i;
         return -1;
     }
+    std::unique_ptr<QTemporaryDir> caseWorkspace;
 private slots:
+    void init() { caseWorkspace=std::make_unique<QTemporaryDir>(); qputenv("LANGLERN_WORKSPACE_DIR",caseWorkspace->path().toUtf8()); }
+
     void mouseSelectionAndCopy() {
         ShellState shell;
         QQmlApplicationEngine engine;
@@ -296,6 +300,8 @@ private slots:
     }
 };
 int main(int argc,char** argv) {
+    QTemporaryDir workspace; qputenv("LANGLERN_WORKSPACE_DIR",workspace.path().toUtf8());
+
     QGuiApplication app(argc,argv);
 #ifdef Q_OS_WIN
     app.setFont(QFont(QStringLiteral("Microsoft YaHei UI")));

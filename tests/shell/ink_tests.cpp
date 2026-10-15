@@ -1,3 +1,4 @@
+#include <QTemporaryDir>
 #include "shellstate.h"
 #include "inkinput.h"
 #include <QGuiApplication>
@@ -43,7 +44,10 @@ class InkTests : public QObject {
         return viewport->mapToScene(QPointF((s.contentWidth()-s.pageWidth())/2+x*s.pageWidth()-viewport->property("contentX").toDouble(),
             s.pageTop(page)+y*s.pageHeight(page)-viewport->property("contentY").toDouble())).toPoint();
     }
+    std::unique_ptr<QTemporaryDir> caseWorkspace;
 private slots:
+    void init() { caseWorkspace=std::make_unique<QTemporaryDir>(); qputenv("LANGLERN_WORKSPACE_DIR",caseWorkspace->path().toUtf8()); }
+
     void gesturesAndSweptErase() {
         AnnotationModel m; m.setGeometry(0,geometry());
         stroke(m,.3); stroke(m,.5,Qt::blue,8);
@@ -158,7 +162,7 @@ private slots:
             const auto before=s.annotations()->inkSnapshot();
             s.setZoom(.5); QCOMPARE(s.annotations()->inkSnapshot(),before);
         }
-        s.clearSelection(); QVERIFY(s.annotations()->inkSnapshot().isEmpty()); QVERIFY(!s.annotations()->canUndo());
+        s.clearSelection(); QTRY_VERIFY(s.annotations()->inkSnapshot().isEmpty()); QVERIFY(!s.annotations()->canUndo());
     }
     void actualWindowInputAndPixels() {
         ShellState s; QQmlApplicationEngine engine; QStringList warnings;
@@ -201,7 +205,7 @@ private slots:
         QTest::mousePress(w,Qt::LeftButton,Qt::NoModifier,point(s,viewport,.4,.1));
         QTest::mouseMove(w,point(s,viewport,.4,.3),20);
         QTest::mouseRelease(w,Qt::LeftButton,Qt::NoModifier,point(s,viewport,.4,.3));
-        QVERIFY(s.annotations()->inkSnapshot().isEmpty());
+        QTRY_VERIFY(s.annotations()->inkSnapshot().isEmpty());
         QTest::keyClick(w,Qt::Key_Z,Qt::ControlModifier); QTRY_COMPARE(s.annotations()->inkSnapshot(),original);
         QTest::keyClick(w,Qt::Key_M,Qt::ControlModifier|Qt::ShiftModifier);
         QTest::mousePress(w,Qt::LeftButton,Qt::NoModifier,point(s,viewport,.3,.2));
@@ -211,7 +215,7 @@ private slots:
         QTest::keyClick(w,Qt::Key_Z,Qt::ControlModifier); QTRY_COMPARE(s.annotations()->inkSnapshot(),original);
         QTest::mouseClick(w,Qt::LeftButton,Qt::NoModifier,point(s,viewport,.3,.2));
         QVERIFY(!s.annotations()->inkSelection().isEmpty());
-        QTest::keyClick(w,Qt::Key_Delete); QVERIFY(s.annotations()->inkSnapshot().isEmpty());
+        QTest::keyClick(w,Qt::Key_Delete); QTRY_VERIFY(s.annotations()->inkSnapshot().isEmpty());
         s.annotations()->undo(); QCOMPARE(s.annotations()->inkSnapshot(),original);
         QTest::keyClick(w,Qt::Key_P,Qt::ControlModifier|Qt::ShiftModifier);
         QTest::mousePress(w,Qt::LeftButton,Qt::NoModifier,point(s,viewport,.2,.3));
@@ -350,12 +354,14 @@ private slots:
         report["input_trace"]=trace; report["frame_intervals_ms"]=rawFrames;
         const auto output=qEnvironmentVariable("LANGLERN_INK_TRACE");
         if(!output.isEmpty()) { QFile f(output); QVERIFY(f.open(QIODevice::WriteOnly|QIODevice::NewOnly)); f.write(QJsonDocument(report).toJson()); }
-        s.annotations()->undo(); QVERIFY(s.annotations()->inkSnapshot().isEmpty()); s.annotations()->redo();
+        s.annotations()->undo(); QTRY_VERIFY(s.annotations()->inkSnapshot().isEmpty()); s.annotations()->redo();
         QCOMPARE(s.annotations()->inkSnapshot().first().points.size(),count);
         w->close(); QTRY_VERIFY(s.shutdownComplete());
     }
 };
 int main(int argc,char** argv) {
+    QTemporaryDir workspace; qputenv("LANGLERN_WORKSPACE_DIR",workspace.path().toUtf8());
+
     QGuiApplication app(argc,argv); QQuickStyle::setStyle("Basic"); InkTests tests; return QTest::qExec(&tests,argc,argv);
 }
 #include "ink_tests.moc"

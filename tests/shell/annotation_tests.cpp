@@ -1,3 +1,4 @@
+#include <QTemporaryDir>
 #include "shellstate.h"
 #include <QClipboard>
 #include <QLineF>
@@ -22,7 +23,10 @@ class AnnotationTests : public QObject {
         for(auto* child:root->childItems()) if(auto* item=find(child,name)) return item;
         return nullptr;
     }
+    std::unique_ptr<QTemporaryDir> caseWorkspace;
 private slots:
+    void init() { caseWorkspace=std::make_unique<QTemporaryDir>(); qputenv("LANGLERN_WORKSPACE_DIR",caseWorkspace->path().toUtf8()); }
+
     void modelHistoryAndVirtualization() {
         AnnotationModel model;
         PageGeometry g; g.displayToPdf=QTransform(570,0,0,-780,10,800);
@@ -86,7 +90,7 @@ private slots:
         QCOMPARE(shell.annotations()->rowCount(),shell.model().priority().size());
         shell.setZoom(4);
         QCOMPARE(shell.annotations()->rowCount(),shell.model().priority().size());
-        shell.clearSelection(); QVERIFY(shell.annotations()->snapshot().isEmpty());
+        shell.clearSelection(); QTRY_VERIFY(shell.annotations()->snapshot().isEmpty());
         QVERIFY(!shell.annotations()->geometry(0).valid);
     }
     void viewportKeepsEditing() {
@@ -239,7 +243,7 @@ private slots:
         QTRY_VERIFY(shell.annotations()->snapshot().isEmpty());
         shell.annotations()->undo(); QCOMPARE(shell.annotations()->snapshot().size(),1);
         shell.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/scan.pdf"));
-        QVERIFY(shell.annotations()->snapshot().isEmpty()); QVERIFY(!shell.annotations()->canUndo());
+        QTRY_VERIFY(shell.annotations()->snapshot().isEmpty()); QVERIFY(!shell.annotations()->canUndo());
         QTRY_VERIFY(shell.annotations()->geometry(0).valid);
         QTRY_VERIFY(shell.textSelection()->snapshot(0));
         QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,pos(.25,.2));
@@ -251,6 +255,8 @@ private slots:
     }
 };
 int main(int argc,char** argv) {
+    QTemporaryDir workspace; qputenv("LANGLERN_WORKSPACE_DIR",workspace.path().toUtf8());
+
     QGuiApplication app(argc,argv); QQuickStyle::setStyle("Basic");
     AnnotationTests tests; return QTest::qExec(&tests,argc,argv);
 }
