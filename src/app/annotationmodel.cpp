@@ -1,5 +1,7 @@
 #include "annotationmodel.h"
 #include <QUuid>
+#include <QLineF>
+#include <QSet>
 #include <algorithm>
 #include <cmath>
 
@@ -40,8 +42,12 @@ void AnnotationModel::refreshRows() {
     }
 }
 void AnnotationModel::reset() {
+    cancelGesture();
+    const auto oldPages=geometry_.keys();
+    strokes_.clear(); nextInkOrder_=0; clearInkSelection();
     beginResetModel(); notes_.clear(); visible_.clear(); geometry_.clear(); active_.clear(); selected_.clear();
     beforeEdit_={}; undo_.clear(); redo_.clear(); endResetModel(); emit selectionChanged(); emit historyChanged();
+    for(int page:oldPages) emit inkChanged(page);
 }
 void AnnotationModel::setGeometry(int page,const PageGeometry& geometry) {
     if(!geometry.valid) return;
@@ -54,13 +60,11 @@ void AnnotationModel::setActivePages(const QList<int>& pages) {
 }
 void AnnotationModel::record(TextAnnotation before,TextAnnotation after) {
     if(before==after) return;
-    undo_.append({std::move(before),std::move(after)});
-    if(undo_.size()>256) undo_.removeFirst();
-    redo_.clear(); emit historyChanged();
+    record(Command{std::move(before),std::move(after),{}, {}});
 }
 QString AnnotationModel::create(int page,double x,double y) {
     if(!geometry_.contains(page) || !std::isfinite(x) || !std::isfinite(y) || x<0 || y<0 || x>=1 || y>=1) return {};
-    finishEditing();
+    cancelGesture(); clearInkSelection(); finishEditing();
     // Leave room for a usable editor at the right/bottom edge.
     const auto g=geometry_[page];
     x=std::min(x,std::max(0.0,1-48/g.units.width()));
@@ -76,7 +80,7 @@ QString AnnotationModel::create(int page,double x,double y) {
 }
 void AnnotationModel::select(const QString& id) {
     if(id==selected_ || !notes_.contains(id)) return;
-    finishEditing(); selected_=id; beforeEdit_=notes_[id]; emit selectionChanged();
+    cancelGesture(); clearInkSelection(); finishEditing(); selected_=id; beforeEdit_=notes_[id]; emit selectionChanged();
 }
 void AnnotationModel::finishEditing() {
     if(selected_.isEmpty()) return;
@@ -114,10 +118,184 @@ void AnnotationModel::apply(const TextAnnotation& from,const TextAnnotation& to)
     refreshRows(); if(!to.id.isEmpty()) notify(to.id,{});
 }
 void AnnotationModel::undo() {
+    cancelGesture(); clearInkSelection();
     finishEditing(); if(undo_.isEmpty()) return;
-    const auto c=undo_.takeLast(); apply(c.after,c.before); redo_.append(c); emit historyChanged();
+    const auto c=undo_.takeLast(); apply(c.after,c.before); applyInk(c.inkAfter,c.inkBefore); redo_.append(c); trimHistory(); emit historyChanged();
 }
 void AnnotationModel::redo() {
+    cancelGesture(); clearInkSelection();
     finishEditing(); if(redo_.isEmpty()) return;
-    const auto c=redo_.takeLast(); apply(c.before,c.after); undo_.append(c); emit historyChanged();
+    const auto c=redo_.takeLast(); apply(c.before,c.after); applyInk(c.inkBefore,c.inkAfter); undo_.append(c); trimHistory(); emit historyChanged();
+}
+
+
+namespace {
+bool validPoint(QPointF p) {
+    return std::isfinite(p.x()) && std::isfinite(p.y()) && p.x()>=0 && p.y()>=0 && p.x()<=1 && p.y()<=1;
+}
+double pointDistance(QPointF p,QPointF a,QPointF b) {
+    const auto d=b-a;
+    const double length=QPointF::dotProduct(d,d);
+    const double t=length>0 ? std::clamp(QPointF::dotProduct(p-a,d)/length,0.0,1.0) : 0;
+    return QLineF(p,a+t*d).length();
+}
+double cross(QPointF a,QPointF b) { return a.x()*b.y()-a.y()*b.x(); }
+double segmentDistance(QPointF a,QPointF b,QPointF c,QPointF d) {
+    const double denominator=cross(b-a,d-c);
+    if(std::abs(denominator)>1e-12) {
+        const double t=cross(c-a,d-c)/denominator, u=cross(c-a,b-a)/denominator;
+        if(t>=0 && t<=1 && u>=0 && u<=1) return 0;
+    }
+    return std::min({pointDistance(a,c,d),pointDistance(b,c,d),pointDistance(c,a,b),pointDistance(d,a,b)});
+}
+bool hits(const InkStroke& stroke,QPointF from,QPointF to,double radius) {
+    for(qsizetype i=0;i<stroke.points.size();++i)
+        if(segmentDistance(from,to,stroke.points[i],stroke.points[std::max(qsizetype(0),i-1)])<=radius+stroke.width/2) return true;
+    return false;
+}
+qsizetype inkBytes(const QList<InkStroke>& strokes) {
+    qsizetype bytes=strokes.capacity()*sizeof(InkStroke);
+    for(const auto& s:strokes) bytes+=s.id.capacity()*2+s.points.capacity()*sizeof(QPointF);
+    return bytes;
+}
+}
+qsizetype AnnotationModel::Command::bytes() const {
+    return (before.id.capacity()+after.id.capacity()+before.text.capacity()+after.text.capacity()
+        +before.family.capacity()+after.family.capacity())*2+inkBytes(inkBefore)+inkBytes(inkAfter);
+}
+qsizetype AnnotationModel::historyBytes() const {
+    qsizetype bytes=(undo_.capacity()+redo_.capacity())*sizeof(Command);
+    for(const auto& c:undo_) bytes+=c.bytes();
+    for(const auto& c:redo_) bytes+=c.bytes();
+    return bytes;
+}
+void AnnotationModel::record(Command command) {
+    redo_.clear(); undo_.append(std::move(command));
+    trimHistory();
+    emit historyChanged();
+}
+void AnnotationModel::trimHistory() {
+    undo_.squeeze(); redo_.squeeze();
+    while(undo_.size()+redo_.size()>AnnotationConfig::maxHistoryCommands || historyBytes()>AnnotationConfig::historyBytes) {
+        if(!undo_.isEmpty()) { undo_.removeFirst(); undo_.squeeze(); }
+        else if(!redo_.isEmpty()) { redo_.removeFirst(); redo_.squeeze(); }
+        else break;
+    }
+}
+void AnnotationModel::clearInkSelection() {
+    if(selectedInk_.isEmpty()) return;
+    const int page=strokes_.value(selectedInk_).page;
+    selectedInk_.clear(); emit inkSelectionChanged(); emit inkChanged(page);
+}
+QList<InkStroke> AnnotationModel::inkSnapshot() const {
+    auto result=strokes_.values(); result.append(erased_);
+    std::sort(result.begin(),result.end(),[](const auto& a,const auto& b){return a.order<b.order;});
+    return result;
+}
+QList<InkStroke> AnnotationModel::displayStrokes(int page) const {
+    QList<InkStroke> result;
+    for(const auto& s:strokes_) if(s.page==page && !(gesture_==Gesture::Move && s.id==preview_.id)) result.append(s);
+    if(!preview_.id.isEmpty() && preview_.page==page) result.append(preview_);
+    std::sort(result.begin(),result.end(),[](const auto& a,const auto& b){return a.order<b.order;});
+    return result;
+}
+void AnnotationModel::applyInk(const QList<InkStroke>& from,const QList<InkStroke>& to) {
+    QSet<int> pages;
+    for(const auto& s:from) { strokes_.remove(s.id); pages.insert(s.page); }
+    for(const auto& s:to) { strokes_[s.id]=s; pages.insert(s.page); }
+    for(int page:pages) emit inkChanged(page);
+}
+bool AnnotationModel::beginInk(int page,QPointF p,QColor color,double width) {
+    cancelGesture(); finishEditing(); clearInkSelection();
+    if(!geometry_.contains(page) || !validPoint(p) || !color.isValid() || !std::isfinite(width) || width<.25 || width>32) return false;
+    gestureError_.clear(); emit gestureErrorChanged();
+    color.setAlpha(255); // The MVP toolbar offers opaque ink, avoiding overlap alpha artifacts.
+    preview_={QUuid::createUuid().toString(QUuid::WithoutBraces),page,{geometry_[page].displayToPdf.map(p)},color,width};
+    preview_.order=nextInkOrder_++;
+    gesture_=Gesture::Draw; gesturePage_=page;
+    emit inkChanged(page); return true;
+}
+bool AnnotationModel::beginErase(int page,QPointF p,double radius) {
+    cancelGesture(); finishEditing(); clearInkSelection();
+    if(!geometry_.contains(page) || !validPoint(p) || !std::isfinite(radius) || radius<0) return false;
+    gesture_=Gesture::Erase; gesturePage_=page; eraserRadius_=radius;
+    lastPoint_=geometry_[page].displayToPdf.map(p);
+    eraseSegment(lastPoint_,lastPoint_); return true;
+}
+bool AnnotationModel::beginMoveInk(int page,QPointF p,double radius) {
+    cancelGesture(); finishEditing(); clearInkSelection();
+    if(!geometry_.contains(page) || !validPoint(p) || !std::isfinite(radius) || radius<0) return false;
+    const auto raw=geometry_[page].displayToPdf.map(p);
+    const auto ordered=displayStrokes(page);
+    for(auto it=ordered.crbegin();it!=ordered.crend();++it) {
+        if(!hits(*it,raw,raw,radius)) continue;
+        preview_=moveBefore_=*it; moveOrigin_=p;
+        selectedInk_=it->id; gesture_=Gesture::Move; gesturePage_=page;
+        emit inkSelectionChanged(); emit inkChanged(page); return true;
+    }
+    return false;
+}
+void AnnotationModel::eraseSegment(QPointF from,QPointF to) {
+    bool changed=false;
+    for(auto it=strokes_.begin();it!=strokes_.end();) {
+        if(it->page==gesturePage_ && hits(*it,from,to,eraserRadius_)) {
+            erased_.append(it.value()); it=strokes_.erase(it); changed=true;
+        } else ++it;
+    }
+    if(changed) emit inkChanged(gesturePage_);
+}
+void AnnotationModel::appendInk(QPointF p) {
+    if(gesture_==Gesture::None) return;
+    if(!validPoint(p)) { cancelGesture(); return; }
+    const auto g=geometry_[gesturePage_];
+    const auto raw=g.displayToPdf.map(p);
+    if(gesture_==Gesture::Draw) {
+        if(QLineF(raw,preview_.points.last()).length()<.1) return;
+        if(preview_.points.size()>=AnnotationConfig::maxStrokePoints) {
+            cancelGesture(); gestureError_=QStringLiteral("笔迹超过 65536 点，已取消本次手势；请分段书写。");
+            emit gestureErrorChanged(); return;
+        }
+        preview_.points.append(raw); emit inkChanged(gesturePage_);
+    } else if(gesture_==Gesture::Erase) {
+        eraseSegment(lastPoint_,raw); lastPoint_=raw;
+    } else {
+        // Clamp path centers to the page, keeping relative shape; the ink layer clips the edge.
+        const auto normalized=g.pdfToDisplay.map(moveBefore_.points.first());
+        double minX=normalized.x(),maxX=minX,minY=normalized.y(),maxY=minY;
+        for(const auto& point:moveBefore_.points) {
+            const auto n=g.pdfToDisplay.map(point);
+            minX=std::min(minX,n.x()); maxX=std::max(maxX,n.x());
+            minY=std::min(minY,n.y()); maxY=std::max(maxY,n.y());
+        }
+        const double dx=std::clamp(p.x()-moveOrigin_.x(),-minX,1-maxX);
+        const double dy=std::clamp(p.y()-moveOrigin_.y(),-minY,1-maxY);
+        const auto delta=g.displayToPdf.map(QPointF(dx,dy))-g.displayToPdf.map(QPointF());
+        preview_.points=moveBefore_.points;
+        for(auto& point:preview_.points) point+=delta;
+        emit inkChanged(gesturePage_);
+    }
+}
+void AnnotationModel::endInk() {
+    if(gesture_==Gesture::None) return;
+    const int page=gesturePage_;
+    Command c;
+    if(gesture_==Gesture::Draw) { strokes_[preview_.id]=preview_; c.inkAfter={preview_}; }
+    else if(gesture_==Gesture::Erase) c.inkBefore=erased_;
+    else if(preview_!=moveBefore_) { strokes_[preview_.id]=preview_; c.inkBefore={moveBefore_}; c.inkAfter={preview_}; }
+    gesture_=Gesture::None; preview_={}; moveBefore_={}; erased_.clear(); gesturePage_=-1;
+    if(!c.inkBefore.isEmpty() || !c.inkAfter.isEmpty()) record(std::move(c));
+    emit inkChanged(page);
+}
+void AnnotationModel::cancelGesture() {
+    if(gesture_==Gesture::None) return;
+    const int page=gesturePage_;
+    for(const auto& s:erased_) strokes_[s.id]=s;
+    gesture_=Gesture::None; preview_={}; moveBefore_={}; erased_.clear(); gesturePage_=-1;
+    emit inkChanged(page);
+}
+void AnnotationModel::removeInk() {
+    cancelGesture();
+    if(!strokes_.contains(selectedInk_)) return;
+    const auto stroke=strokes_.value(selectedInk_); clearInkSelection(); strokes_.remove(stroke.id);
+    Command c; c.inkBefore={stroke}; record(std::move(c)); emit inkChanged(stroke.page);
 }

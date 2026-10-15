@@ -161,6 +161,7 @@ void ShellState::schedule() {
 }
 void ShellState::goToPage(int page) {
     if (shuttingDown_ || page < 1 || page > pageCount_) return;
+    annotations_.cancelGesture();
     page_ = page - 1;
     model_.setViewport(model_.top(page_),viewportHeight_,viewportWidth_,zoom_);
     finishTextEditing();
@@ -198,6 +199,7 @@ void ShellState::setZoom(double zoom) {
     if (shuttingDown_ || !std::isfinite(zoom)) return;
     zoom = std::clamp(zoom,0.25,4.0);
     if (zoom_ == zoom) return;
+    annotations_.cancelGesture();
     zoom_ = zoom;
     model_.setViewport(model_.offset(),viewportHeight_,viewportWidth_,zoom_);
     emit layoutChanged();

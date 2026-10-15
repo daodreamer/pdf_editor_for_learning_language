@@ -155,3 +155,17 @@ $env:PATH = "$pwd/.tools/venv/Scripts;" + $env:PATH
 `LANGLERN_SCREENSHOT_DIR` 指向已存在的新目录时，交互测试保存空窗口浅/深主题、PDF 和旋转深色截图，拒绝覆盖旧图。`QT_SCALE_FACTOR=2` 可用于附加 DPI 回归。文件对话框的原生 OS 点击选取仍属于人工检查；自动化验证 Qt 对话框及 accepted 到真实引擎的路由。
 
 `check-shell-idle.py` 保留为阶段 1 历史隔离实验，会要求不加载 PDFium，不适用于阶段 2 正式程序。macOS 和远程 CI 均未在本轮执行。Windows FPDF_FILEACCESS 长度为 unsigned long，明确拒绝空文件和超过 4 GiB 的文件；密码输入尚未提供，受密码保护文件显示明确反馈。阶段 2 当时只检查当前页；阶段 3 已提供连续布局与正式缓存，仍无分块。
+
+
+## 阶段 6 标注与长笔迹复现
+
+```powershell
+./tools/build-windows.ps1 -Test
+$env:PATH = "$pwd/.deps/Qt/6.8.3/msvc2022_64/bin;" + $env:PATH
+./build/windows/ink_tests.exe -o benchmarks/results/my-new-ink-tests.log,txt
+.tools/venv/Scripts/python benchmarks/run-ink.py --run benchmarks/results/my-new-ink-run --repeat 3
+```
+
+run-ink.py 要求全新的目录，记录二进制/源码/样本散列、三个独立进程的输入处理和 frameSwapped 原始 trace、Windows 进程内存。该脚本测试真实 Qt Quick/D3D11 上注入的长笔迹，不模拟硬件延迟。`LANGLERN_SCREENSHOT_DIR` 指向已存在的新目录时，ink_tests 额外保存 ink-tools.png 和 ink-colors.png；`QT_SCALE_FACTOR=2` 可执行高 DPI 回归，实际 DPR 以日志为准。`LANGLERN_INK_TRACE` 指定新文件保存单次 longStrokeTrace 的 JSON；默认 CTest 不写原始 trace。QML lint 需 MSVC DevShell，与已有构建脚本同一环境中运行 `cmake --build build/windows --target all_qmllint`。
+
+阶段 6 不包含自动保存和导出。macOS、物理触控笔/触控板、实际跨屏 DPR 留待实机验证，详情见 PHASE6_REPORT。

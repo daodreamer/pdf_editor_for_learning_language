@@ -1,14 +1,14 @@
 # 开发路线图与阶段验收
 
-日期：2026-10-15。状态：阶段 0–3 Windows 交付记录保留；阶段 4 原生文字选择与复制、阶段 5 文字答案与坐标系统已按 Windows 范围交付；阶段 6–8 未实施。macOS 全部实机检查依用户要求延至整个项目完成后。阶段 3 的启动目标未达等待办保留。实际结果见 [PHASE0_REPORT.md](PHASE0_REPORT.md)、[PHASE1_REPORT.md](PHASE1_REPORT.md)、[PHASE2_REPORT.md](PHASE2_REPORT.md)、[PHASE3_REPORT.md](PHASE3_REPORT.md)、[PHASE4_REPORT.md](PHASE4_REPORT.md)、[PHASE5_REPORT.md](PHASE5_REPORT.md)。
+日期：2026-10-15。状态：阶段 0–3 Windows 交付记录保留；阶段 4 原生文字选择与复制、阶段 5 文字答案与坐标系统已按 Windows 范围交付；阶段 6 画笔/擦除/统一历史已按 Windows 范围交付；阶段 7–8 未实施。macOS 全部实机检查依用户要求延至整个项目完成后。阶段 3 的启动目标未达等待办保留。实际结果见 [PHASE0_REPORT.md](PHASE0_REPORT.md)、[PHASE1_REPORT.md](PHASE1_REPORT.md)、[PHASE2_REPORT.md](PHASE2_REPORT.md)、[PHASE3_REPORT.md](PHASE3_REPORT.md)、[PHASE4_REPORT.md](PHASE4_REPORT.md)、[PHASE5_REPORT.md](PHASE5_REPORT.md)、[PHASE6_REPORT.md](PHASE6_REPORT.md)。
 
 约束来源：[AGENTS.md](../AGENTS.md)。架构与接口见 [ARCHITECTURE.md](ARCHITECTURE.md)，测试口径与目标见 [PERFORMANCE.md](PERFORMANCE.md)。本文件列出的命令、目标与产物是后续任务，不是执行记录。
 
 ## 1. 执行原则与依赖
 
-**最新授权覆盖原停止位置**：用户明确要求使用 goal 模式完成阶段 5，并将全部 macOS 实机检查推迟到整个项目完成后。阶段 5 按 Windows 范围交付；不把 macOS 待验收作为本轮阻断，也不宣称双平台通过。原阶段 0–4 停止要求仅为历史授权范围。阶段 0 字体导出等风险按既有报告保留，不在本阶段提前实现阶段 7。
+**最新授权覆盖原停止位置**：用户明确要求使用 goal 模式完成阶段 6，并将全部 macOS 实机检查推迟到整个项目完成后。阶段 6 按 Windows 范围交付；不把 macOS 待验收作为本轮阻断，也不宣称双平台通过。原阶段 0–5 停止要求仅为历史授权范围。阶段 0 字体导出等风险按既有报告保留，不在本阶段提前实现阶段 7。
 
-本轮只完成阶段 5，结束后不自动进入阶段 6。
+本轮最新授权为 goal 模式完成阶段 6；Windows 验证，macOS 在项目完成后检查。结束后不自动进入阶段 7。
 
 阶段顺序保持用户要求。坐标系统、字体导出和恢复方案的可行性验证前移到阶段 0，完整实现仍放在阶段 5/7，避免基础架构成型后才发现无法准确导出。性能埋点从阶段 0/1 开始，阶段 8 汇总而不是首次测试。
 
@@ -34,7 +34,7 @@ flowchart LR
 - 本阶段目标有真实运行或测试证据，失败和跳过项可追踪。
 - 核心线程、坐标及原始文件保护约束不被破坏。
 - 按本阶段适用范围更新架构、性能基线、编译说明和已知限制。
-- Windows x64 和 macOS arm64 分别记录结果。本轮依用户明确授权以 Windows 验收交付，macOS 标记待验证并延至项目完成后，不阻断阶段 5；不宣称双平台通过。
+- Windows x64 和 macOS arm64 分别记录结果。本轮依用户明确授权以 Windows 验收交付，macOS 标记待验证并延至项目完成后，不阻断阶段 6；不宣称双平台通过。
 - 阶段完成不等于整个 MVP 完成，原型通过不等于所有性能目标已达到。
 
 ## 3. 阶段 0：技术风险与最小验证原型
@@ -284,6 +284,8 @@ Windows 已交付，实际证据、限制与 macOS 延期见 [PHASE2_REPORT.md](
 | 最小原型、构建、测试、性能采样 | Windows 已执行，详见阶段报告；macOS/Metal 未执行 |
 | 阶段 0 | 本次可执行实施交付；双平台完整验收未完成，macOS 按用户选择待验证 |
 | 阶段 1 | Windows 实施与验证完成；启动目标差距、原生对话框人工检查见 PHASE1_REPORT；macOS 按用户要求最后检查 |
-| 阶段 2–8 | 未开始，须后续指示 |
+| 阶段 2–5 | Windows 已交付，实际边界见各阶段报告 |
+| 阶段 6 | Windows 自由画笔、整笔擦除、移动删除和统一历史已交付，见 PHASE6_REPORT |
+| 阶段 7–8 | 未实施，须后续指示 |
 
-下一阶段为阶段 2 文档会话与异步单页，需要用户进一步授权。CI 配置不等于已有远程运行证据；macOS 到项目完成后再由用户实机检查。
+下一阶段为阶段 7 自动保存、恢复和 PDF 导出，需要用户进一步授权。CI 配置不等于已有远程运行证据；macOS 到项目完成后再由用户实机检查。

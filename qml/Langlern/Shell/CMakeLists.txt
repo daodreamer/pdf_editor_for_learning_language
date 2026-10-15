@@ -4,7 +4,10 @@ qt_add_qml_module(shell_ui STATIC
     CLASS_NAME LanglernShellPlugin
     DEPENDENCIES QtQuick QtQuick.Controls QtQuick.Layouts QtQuick.Dialogs
     QML_FILES Main.qml Theme.qml DocumentView.qml TextNote.qml
-    SOURCES ../../../src/app/annotationmodel.h ../../../src/app/annotationmodel.cpp
+    SOURCES ../../../src/app/inkstroke.h
+        ../../../src/app/inkitem.h ../../../src/app/inkitem.cpp
+        ../../../src/app/inkinput.h ../../../src/app/inkinput.cpp
+        ../../../src/app/annotationmodel.h ../../../src/app/annotationmodel.cpp
         ../../../src/app/shellstate.h ../../../src/app/shellstate.cpp
         ../../../src/app/pageitem.h ../../../src/app/pageitem.cpp
         ../../../src/app/readingmodel.h ../../../src/app/readingmodel.cpp

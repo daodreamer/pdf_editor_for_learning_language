@@ -257,3 +257,12 @@ benchmarks/results/<run-id>/
 高 DPI 使用独立进程 `QT_SCALE_FACTOR=2`，日志记录窗口逻辑尺寸及实际 DPR，当前为 3；它不模拟真实跨屏移动。GUI 投影以数据中原始锚点为准，允许 ≤1 设备像素的误差，排除最初鼠标点击整数舍入，纯原始坐标矩阵往返 <1e-6 页面单位，真实旋转/CropBox/UserUnit 样本角点检查 <0.001 原始单位。这些测试不替代原生高亮的设备像素差检查，也不代表 PDF 导出位置已验证。
 
 没有新增 A/B 优化或长期性能结论，没有重测启动、滚动帧时间、系统进程/GPU 峰值；阶段 3 待办继续保留。实际运行文件和边界见 [PHASE5_REPORT.md](PHASE5_REPORT.md)。
+
+
+## 阶段 6 长笔迹测量
+
+`benchmarks/run-ink.py --run benchmarks/results/<新目录> --repeat 3` 在真实 Qt Quick/D3D11 窗口注入 8192 次 mouse move，每 64 次 qWait(8)，坐标限制在实际可见页内；记录源码/二进制/样本散列、每次事件处理时间与单调时钟、渲染线程 frameSwapped 间隔、Windows 结束 working set/private 和进程生命周期 peak working set。日志与 JSON 是复现证据；不采集系统 GPU 内存或 private 峰值。
+
+handler_ms 仅测 sendEvent 内 GUI 处理，未涵盖几何同步与屏幕呈现；frameSwapped 是 Qt 提交代理，包含突发输入和测试等待间隔，不能当作硬件输入到屏幕延迟或稳定 60 FPS 证明。高 DPI 独立进程 QT_SCALE_FACTOR=2 的实际 DPR=3，系统可能缩短窗口逻辑高度，测试按可见边界生成轨迹，不能用裁剪外事件冒充有效书写。
+
+实际三次独立进程结果、设备、口径、原始路径及限制见 [PHASE6_REPORT.md](PHASE6_REPORT.md)。本阶段没有 A/B 性能提升结论，没有重测启动或 30 分钟滚动，阶段 3 待办继续保留。历史 16 MiB 是包含容器 capacity 的受管数据容量，不是进程/GPU 内存上限。

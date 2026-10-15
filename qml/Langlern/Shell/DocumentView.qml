@@ -7,8 +7,9 @@ ColumnLayout {
     id: view
     required property ShellState shell
     required property Theme theme
-    property int inputMode: 0 // 0 automatic, 1 original text selection, 2 answer input
+    property int inputMode: 0 // 0 automatic, 1 original text selection, 2 answer input, 3 pen, 4 eraser, 5 move ink
     function switchMode(mode: int): void {
+        shell.annotations.cancelGesture()
         shell.finishTextEditing()
         shell.textSelection.clear()
         inputMode = mode
@@ -17,6 +18,9 @@ ColumnLayout {
     Shortcut { sequence: (Qt.platform.os === "osx" ? "Meta" : "Ctrl") + "+Shift+A"; enabled: view.visible; onActivated: view.switchMode(0) }
     Shortcut { sequence: (Qt.platform.os === "osx" ? "Meta" : "Ctrl") + "+Shift+S"; enabled: view.visible; onActivated: view.switchMode(1) }
     Shortcut { sequence: (Qt.platform.os === "osx" ? "Meta" : "Ctrl") + "+Shift+T"; enabled: view.visible; onActivated: view.switchMode(2) }
+    Shortcut { sequence: (Qt.platform.os === "osx" ? "Meta" : "Ctrl") + "+Shift+P"; enabled: view.visible; onActivated: view.switchMode(3) }
+    Shortcut { sequence: (Qt.platform.os === "osx" ? "Meta" : "Ctrl") + "+Shift+E"; enabled: view.visible; onActivated: view.switchMode(4) }
+    Shortcut { sequence: (Qt.platform.os === "osx" ? "Meta" : "Ctrl") + "+Shift+M"; enabled: view.visible; onActivated: view.switchMode(5) }
     spacing: 8
     RowLayout {
         Layout.fillWidth: true
@@ -48,7 +52,7 @@ ColumnLayout {
         Button { objectName: "copyTextButton"; text: qsTr("复制选中文字"); enabled: view.shell.textSelection.ready; onClicked: view.shell.textSelection.copy() }
         ComboBox {
             objectName: "inputMode"
-            model: [qsTr("自动：空白输入 / 文字拖选"), qsTr("选择原文"), qsTr("输入答案")]
+            model: [qsTr("自动：空白输入 / 文字拖选"), qsTr("选择原文"), qsTr("输入答案"), qsTr("画笔"), qsTr("整笔橡皮擦"), qsTr("选择 / 移动笔迹")]
             currentIndex: view.inputMode
             onActivated: view.switchMode(currentIndex)
             Accessible.name: qsTr("页面交互模式")
@@ -73,6 +77,26 @@ ColumnLayout {
         Button { text: qsTr("撤销标注"); focusPolicy: Qt.NoFocus; enabled: view.shell.annotations.canUndo; onClicked: { view.shell.finishTextEditing(); view.shell.annotations.undo() } }
         Button { text: qsTr("重做标注"); focusPolicy: Qt.NoFocus; enabled: view.shell.annotations.canRedo; onClicked: view.shell.annotations.redo() }
         Label { text: qsTr("答案仅保存在本次会话，关闭后丢失"); color: view.theme.muted }
+    }
+    RowLayout {
+        Layout.leftMargin: 12
+        Label { text: qsTr("笔色"); color: view.theme.text }
+        ComboBox {
+            id: inkColors
+            objectName: "inkColors"
+            model: [qsTr("蓝"), qsTr("红"), qsTr("绿"), qsTr("黑")]
+            readonly property var colors: ["#235fbd", "#ce3446", "#188450", "#242424"]
+            Accessible.name: qsTr("画笔颜色")
+        }
+        Label { text: qsTr("粗细（页面单位）"); color: view.theme.text }
+        SpinBox { id: inkSize; objectName: "inkSize"; from: 1; to: 16; value: 2; Accessible.name: qsTr("画笔粗细") }
+        Button {
+            text: qsTr("删除所选笔迹")
+            focusPolicy: Qt.NoFocus
+            enabled: view.shell.annotations.inkSelection.length > 0
+            onClicked: view.shell.annotations.removeInk()
+        }
+        Label { text: view.shell.annotations.gestureError; color: view.theme.muted }
     }
     Label {
         Layout.fillWidth: true
@@ -132,6 +156,13 @@ ColumnLayout {
                     image: sheet.pixels
                     Accessible.role: Accessible.Graphic
                     Accessible.name: qsTr("PDF 第 %1 页").arg(sheet.pageNumber)
+                }
+                InkItem {
+                    anchors.fill: parent
+                    model: view.shell.annotations
+                    page: sheet.pageNumber - 1
+                    clip: true
+                    Accessible.ignored: true
                 }
                 SelectionItem {
                     anchors.fill: parent
@@ -213,7 +244,7 @@ ColumnLayout {
             acceptedButtons: Qt.LeftButton
             gesturePolicy: TapHandler.DragThreshold
             onTapped: function(eventPoint) {
-                if (selectionMouse.selecting || view.inputMode === 1 || view.shell.annotations.selectedId.length > 0) return
+                if (view.inputMode >= 3 || selectionMouse.selecting || view.inputMode === 1 || view.shell.annotations.selectedId.length > 0) return
                 const p = viewport.contentItem.mapFromItem(null, eventPoint.scenePosition.x, eventPoint.scenePosition.y)
                 if (view.shell.containsPage(p.x, p.y)) view.shell.createTextBox(p.x, p.y)
             }
@@ -223,20 +254,38 @@ ColumnLayout {
             delegate: TextNote {
                 onEditingFinished: selectionMouse.forceActiveFocus()
                 shell: view.shell
+                enabled: view.inputMode < 3
                 pageWidth: view.shell.displayPageWidth
                 pageHeight: pageWidth * notePageUnits.height / notePageUnits.width
                 pageTop: view.shell.contentHeight >= 0 ? view.shell.pageTop(notePage) : 0
                 contentWidth: viewport.contentWidth
             }
         }
+        InkInput {
+            id: inkInput
+            objectName: "inkInput"
+            x: viewport.contentX
+            y: viewport.contentY
+            width: viewport.width
+            height: viewport.height
+            enabled: view.inputMode >= 3
+            visible: enabled
+            shell: view.shell
+            mode: view.inputMode
+            onGestureStarting: viewport.cancelFlick()
+            contentX: viewport.contentX
+            contentY: viewport.contentY
+            inkColor: inkColors.colors[inkColors.currentIndex]
+            inkWidth: inkSize.value
+        }
         Shortcut {
             sequences: [StandardKey.Undo]
-            enabled: selectionMouse.activeFocus && view.shell.annotations.canUndo
+            enabled: (selectionMouse.activeFocus || inkInput.activeFocus) && view.shell.annotations.canUndo
             onActivated: view.shell.annotations.undo()
         }
         Shortcut {
             sequences: [StandardKey.Redo]
-            enabled: selectionMouse.activeFocus && view.shell.annotations.canRedo
+            enabled: (selectionMouse.activeFocus || inkInput.activeFocus) && view.shell.annotations.canRedo
             onActivated: view.shell.annotations.redo()
         }
     }
