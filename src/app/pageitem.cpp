@@ -14,6 +14,7 @@ PageItem::PageItem(QQuickItem* parent) : QQuickItem(parent) {
     setFlag(ItemHasContents);
 }
 void PageItem::present(QImage image) {
+    if (image.cacheKey() == image_.cacheKey()) return;
     image_ = std::move(image);
     ++revision_;
     update();

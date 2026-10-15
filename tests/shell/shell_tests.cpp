@@ -11,6 +11,7 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QWheelEvent>
 #include <QtQml/QQmlExtensionPlugin>
 #ifdef Q_OS_WIN
 #define NOMINMAX
@@ -297,7 +298,12 @@ private slots:
         QTRY_VERIFY(!shell.busy());
         QCOMPARE(shell.pageCount(), 8);
         QTest::qWait(150);
-        auto* page = window->findChild<QQuickItem*>(QStringLiteral("pdfPage"));
+        const auto findVisual = [](auto&& self, QQuickItem* item) -> QQuickItem* {
+            if (item->objectName() == QStringLiteral("pdfPage")) return item;
+            for (auto* child : item->childItems()) if (auto* found=self(self,child)) return found;
+            return nullptr;
+        };
+        auto* page = findVisual(findVisual,window->contentItem());
         QVERIFY(page);
         QVERIFY(page->isVisible());
         QVERIFY(!window->grabWindow().isNull());
@@ -324,6 +330,27 @@ private slots:
             restoredBlue |= c.blue() > 240 && c.red() < 15 && c.green() < 15;
         }
         QVERIFY(restoredRed && restoredBlue);
+        auto* viewport=window->findChild<QQuickItem*>(QStringLiteral("pdfViewport"));
+        QVERIFY(viewport);
+        const QPointF position=viewport->mapToScene(QPointF(viewport->width()/2,viewport->height()/2));
+        const auto wheel=[&](QPoint pixels,QPoint angles,Qt::KeyboardModifiers modifiers) {
+            QWheelEvent event(position,window->mapToGlobal(position.toPoint()),pixels,angles,
+                Qt::NoButton,modifiers,Qt::NoScrollPhase,false);
+            QCoreApplication::sendEvent(window,&event);
+        };
+        const double beforeScroll=viewport->property("contentY").toDouble();
+        wheel({},QPoint(0,-120),Qt::NoModifier);
+        QTRY_VERIFY(viewport->property("contentY").toDouble()>beforeScroll);
+        const double beforeZoom=shell.zoom();
+        wheel({},QPoint(0,120),Qt::ControlModifier);
+        QTRY_VERIFY(shell.zoom()>beforeZoom);
+        const double afterAngleZoom=shell.zoom();
+        wheel(QPoint(0,60),{},Qt::ControlModifier);
+        QTRY_VERIFY(shell.zoom()>afterAngleZoom);
+        const double afterPixelZoom=shell.zoom();
+        wheel({},{},Qt::ControlModifier);
+        QCOMPARE(shell.zoom(),afterPixelZoom);
+        shell.setZoom(1);
         shell.goToPage(2);
         QTRY_VERIFY(!shell.busy());
         shell.cycleTheme();

@@ -25,46 +25,78 @@ ColumnLayout {
         Label { text: qsTr("/ %1 页").arg(view.shell.pageCount); color: view.theme.text }
         Button { text: qsTr("下一页"); enabled: view.shell.currentPage < view.shell.pageCount; onClicked: view.shell.goToPage(view.shell.currentPage + 1) }
         Item { Layout.fillWidth: true }
-        Label { text: qsTr("适应页宽"); color: view.theme.muted }
         Button { text: qsTr("关闭文档"); onClicked: view.shell.clearSelection() }
+    }
+    RowLayout {
+        Layout.fillWidth: true
+        Layout.leftMargin: 12
+        Layout.rightMargin: 12
+        Button { text: "−"; Accessible.name: qsTr("缩小"); onClicked: view.shell.setZoom(view.shell.zoom / 1.2) }
+        Label { text: qsTr("%1%").arg(Math.round(view.shell.zoom * 100)); color: view.theme.text }
+        Button { text: "+"; Accessible.name: qsTr("放大"); onClicked: view.shell.setZoom(view.shell.zoom * 1.2) }
+        Button { text: qsTr("适应页宽"); onClicked: view.shell.setZoom(1) }
+        Item { Layout.fillWidth: true }
     }
     Flickable {
         id: viewport
+        objectName: "pdfViewport"
         Layout.fillWidth: true
         Layout.fillHeight: true
         clip: true
-        contentWidth: width
-        contentHeight: page.height + 32
+        contentWidth: Math.max(width, view.shell.contentWidth)
+        contentHeight: view.shell.contentHeight
         boundsBehavior: Flickable.StopAtBounds
         ScrollBar.vertical: ScrollBar {}
-        readonly property int targetWidth: Math.max(64, Math.ceil((width - 40) * Screen.devicePixelRatio))
-        onTargetWidthChanged: resizeTimer.restart()
-        Component.onCompleted: resizeTimer.restart()
+        ScrollBar.horizontal: ScrollBar {}
+        readonly property real renderDpr: Screen.devicePixelRatio
+        onRenderDprChanged: viewportTimer.restart()
+        function report(): void {
+            view.shell.updateViewport(contentY, height, width, renderDpr)
+        }
+        onContentYChanged: if (!viewportTimer.running) viewportTimer.start()
+        onWidthChanged: viewportTimer.restart()
+        onHeightChanged: viewportTimer.restart()
+        onVisibleChanged: if (visible) viewportTimer.restart()
+        Component.onCompleted: viewport.report()
         Connections {
             target: view.shell
-            property int previousPage: 0
-            function onSelectionChanged(): void {
-                if (previousPage !== view.shell.currentPage) {
-                    viewport.contentY = 0
-                    previousPage = view.shell.currentPage
+            function onLayoutChanged(): void {
+                viewport.contentY = view.shell.scrollOffset
+                viewportTimer.restart()
+            }
+        }
+        Timer { id: viewportTimer; interval: 16; onTriggered: viewport.report() }
+        Repeater {
+            model: view.shell.readingModel
+            delegate: Rectangle {
+                id: sheet
+                required property int pageNumber
+                required property real pageTop
+                required property real pageWidth
+                required property real pageHeight
+                required property var pixels
+                x: (viewport.contentWidth - width) / 2
+                y: sheet.pageTop
+                width: sheet.pageWidth
+                height: sheet.pageHeight
+                color: "white"
+                PageItem {
+                    objectName: "pdfPage"
+                    anchors.fill: parent
+                    image: sheet.pixels
+                    Accessible.role: Accessible.Graphic
+                    Accessible.name: qsTr("PDF 第 %1 页").arg(sheet.pageNumber)
                 }
             }
         }
-        Timer {
-            id: resizeTimer
-            interval: 120
-            onTriggered: view.shell.setRenderWidth(viewport.targetWidth)
-        }
-        PageItem {
-            id: page
-            objectName: "pdfPage"
-            x: 20
-            y: 16
-            width: Math.max(1, viewport.width - 40)
-            height: width * view.shell.pageRatio
-            image: view.shell.pageImage
-            Accessible.role: Accessible.Graphic
-            Accessible.name: qsTr("PDF 第 %1 页").arg(view.shell.currentPage)
+        WheelHandler {
+            acceptedModifiers: Qt.ControlModifier
+            onWheel: function(event) {
+                const delta = event.angleDelta.y || event.pixelDelta.y
+                if (delta !== 0)
+                    view.shell.setZoom(view.shell.zoom * (delta > 0 ? 1.1 : 1 / 1.1))
+                event.accepted = true
+            }
         }
     }
 }

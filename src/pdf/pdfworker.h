@@ -2,6 +2,8 @@
 #include <QImage>
 #include <QObject>
 #include <QSizeF>
+#include <QList>
+#include "readingconfig.h"
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -13,6 +15,10 @@ struct PdfRequest {
     QString path;
     int page = 0;
     int width = 1200;
+    qint64 maxBytes = 64 * 1024 * 1024;
+    int metadataStart = -1;
+    bool skipPreview = false;
+    bool previewOnly = false;
 };
 struct PdfFrame {
     quint64 session = 0;
@@ -25,6 +31,8 @@ struct PdfFrame {
     QString error;
     bool preview = false;
     bool limited = false;
+    int metadataStart = -1;
+    QList<QSizeF> sizes;
 };
 Q_DECLARE_METATYPE(PdfFrame)
 
@@ -35,10 +43,12 @@ public:
     ~PdfWorker() override;
     void submit(PdfRequest request);
     void shutdown();
+    void cancel(quint64 revision);
 signals:
     void frameReady(PdfFrame frame);
     void nativeClosed(quint64 session, int handles);
     void requestStarted(quint64 revision);
+    void requestFinished(quint64 revision);
     void discarded(quint64 revision);
     void stopped();
 private:

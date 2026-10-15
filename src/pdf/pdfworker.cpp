@@ -12,8 +12,8 @@
 
 namespace {
 constexpr qint64 maxImageBytes = 64 * 1024 * 1024;
-constexpr int maxDimension = 8192;
-constexpr int previewWidth = 480;
+constexpr int maxDimension = ReadingConfig::maxDimension;
+constexpr int previewWidth = ReadingConfig::previewWidth;
 std::atomic<int> nativeHandles{0};
 template<typename Scoped>
 class TrackedHandle {
@@ -78,6 +78,11 @@ void PdfWorker::submit(PdfRequest request) {
         QMetaObject::invokeMethod(this, &PdfWorker::drain, Qt::QueuedConnection);
     }
 }
+void PdfWorker::cancel(quint64 revision) {
+    std::lock_guard lock(mutex_);
+    latest_.store(revision);
+    pending_.reset();
+}
 void PdfWorker::shutdown() {
     std::lock_guard lock(mutex_);
     stopping_.store(true);
@@ -107,6 +112,7 @@ void PdfWorker::drain() {
         }
         emit requestStarted(request->revision);
         execute(*request);
+        emit requestFinished(request->revision);
         if (!current(request->revision)) {
             qInfo("pdf_discarded revision=%llu worker=%llu", request->revision, quint64(quintptr(QThread::currentThreadId())));
             emit discarded(request->revision);
@@ -156,6 +162,19 @@ void PdfWorker::execute(const PdfRequest& r) {
         }
         if (!current(r.revision)) return;
         result.pages = FPDF_GetPageCount(e.document.get());
+        if (r.metadataStart >= 0) {
+            result.metadataStart = r.metadataStart;
+            QElapsedTimer slice; slice.start();
+            for (int p=r.metadataStart; p<std::min(result.pages,r.metadataStart+ReadingConfig::metadataBatch); ++p) {
+                if (!current(r.revision)) return;
+                FS_SIZEF size{};
+                if (FPDF_GetPageSizeByIndexF(e.document.get(),p,&size)) result.sizes.append(QSizeF(size.width,size.height));
+                else result.sizes.append(QSizeF());
+                if (slice.elapsed() >= ReadingConfig::metadataSliceMs) break;
+            }
+            emit frameReady(std::move(result));
+            return;
+        }
         result.errorCode = QStringLiteral("page");
         require(r.page >= 0 && r.page < result.pages, "页码越界或文档没有页面。");
         TrackedHandle<ScopedFPDFPage> page(FPDF_LoadPage(e.document.get(), r.page));
@@ -165,20 +184,21 @@ void PdfWorker::execute(const PdfRequest& r) {
         result.points = QSizeF(w, h);
         result.errorCode = QStringLiteral("render");
         require(QSysInfo::ByteOrder == QSysInfo::LittleEndian, "当前图像路径需要 little-endian BGRA。");
+        const qint64 imageBudget = std::clamp(r.maxBytes,qint64(4),maxImageBytes);
         const auto render = [&](int wanted, bool preview) {
             if (!current(r.revision)) return;
             const double ratio = h / w;
             const double cap = std::min({double(maxDimension), double(maxDimension) / ratio,
-                std::sqrt(double(maxImageBytes) / (4 * ratio))});
+                std::sqrt(double(imageBudget) / (4 * ratio))});
             require(std::isfinite(cap) && cap >= 1, "页面比例超过渲染上限。");
             int width = std::max(1, int(std::min(double(wanted), std::floor(cap))));
             // The continuous area bound must also hold after rounding height up.
-            while (width > 1 && qint64(width) * qint64(std::ceil(width * ratio)) * 4 > maxImageBytes)
+            while (width > 1 && qint64(width) * qint64(std::ceil(width * ratio)) * 4 > imageBudget)
                 --width;
             const double pixelHeight = std::ceil(width * ratio);
             require(std::isfinite(pixelHeight) && pixelHeight > 0 && pixelHeight <= maxDimension, "页面比例超过渲染上限。");
             const int height = int(pixelHeight);
-            require(qint64(width) * height * 4 <= maxImageBytes, "页面像素超过 64 MiB 上限。");
+            require(qint64(width) * height * 4 <= imageBudget, "页面像素超过 64 MiB 上限。");
             QImage image(width, height, QImage::Format_ARGB32);
             require(!image.isNull(), "页面图像内存分配失败。");
             image.fill(Qt::white);
@@ -197,8 +217,8 @@ void PdfWorker::execute(const PdfRequest& r) {
                 r.session, r.revision, r.page, preview, width, height, qint64(frame.image.sizeInBytes()), timer.nsecsElapsed() / 1e6);
             emit frameReady(std::move(frame));
         };
-        if (r.width > previewWidth) render(previewWidth, true);
-        render(r.width, false);
+        if (r.width > previewWidth && !r.skipPreview) render(previewWidth, true);
+        render(r.width, r.previewOnly);
     } catch (const std::exception& error) {
         result.error = QString::fromUtf8(error.what());
         qInfo("pdf_error session=%llu revision=%llu code=%s", r.session, r.revision, qPrintable(result.errorCode));

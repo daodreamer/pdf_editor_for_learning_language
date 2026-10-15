@@ -221,3 +221,25 @@ benchmarks/results/<run-id>/
 本轮用 839,214,902 bytes / 800 页原创 raw 灰度图像 PDF 验证首页和末页按需加载。它不覆盖 JPEG/JPX 等真实扫描教材解码，也不验证连续阅读帧率。默认回归的单次首页 worker 预览/目标累计时间为 3.719/9.789 ms，末页 12.680/18.994 ms；OS 文件缓存已热且样本数为 1，不能称 P95、冷启动或正式性能基线。早期同样本打开曾测到 375.805 ms、末页累计约 2.9 s，保留于 budget-fixed.log，不能择优后宣称稳定性能。
 
 证据根目录 `benchmarks/results/phase2-20261015/`，环境/散列/运行步骤见 PHASE2_REPORT。尚未新增冷启动、可交互完整验收、实际帧时间分布或 GPU 显存测量；阶段 1 的启动统计保持历史结果，不能用于代表已接入 PDFium 的阶段 2。
+
+
+## 阶段 3 连续阅读测量方法
+
+`benchmarks/run-reading.py` 调用真实 Qt Quick/D3D11 的 reading_tests 轨迹；输入文件先散列，明确预热系统文件缓存。`--seconds 60 --repeat 5` 用于重复轨迹，`--seconds 1800 --repeat 1` 用于连续 30 分钟压力。目录以 CreateNew/不存在方式创建，拒绝覆盖结果。只记录散列、资源、页码与时间，不保存文档正文。
+
+最终轨迹由 frameSwapped 的 GUI queued 回调推进下一帧，按单调时钟实际经过时间移动约 500 逻辑 px/s（资源重建后的单次追赶最多计 200 ms），每 11 秒远跳并反向、19 秒切换缩放，61 秒隐藏/释放/重显窗口。每秒记录当前页、缩放、活跃节点数、CPU 图像、GPU 像素估算、缓存计数和 Windows working set/private。逐帧数据保存在 `.frames.json`，窗口激活/可见状态、实际与模型滚动偏移及资源在 JSONL，逐次引擎/纹理事件在 test log。邻域与 pin 一并计费；低预算有独立确定性测试。
+
+帧时间直接在渲染线程 `frameSwapped` 事件采集 `steady_clock` 时间戳，读取时短暂锁定复制；GUI queued 连接会混入主线程投递等待，不用其间隔充当渲染帧分布。该事件仍是 Qt 提交代理，不是系统实际 scanout，也不是 OS 输入到屏幕延迟。首次图像/目标交付使用单调时钟，从开始打开计时；其后 GUI 收到的首个 frameSwapped 作为首像素/目标提交代理。分位为 nearest-rank。
+
+缓存精确命中率=exactHits/lookups，降档复用率=degradedHits/lookups；lookups 为可见范围/分辨率改变或显式跳页，含重新回到已有页的需求，不含每帧重复读取 model role。renderJobs 包含邻页预加载，不能作为分母。GPU 无独立 LRU 命中率，本阶段记录纹理创建事件和驻留估算，不伪造 GPU 命中百分比。
+
+`sample-gpu-windows.ps1` 可对指定 reading_tests PID 每约 5 秒读取 Windows GPU Process Memory 的 Dedicated/Shared/Total Committed，实例按 PID 过滤并汇总；缺失计数为 null/错误记录，不当作零。它是系统报告的进程 GPU 内存，包含驱动和 Qt 开销，不等于模型像素预算。计数器采样有额外开销，启用情况写入报告；采样可能漏过短峰值。
+
+30 分钟轨迹和最终数值见 PHASE3_REPORT.md。开发中旧 qWait、8 ms timer 驱动/GUI queued 间隔数据仅作诊断，保留原始结果，不能与最终渲染事件数据混为 A/B 性能提升。
+
+
+初期 8 ms PreciseTimer 轨迹确实出现同一运行从约 500 px/s 降至约 257 px/s；这直接证明输入驱动节奏改变，但不足以确定具体 OS/Qt 原因。timer 轨迹保留功能/预算验证价值，帧分布不能直接当作最终固定速度滚动基线。最终帧驱动的 raw frame 仍包含一次 hide/release/show；故最长间隔可能来自有意重建资源，不得把整体 max 无条件称为普通滚动卡顿或把它悄悄删除。
+
+通知优化控制 A 与最终 B 使用相同帧驱动、65 秒、前台激活、设备/构建类型/预算及固定输入；A 恢复每次滚动发全 role 通知，B 仅在几何或图像变化时发对应通知。A 的完整源码快照在 `.tools/phase3-control-source/`，runner 的 `--source-root` 只指定散列来源，绝不把当前源码冒作旧二进制源码。A 单轮与 B 多轮只能作初步比较，不能证明稳定性能收益。
+
+阶段 3 最终 Windows 数值见 [PHASE3_REPORT.md](PHASE3_REPORT.md)：5×65 s 固定速度轨迹 P95 6.47–16.20 ms、P99 7.50–17.26 ms；长压力及系统 GPU 计数单列。3+30 热启动外部交互代理 P95 396.10 ms，未达 300 ms 目标；P3-START-1 等任务明确保留。macOS 和冷启动未验证。

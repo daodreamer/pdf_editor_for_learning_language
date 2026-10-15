@@ -1,6 +1,38 @@
 # 构建与复现
 
-## 阶段 2 正式应用（Windows 已验证）
+## 阶段 3 连续阅读与缓存
+
+阶段 3 沿用下文固定依赖，不增加产品第三方组件。独立验证目录：
+
+```powershell
+./tools/build-windows.ps1 -BuildDir build/phase3 -Test
+./tools/run-windows.ps1 -BuildDir build/phase3
+```
+
+默认 `build/windows` 也可按同一命令重新构建。新增 reading_tests，CTest 共三个目标（shell_interactions、shell_startup、reading_invariants）。默认不执行压力轨迹；readingStress 和没有 LANGLERN_LARGE_PDF 的 largeFileSmoke 会明确 skipped。CTest 通过不等于长压力或大文件已执行。交互测试查找 Repeater delegate 时遍历视觉树，而不假定 delegate 的 QObject parent 是窗口。
+
+真实 D3D11 连续轨迹（输出目录必须不存在）：
+
+```powershell
+.tools/venv/Scripts/python benchmarks/run-reading.py --pdf .deps/samples/synthetic-800.pdf --run benchmarks/results/my-reading --seconds 60 --repeat 5
+.tools/venv/Scripts/python benchmarks/run-reading.py --pdf .deps/samples/synthetic-800.pdf --run benchmarks/results/my-stress --seconds 1800 --repeat 1
+```
+
+`--pdf` 必须是已存在的本地输入。合成样本不存在时，用 `tools/make-large-fixture.py .deps/samples/synthetic-800.pdf` 生成；不把 synthetic 当真实扫描教材。runner 为子进程配置 Qt PATH，超时上限为每轮 seconds+120。日志、每秒轨迹、逐帧间隔、源码/二进制/输入散列均留在新的本地运行目录。
+
+可选系统 GPU 采样：在压力进程运行时取其准确 PID，另开开发终端运行以下命令；输出文件必须不存在。
+
+```powershell
+./benchmarks/sample-gpu-windows.ps1 -TargetProcessId <reading_tests_PID> -OutputPath <新的绝对JSONL路径>
+```
+
+计数器不可用时保留错误/空值；不以 GPU 像素估算代替系统 GPU 数据。无需该脚本即可运行正式阅读器与测试。计数器和大量诊断输出不用于无扰动基线。
+
+阅读操作：拖动滚动条、滚轮或触控板连续阅读；页码输入可远跳；−/+ 或 Ctrl+滚轮缩放到 25%–400%，适应页宽回到 100%。窗口和 DPR 变化重新请求清晰图像。默认 CPU 图像 128 MiB、活跃 GPU 像素估算 64 MiB、前后各 1 页，参数在 src/pdf/readingconfig.h。低预算、超大页采用动态分辨率，尚无局部分块；不保证高倍放大始终原生清晰。
+
+本轮实际执行结果及未验证边界以 PHASE3_REPORT.md 为准。macOS 运行检查按用户安排延后；阶段 4 及后续功能尚未实现。
+
+## 阶段 2 构建基础（历史记录）
 
 复用固定 Qt 6.8.3 / MSVC / CMake / Ninja 环境，正式应用现在动态链接 PDFium 157.0.8100.0；无需原型字体。已具备 Qt 的环境可仅获取锁定引擎：
 
@@ -96,4 +128,4 @@ $env:PATH = "$pwd/.tools/venv/Scripts;" + $env:PATH
 
 `LANGLERN_SCREENSHOT_DIR` 指向已存在的新目录时，交互测试保存空窗口浅/深主题、PDF 和旋转深色截图，拒绝覆盖旧图。`QT_SCALE_FACTOR=2` 可用于附加 DPI 回归。文件对话框的原生 OS 点击选取仍属于人工检查；自动化验证 Qt 对话框及 accepted 到真实引擎的路由。
 
-`check-shell-idle.py` 保留为阶段 1 历史隔离实验，会要求不加载 PDFium，不适用于阶段 2 正式程序。macOS 和远程 CI 均未在本轮执行。Windows FPDF_FILEACCESS 长度为 unsigned long，明确拒绝空文件和超过 4 GiB 的文件；密码输入尚未提供，受密码保护文件显示明确反馈。只检查当前页，暂无连续布局、正式缓存或分块。
+`check-shell-idle.py` 保留为阶段 1 历史隔离实验，会要求不加载 PDFium，不适用于阶段 2 正式程序。macOS 和远程 CI 均未在本轮执行。Windows FPDF_FILEACCESS 长度为 unsigned long，明确拒绝空文件和超过 4 GiB 的文件；密码输入尚未提供，受密码保护文件显示明确反馈。阶段 2 当时只检查当前页；阶段 3 已提供连续布局与正式缓存，仍无分块。

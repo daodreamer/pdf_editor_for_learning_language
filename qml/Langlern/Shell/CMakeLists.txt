@@ -6,6 +6,7 @@ qt_add_qml_module(shell_ui STATIC
     QML_FILES Main.qml Theme.qml DocumentView.qml
     SOURCES ../../../src/app/shellstate.h ../../../src/app/shellstate.cpp
         ../../../src/app/pageitem.h ../../../src/app/pageitem.cpp
+        ../../../src/app/readingmodel.h ../../../src/app/readingmodel.cpp
 )
 target_include_directories(shell_ui PUBLIC ../../../src/app)
 target_link_libraries(shell_ui PUBLIC Qt6::Quick langlern_pdf PRIVATE Qt6::QuickControls2 Qt6::QuickDialogs2)

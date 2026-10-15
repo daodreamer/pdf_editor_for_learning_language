@@ -3,6 +3,8 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QStyleHints>
+#include <algorithm>
+#include <cmath>
 
 ShellState::ShellState(QObject* parent) : QObject(parent) {
     connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged,
@@ -18,6 +20,15 @@ ShellState::ShellState(QObject* parent) : QObject(parent) {
     connect(&thread_, &QThread::finished, this, [this] {
         shutdownComplete_ = true;
         emit shutdownChanged();
+    });
+    scheduleTimer_.setSingleShot(true);
+    scheduleTimer_.setInterval(ReadingConfig::viewportDelayMs);
+    connect(&scheduleTimer_, &QTimer::timeout, this, &ShellState::schedule);
+    connect(&model_, &ReadingModel::geometryChanged, this, &ShellState::layoutChanged);
+    connect(worker_, &PdfWorker::requestFinished, this, [this](quint64 revision) {
+        if (revision != revision_ || shuttingDown_) return;
+        inFlight_ = false;
+        scheduleTimer_.start();
     });
     thread_.setObjectName(QStringLiteral("PDFium"));
     thread_.start();
@@ -47,8 +58,9 @@ void ShellState::selectFile(const QUrl& url) {
         selectedName_ = file.fileName();
         page_ = 0;
         pageCount_ = 0;
-        image_ = {};
-        ratio_ = 1;
+        model_.reset(0);
+        failed_.clear();
+        metadataCursor_ = 0;
         emit imageChanged();
         request();
     }
@@ -64,47 +76,135 @@ void ShellState::clearSelection() {
     errorCode_.clear();
     pageCount_ = 0;
     page_ = 0;
-    image_ = {};
+    model_.reset(0);
     busy_ = false;
     worker_->submit({session_, ++revision_, {}, 0, renderWidth_});
     emit imageChanged();
     emit selectionChanged();
 }
 
+void ShellState::invalidate() {
+    ++revision_;
+    worker_->cancel(revision_);
+    inFlight_ = false;
+    failed_.clear();
+    if (!scheduleTimer_.isActive()) scheduleTimer_.start();
+}
 void ShellState::request() {
-    busy_ = true;
+    invalidate();
+    busy_ = pageCount_ == 0 || !model_.ready(page_,viewportAttached_ ? model_.targetWidth(page_,dpr_) : renderWidth_);
     errorCode_.clear();
-    statusText_ = QStringLiteral("正在加载页面…");
-    worker_->submit({session_, ++revision_, path_, page_, renderWidth_});
+    statusText_ = busy_ ? QStringLiteral("正在加载页面…") : QStringLiteral("已显示");
+    schedule();
     emit selectionChanged();
 }
+void ShellState::schedule() {
+    if (shuttingDown_ || path_.isEmpty() || inFlight_) return;
+    int candidate = -1;
+    int width = renderWidth_;
+    if (!pageCount_) {
+        if (failed_.contains(0)) return;
+        candidate = 0;
+    } else {
+        const auto pages = model_.priority();
+        for (const bool visibleOnly : {true,false}) {
+            for (int p : pages) {
+                if (visibleOnly != model_.visible(p) || failed_.contains(p)) continue;
+                if (model_.image(p).isNull()) { candidate=p; break; }
+            }
+            if (candidate < 0) for (int p : pages) {
+                const int target = viewportAttached_ ? model_.targetWidth(p,dpr_) : renderWidth_;
+                if (visibleOnly == model_.visible(p) && !failed_.contains(p) && !model_.ready(p,target)) { candidate=p; break; }
+            }
+            if (candidate >= 0) break;
+        }
+        if (candidate >= 0) width = viewportAttached_ ? model_.targetWidth(candidate,dpr_) : renderWidth_;
+    }
+    PdfRequest r{session_,++revision_,path_,std::max(0,candidate),width};
+    r.maxBytes = model_.pageBudget();
+    r.skipPreview = viewportAttached_;
+    if (viewportAttached_ && candidate >= 0 && model_.image(candidate).isNull() && width > ReadingConfig::previewWidth) {
+        r.width = ReadingConfig::previewWidth;
+        r.previewOnly = true;
+    }
+    if (candidate < 0) {
+        while (metadataCursor_ < pageCount_ && model_.known(metadataCursor_)) ++metadataCursor_;
+        if (metadataCursor_ >= pageCount_) {
+            busy_ = false;
+            emit selectionChanged();
+            return;
+        }
+        r.metadataStart = metadataCursor_;
+    } else ++model_.renderJobs;
+    requestedWidth_ = r.width;
+    inFlight_ = true;
+    worker_->submit(std::move(r));
+}
 void ShellState::goToPage(int page) {
-    if (shuttingDown_ || page < 1 || page > pageCount_ || page - 1 == page_) return;
+    if (shuttingDown_ || page < 1 || page > pageCount_) return;
     page_ = page - 1;
-    image_ = {};
+    model_.setViewport(model_.top(page_),viewportHeight_,viewportWidth_,zoom_);
+    emit layoutChanged();
     emit imageChanged();
+    model_.recordDemand(page_,viewportAttached_ ? model_.targetWidth(page_,dpr_) : renderWidth_);
     request();
 }
 void ShellState::setRenderWidth(int pixels) {
-    pixels = qBound(64, pixels, 8192);
+    pixels = qBound(64,pixels,8192);
     if (shuttingDown_ || renderWidth_ == pixels) return;
     renderWidth_ = pixels;
     if (!path_.isEmpty() && pageCount_ > 0) request();
+}
+void ShellState::updateViewport(double y,double height,double width,double dpr) {
+    if (shuttingDown_ || !std::isfinite(y) || !std::isfinite(height) || !std::isfinite(width)
+        || !std::isfinite(dpr) || dpr <= 0 || height <= 0 || width <= 0) return;
+    const auto oldPages = model_.priority();
+    const auto oldWidth = model_.targetWidth(page_,dpr_);
+    viewportAttached_ = true;
+    viewportWidth_ = width; viewportHeight_ = height; dpr_ = dpr;
+    model_.setViewport(y,height,width,zoom_);
+    page_ = model_.pageAt(model_.offset());
+    busy_ = pageCount_ > 0 && !failed_.contains(page_) && !model_.ready(page_,model_.targetWidth(page_,dpr_));
+    emit selectionChanged(); emit imageChanged();
+    if (oldPages != model_.priority() || oldWidth != model_.targetWidth(page_,dpr_)) {
+        for (int p : model_.priority()) if (model_.visible(p)) model_.recordDemand(p,model_.targetWidth(p,dpr_));
+        invalidate();
+    }
+    else if (!inFlight_ && !scheduleTimer_.isActive()) scheduleTimer_.start();
+}
+void ShellState::setZoom(double zoom) {
+    if (shuttingDown_ || !std::isfinite(zoom)) return;
+    zoom = std::clamp(zoom,0.25,4.0);
+    if (zoom_ == zoom) return;
+    zoom_ = zoom;
+    model_.setViewport(model_.offset(),viewportHeight_,viewportWidth_,zoom_);
+    emit layoutChanged();
+    model_.recordDemand(page_,model_.targetWidth(page_,dpr_));
+    request();
 }
 void ShellState::acceptFrame(const PdfFrame& frame) {
     if (shuttingDown_ || frame.session != session_ || frame.revision != revision_) {
         emit renderDiscarded(frame.revision);
         return;
     }
-    busy_ = frame.preview;
+    if (frame.metadataStart >= 0) {
+        metadataCursor_ = frame.metadataStart + int(frame.sizes.size());
+        model_.setSizes(frame.metadataStart,frame.sizes);
+        return;
+    }
     errorCode_ = frame.errorCode;
     if (!frame.error.isEmpty()) {
         statusText_ = frame.error;
-        image_ = {};
+        failed_.insert(frame.page);
+        busy_ = false;
     } else {
-        pageCount_ = frame.pages;
-        ratio_ = frame.points.height() / frame.points.width();
-        image_ = frame.image;
+        if (pageCount_ != frame.pages) {
+            pageCount_ = frame.pages;
+            model_.reset(pageCount_);
+        }
+        model_.setSizes(frame.page,{frame.points});
+        model_.put(frame.page,frame.image,requestedWidth_,!frame.preview);
+        busy_ = !model_.ready(page_,viewportAttached_ ? model_.targetWidth(page_,dpr_) : renderWidth_);
         statusText_ = frame.preview ? QStringLiteral("预览已显示，正在提高清晰度…")
                     : frame.limited ? QStringLiteral("已显示（受内存预算限制，已降低分辨率）。")
                                     : QStringLiteral("已显示");

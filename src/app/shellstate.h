@@ -4,6 +4,8 @@
 #include <QUrl>
 #include <QThread>
 #include "pdfworker.h"
+#include "readingmodel.h"
+#include <QTimer>
 #include <QtQml/qqmlregistration.h>
 
 class ShellState : public QObject {
@@ -19,6 +21,11 @@ class ShellState : public QObject {
     Q_PROPERTY(bool busy READ busy NOTIFY selectionChanged)
     Q_PROPERTY(bool shutdownComplete READ shutdownComplete NOTIFY shutdownChanged)
     Q_PROPERTY(QImage pageImage READ pageImage NOTIFY imageChanged)
+    Q_PROPERTY(QAbstractItemModel* readingModel READ readingModel CONSTANT)
+    Q_PROPERTY(double contentHeight READ contentHeight NOTIFY layoutChanged)
+    Q_PROPERTY(double contentWidth READ contentWidth NOTIFY layoutChanged)
+    Q_PROPERTY(double scrollOffset READ scrollOffset NOTIFY layoutChanged)
+    Q_PROPERTY(double zoom READ zoom NOTIFY layoutChanged)
     Q_PROPERTY(double pageRatio READ pageRatio NOTIFY selectionChanged)
     Q_PROPERTY(QString errorCode READ errorCode NOTIFY selectionChanged)
 public:
@@ -32,8 +39,16 @@ public:
     int currentPage() const { return page_ + 1; }
     bool busy() const { return busy_; }
     bool shutdownComplete() const { return shutdownComplete_; }
-    QImage pageImage() const { return image_; }
-    double pageRatio() const { return ratio_; }
+    QImage pageImage() const { return model_.image(page_); }
+    QAbstractItemModel* readingModel() { return &model_; }
+    ReadingModel& model() { return model_; }
+    double contentHeight() const { return model_.contentHeight(); }
+    double contentWidth() const { return model_.contentWidth(); }
+    double scrollOffset() const { return model_.offset(); }
+    double zoom() const { return zoom_; }
+    Q_INVOKABLE void updateViewport(double y, double height, double width, double dpr);
+    Q_INVOKABLE void setZoom(double zoom);
+    double pageRatio() const { return model_.ratio(page_); }
     QString errorCode() const { return errorCode_; }
     Q_INVOKABLE void selectFile(const QUrl& url);
     Q_INVOKABLE void clearSelection();
@@ -48,12 +63,23 @@ signals:
     void themeChanged();
     void imageChanged();
     void shutdownChanged();
+    void layoutChanged();
     void documentClosed(quint64 session, int handles);
     void renderStarted(quint64 revision);
     void renderDiscarded(quint64 revision);
 private:
     void request();
     void acceptFrame(const PdfFrame& frame);
+    void schedule();
+    void invalidate();
+    ReadingModel model_;
+    QTimer scheduleTimer_;
+    QSet<int> failed_;
+    bool inFlight_ = false;
+    int requestedWidth_ = 1200;
+    int metadataCursor_ = 0;
+    double zoom_ = 1, dpr_ = 1, viewportWidth_ = 1000, viewportHeight_ = 700;
+    bool viewportAttached_ = false;
     QString selectedName_;
     QString statusText_;
     int themeMode_ = 0; // system, light, dark
@@ -61,13 +87,11 @@ private:
     PdfWorker* worker_ = nullptr; // deleted by QThread::finished
     QString path_;
     QString errorCode_;
-    QImage image_;
     quint64 session_ = 0;
     quint64 revision_ = 0;
     int pageCount_ = 0;
     int page_ = 0;
     int renderWidth_ = 1200;
-    double ratio_ = 1;
     bool busy_ = false;
     bool shuttingDown_ = false;
     bool shutdownComplete_ = false;
