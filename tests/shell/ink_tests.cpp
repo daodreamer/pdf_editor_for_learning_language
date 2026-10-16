@@ -173,7 +173,7 @@ private slots:
         QVERIFY(!engine.rootObjects().isEmpty()); auto* w=qobject_cast<QQuickWindow*>(engine.rootObjects().first()); QVERIFY(w);
         w->show(); QVERIFY(QTest::qWaitForWindowExposed(w));
         s.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/scan.pdf"));
-        QTRY_VERIFY(s.annotations()->geometry(0).valid); QTRY_VERIFY(!s.busy()); s.setZoom(.6); QTRY_VERIFY(!s.busy()); QTest::qWait(300);
+        QTRY_VERIFY(s.storageReady()); QTRY_VERIFY(s.annotations()->geometry(0).valid); QTRY_VERIFY(!s.busy()); s.setZoom(.6); QTRY_VERIFY(!s.busy()); QTest::qWait(300);
         auto* viewport=find(w->contentItem(),"pdfViewport"); QVERIFY(viewport);
         auto* input=qobject_cast<InkInput*>(find(w->contentItem(),"inkInput")); QVERIFY(input);
         qInfo()<<"ink_window"<<w->size()<<"DPR"<<w->devicePixelRatio();
@@ -310,7 +310,7 @@ private slots:
         auto* w=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(w);
         w->show(); QVERIFY(QTest::qWaitForWindowExposed(w));
         s.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/text.pdf"));
-        QTRY_VERIFY(s.annotations()->geometry(0).valid); s.setZoom(.6); QTRY_VERIFY(!s.busy()); QTest::qWait(300);
+        QTRY_VERIFY(s.storageReady()); QTRY_VERIFY(s.annotations()->geometry(0).valid); s.setZoom(.6); QTRY_VERIFY(!s.busy()); QTest::qWait(300);
         auto* viewport=find(w->contentItem(),"pdfViewport"); QVERIFY(viewport);
         auto* colors=find(w->contentItem(),"inkColors"); auto* size=find(w->contentItem(),"inkSize"); QVERIFY(colors); QVERIFY(size);
         QTest::keyClick(w,Qt::Key_P,Qt::ControlModifier|Qt::ShiftModifier);

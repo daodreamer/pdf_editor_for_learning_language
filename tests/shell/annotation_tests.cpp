@@ -470,6 +470,7 @@ private slots:
         QTRY_VERIFY(shell.annotations()->snapshot().isEmpty()); QVERIFY(!shell.annotations()->canUndo());
         QTRY_VERIFY(shell.annotations()->geometry(0).valid);
         QTRY_VERIFY(shell.textSelection()->snapshot(0));
+        QTRY_VERIFY(shell.storageReady());
         QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,pos(.25,.2));
         QTRY_COMPARE(shell.annotations()->snapshot().size(),1);
         QTest::keyClick(window,Qt::Key_A);
