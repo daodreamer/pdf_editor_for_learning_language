@@ -132,7 +132,7 @@ private slots:
         QTRY_VERIFY(s->ready());
         QCOMPARE(s->text().replace(QChar(0xa0),QChar(' ')),QStringLiteral("中文练习 Bonjour"));
         QTest::keyClick(window,Qt::Key_C,Qt::ControlModifier);
-        QCOMPARE(QGuiApplication::clipboard()->text(),s->text());
+        QTRY_COMPARE(QGuiApplication::clipboard()->text(),s->text());
         QTest::qWait(100);
         if(!output.isEmpty()) {
             QFile file(QDir(output).filePath("chinese-selection.png"));
