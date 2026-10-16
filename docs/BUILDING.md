@@ -218,9 +218,11 @@ run-ink.py 要求全新的目录，记录二进制/源码/样本散列、三个�
 新增design_tests使用Windows实际OCR语言包，缺引擎/英文包时明确skipped；本机实际识别已通过。语音以本机SAPI离线包为准，UK/US包缺失时明确报错。音频测试使用临时生成的静音WAV，不用假进度。上述本机Windows后端不代表macOS已支持。
 
 截图复现（输出目录先创建且保持独立）：在Qt bin PATH下设置 LANGLERN_SCREENSHOT_DIR，运行 `build/windows/design_tests.exe screenLayoutsAndScreenshots`。整套验证 `build/windows/design_tests.exe` 包括词库、OCR和真实导出；CTest的design_workflows默认包含这些检查。
-# GitHub Actions 故障修复（2026-10-16）
+## GitHub Actions 故障修复（2026-10-16）
 
 `43707cc` 的 Windows CI 详情确认三处问题：首次生成词库时 SQLite 事务上下文不负责关闭连接，导致 `.pending` 重命名报 WinError 32；无 WinMM 输出设备的 runner 无法执行真实播放；文字框手柄在渐显首帧前被 `visible: opacity > 0` 禁用。词库连接现以 `closing` 显式释放，支持 `--output-dir` 隔离验证；手柄在需要显示时立即参与命中；音频测试仅在系统枚举不到输出设备时明确 QSKIP，有设备时仍要求真实播放、定位与循环。
 
 两个 Windows workflow 启用原生命令失败传播，依赖初始化失败不再继续构建；构建脚本在 CTest 失败时打印具体 Qt 断言（包括原生命令直接抛错的情况）。本机 Release 构建、8/8 CTest 组（56.10 s）与 qmllint 通过；在新的隔离目录用锁定 CSV 实际生成并重复打开 770611 词条的 SQLite 数据库成功，未触碰现有开发词库。无音频设备分支须以 GitHub runner 的实际执行结果为准，不能当作播放功能通过。
+
+远端首次复跑确认词库和音频环境处理已生效，另发现测试前置条件不足：原始坐标测试需等待 `storageReady` 后才可直接写标注；自动输入测试应点击确定的空白区域，避开原 PDF 第三行文字在不同 DPI 舍入后的命中边缘。已补齐等待并使用空白位置，不改动原文选择优先级。
 

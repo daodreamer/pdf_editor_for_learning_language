@@ -230,6 +230,7 @@ private slots:
         ShellState shell; shell.updateViewport(0,700,1000,1.5);
         shell.selectFile(QUrl::fromLocalFile(fixture));
         QTRY_COMPARE(shell.pageCount(),8);
+        QTRY_VERIFY(shell.storageReady());
         for(int page=0;page<8;++page) {
             shell.goToPage(page+1);
             QTRY_VERIFY(shell.annotations()->geometry(page).valid);
@@ -304,6 +305,7 @@ private slots:
         ShellState shell; shell.updateViewport(0,700,1000,1);
         shell.selectFile(QUrl::fromLocalFile(fixture));
         QTRY_COMPARE(shell.pageCount(),8); QTRY_VERIFY(shell.annotations()->geometry(0).valid);
+        QTRY_VERIFY(shell.storageReady());
         const auto id=shell.annotations()->create(0,.2,.3);
         shell.annotations()->setText(id,QStringLiteral("keep editing"),24);
         const auto before=shell.model().priority();
@@ -325,6 +327,7 @@ private slots:
         window->show(); QVERIFY(QTest::qWaitForWindowExposed(window));
         shell.selectFile(QUrl::fromLocalFile(fixture));
         QTRY_VERIFY(shell.annotations()->geometry(0).valid); QTRY_VERIFY(shell.textSelection()->snapshot(0));
+        QTRY_VERIFY(shell.storageReady());
         QTRY_VERIFY(!shell.busy()); QTest::qWait(300);
         auto* viewport=find(window->contentItem(),QStringLiteral("pdfViewport")); QVERIFY(viewport);
         const auto posF=[&](double x,double y) {
@@ -334,7 +337,8 @@ private slots:
         const auto pos=[&](double x,double y) { return posF(x,y).toPoint(); };
         qInfo()<<"annotation_window logical"<<window->size()<<"dpr"<<window->devicePixelRatio();
         const auto jobs=shell.model().renderJobs;
-        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,pos(.25,.2));
+        // The fixture's third text line is near y=.2; use blank paper for auto input.
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,pos(.25,.3));
         QTRY_COMPARE(shell.annotations()->snapshot().size(),1);
         auto* editor=find(window->contentItem(),QStringLiteral("annotationEditor")); QVERIFY(editor);
         QTRY_VERIFY(editor->hasActiveFocus());

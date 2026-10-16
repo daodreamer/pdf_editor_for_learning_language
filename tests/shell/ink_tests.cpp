@@ -150,6 +150,7 @@ private slots:
         ShellState s; s.updateViewport(0,700,1000,1);
         s.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/text.pdf"));
         QTRY_COMPARE(s.pageCount(),8);
+        QTRY_VERIFY(s.storageReady());
         for(int page=0;page<8;++page) {
             s.goToPage(page+1); QTRY_VERIFY(s.annotations()->geometry(page).valid);
             const auto g=s.annotations()->geometry(page);
