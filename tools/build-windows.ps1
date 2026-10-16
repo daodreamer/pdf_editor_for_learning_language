@@ -1,4 +1,4 @@
-param([string]$BuildDir = 'build/windows', [switch]$Test, [switch]$Phase0)
+param([string]$BuildDir = 'build/windows', [switch]$Test, [switch]$Phase0, [switch]$Lint)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 Push-Location $root
@@ -21,4 +21,10 @@ try {
         ctest --test-dir $BuildDir --output-on-failure
         if ($LASTEXITCODE) { throw 'CTest failed' }
     }
+    if ($Lint) {
+        cmake --build $BuildDir --target all_qmllint
+        if ($LASTEXITCODE) { throw 'QML lint failed' }
+    }
+    & "$root/.tools/venv/Scripts/python" -X utf8 "$root/tools/build_provenance.py" $BuildDir
+    if ($LASTEXITCODE) { throw 'Build provenance recording failed' }
 } finally { Pop-Location }

@@ -98,5 +98,13 @@
   {
     "file": "notices/qt/Qt-GPL-exception-1.0.txt",
     "sha256": "40678d338ce53cd93f8b22b281a2ecbcaa3ee65ce60b25ffb0c462b0530846b2"
+  },
+  {
+    "file": "notices/windows-sdk/sdk_license.rtf",
+    "sha256": "0f4a26ac9dc50066f8a1bfeaaf3f092d1b9e4791df5487b9f3c31e7c3dc4d7f5"
+  },
+  {
+    "file": "notices/windows-sdk/sdk_third_party_notices.rtf",
+    "sha256": "ebb6640a8246b39b70322c5cec9aad7a71e86ea7b86c9c604d3a7f3ff1b30e89"
   }
 ]

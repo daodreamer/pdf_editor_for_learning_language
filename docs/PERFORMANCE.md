@@ -275,3 +275,21 @@ handler_ms 仅测 sendEvent 内 GUI 处理，未涵盖几何同步与屏幕呈�
 800 页、839214902 bytes 原创合成扫描样本，Windows Release 单次结果：CPU 首页图像回调 62.146 ms，全内容身份与恢复就绪 8078.679 ms，显式保存回调 51.290 ms，实际 PDF 导出 24573.139 ms，输出 845821740 bytes。前两者分别是工作线程图像到 GUI 与工作区可编辑时间；没有显示设备呈现计时。导出包括两次源内容 SHA-256、字体准备、PDF 写入与回读，不能当作纯保存 API 时间。样本不代表真实压缩教材，不据单次运行推断优化提升。
 
 标准八页真实窗口证据运行导出 258.516 ms，27 次 GUI 心跳；大文件打开至导出处理 3638 次心跳。定时器请求间隔 1 ms 不保证实际 1 ms；只证明事件循环仍在处理。未新增进程/GPU 峰值或帧时间分布测量，阶段 3 性能待办保留。完整设备、依赖、真实原始路径、验证及限制见 [PHASE7_REPORT.md](PHASE7_REPORT.md)。
+
+
+## 阶段 8 最终 Windows 测量入口与证据边界
+
+`run-startup.py --control-exe <A.exe> --control-source-root <A实际源码>` 可对 A/B/BA 顺序交错采样，每个变体 3 次预热 + 默认 30 次新进程。Control 只将最终 Main.qml 中 documentLoader 的 active 初值改为 true；其余产品源码相同，使用同一 Qt、MSVC、Release 和 D3D11。两个源码树与二进制分别散列。外部口径仍是启动请求到接收 interactive_proxy 日志，内部口径为 main 到首帧后的合成 F6 回执。两者都不是硬件输入延迟；冷启动未测。旧初步 before/after 数据与最终受控 A/B 分开，不能把一次尾值下降当作收益。
+
+最终阅读基线按 --seconds 65 --repeat 5，不并行运行窗口测试/构建；原始 Qt frameSwapped 分位每轮报告，包含远跳、缩放和 hide/release/show。首次目标就绪必须等待延迟创建的真实视口绑定到目标分辨率，不能把创建视口之前的默认位图当作视口高清完成。首次图像和 frameSwapped 仍为应用代理，不是系统 scanout。
+
+可选 --workflow（至少 1800 秒）每 30 秒从 800 页样本切到小扫描样本，再切回；在允许编辑时每约 15 秒增加真实笔迹，通过正常自动保存与切换提交。回到大样本且存储就绪后逐笔比较恢复快照；结束要求至少 50 次文档切换、25 次恢复核对及非零新增笔迹。关闭后等待原生文档销毁，断言 CPU 页面缓存、GPU 受管估算与 PDFium 句柄归零，另记录进程 working set/private；这不代表驱动或分配器立即归零。
+
+每秒 sampled_preview_coverage / sampled_sharp_coverage 依据当前视口与页面几何、CPU 图像和预算目标就绪状态计算，排除页间空白；无页面时为 null。它是 1 Hz 采样，不能代替逐帧真实像素覆盖或 OS 呈现，sharp 指预算允许的当前分辨率。文档切换期间的空白与预览未就绪样本保留。最终系统 GPU 采样保存独立 JSONL，进程系统显存与像素估算分列。
+
+长测用于组合正确性、保存恢复与资源压力；若并行编译或系统采样，必须记入 environment.json，不作为无扰动滚动基线。ASan 与注入高 DPI 套件另存，不能混入性能结论。bulkSnapshotDiskRoundtrip 使用 2048 个文字答案、64 条笔迹、262144 个点，检查真实磁盘提交后完整恢复；save/restore 毫秒是直接 worker 方法的同步诊断成本，不是 UI 线程或输入到屏幕延迟。
+
+阶段 8 最终执行表、数值、候选包与未覆盖项见 [PHASE8_REPORT.md](PHASE8_REPORT.md)。原阶段 0–7 的真实文件与结果保留，不用新数据改写历史。
+
+
+阶段 8 还提供 `--profile scrolling --seconds 120 --repeat 5` 的纯滚动（60 s 下滚再返回），与原混合轨迹分列；`fast` 为 8 视口/s、2 s 反向，`navigation` 为 50 次目标，`zoom` 为 20×4 个缩放档。轨迹守卫的速度、距离阈值、间隔和倍数记录在 profile_policy；四个间隔是测试容差，不是 Qt 时限保证。高速停止后在有界等待内检查模型最终位置和全部可见预算目标就绪，记录 input_settled。最终数值以 PHASE8_REPORT 与各运行目录原始数据为准。

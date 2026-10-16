@@ -1,3 +1,4 @@
+#include "testapplication.h"
 #include <QTemporaryDir>
 #include "shellstate.h"
 
@@ -223,6 +224,7 @@ private slots:
         QCOMPARE(engine.rootObjects().size(), 1);
         auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().first());
         QVERIFY(window);
+        QVERIFY(!window->findChild<QQuickItem*>(QStringLiteral("pdfViewport")));
         window->show();
         QVERIFY(QTest::qWaitForWindowExposed(window));
         window->requestActivate();
@@ -336,6 +338,21 @@ private slots:
         QVERIFY(restoredRed && restoredBlue);
         auto* viewport=window->findChild<QQuickItem*>(QStringLiteral("pdfViewport"));
         QVERIFY(viewport);
+        QVERIFY(viewport->height() > 150);
+        auto* tools=window->findChild<QQuickItem*>(QStringLiteral("editingTools"));
+        QVERIFY(tools);
+        for (auto* control : tools->childItems()) {
+            if (!control->isVisible()) continue;
+            QVERIFY(control->x() >= 0);
+            QVERIFY(control->x()+control->width() <= tools->width()+1);
+        }
+        auto* navigation=window->findChild<QQuickItem*>(QStringLiteral("navigationTools"));
+        QVERIFY(navigation);
+        for (auto* control : navigation->childItems()) {
+            if (!control->isVisible()) continue;
+            QVERIFY(control->x() >= 0);
+            QVERIFY(control->x()+control->width() <= navigation->width()+1);
+        }
         const QPointF position=viewport->mapToScene(QPointF(viewport->width()/2,viewport->height()/2));
         const auto wheel=[&](QPoint pixels,QPoint angles,Qt::KeyboardModifiers modifiers) {
             QWheelEvent event(position,window->mapToGlobal(position.toPoint()),pixels,angles,
@@ -382,7 +399,7 @@ int main(int argc, char** argv) {
 #ifdef Q_OS_WIN
     app.setFont(QFont(QStringLiteral("Microsoft YaHei UI")));
 #endif
-    QQuickStyle::setStyle(QStringLiteral("Basic"));
+    configureTestApplication(app);
 #ifdef Q_OS_WIN
     QQuickWindow::setGraphicsApi(QSGRendererInterface::Direct3D11);
 #endif

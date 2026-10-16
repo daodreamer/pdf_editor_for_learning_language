@@ -1,5 +1,24 @@
 # 构建与复现
 
+## 阶段 8 Windows 交付
+
+```powershell
+./tools/build-windows.ps1 -Test -Lint
+./tools/package-windows.ps1 -OutputDir build/packages/windows-x64
+.tools/venv/Scripts/python -X utf8 tools/validate-windows-package.py --package build/packages/windows-x64 --out benchmarks/results/my-package-check
+```
+
+构建脚本保存产品输入及 EXE 散列，打包前检查对应关系。打包脚本使用已锁定 Qt 的 windeployqt 扫描 QML，复制 PDFium、字体、对应运行库与通知，保存实际源码快照、逐文件散列和 ZIP；拒绝已有目录/压缩包。校验器先核对散列，再从独立副本运行产品启动探针并检查 Qt 加载路径，最后加入测试专用 Qt6Test.dll 和测试 exe 跑六个功能套件。测试专用文件不会加入产品 ZIP。此校验清除 SDK/Qt 环境路径，但使用同一开发机，不能冒充干净 VM。
+
+阅读/切换/标注/保存恢复 30 分钟组合压力：
+
+```powershell
+.tools/venv/Scripts/python -X utf8 benchmarks/run-reading.py --exe build/windows/reading_tests.exe --pdf .deps/samples/synthetic-800.pdf --run benchmarks/results/my-workflow --seconds 1800 --repeat 1 --workflow
+```
+
+普通重复阅读基线不加 --workflow，使用 --seconds 65 --repeat 5。帧数据是 Qt 提交代理，系统内存与受管预算分开。最终执行结果和未达到的目标见 [PHASE8_REPORT.md](PHASE8_REPORT.md)；候选包操作见 [WINDOWS_PACKAGE.md](WINDOWS_PACKAGE.md)。
+
+
 ## 阶段 7 保存恢复与导出
 
 ```powershell

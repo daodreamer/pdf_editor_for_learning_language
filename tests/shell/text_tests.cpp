@@ -1,3 +1,4 @@
+#include "testapplication.h"
 #include <QTemporaryDir>
 #include "shellstate.h"
 #include <QClipboard>
@@ -306,7 +307,7 @@ int main(int argc,char** argv) {
 #ifdef Q_OS_WIN
     app.setFont(QFont(QStringLiteral("Microsoft YaHei UI")));
 #endif
-    QQuickStyle::setStyle(QStringLiteral("Basic"));
+    configureTestApplication(app);
 #ifdef Q_OS_WIN
     QQuickWindow::setGraphicsApi(QSGRendererInterface::Direct3D11);
 #endif

@@ -21,11 +21,13 @@ ColumnLayout {
     Shortcut { sequence: (Qt.platform.os === "osx" ? "Meta" : "Ctrl") + "+Shift+P"; enabled: view.visible; onActivated: view.switchMode(3) }
     Shortcut { sequence: (Qt.platform.os === "osx" ? "Meta" : "Ctrl") + "+Shift+E"; enabled: view.visible; onActivated: view.switchMode(4) }
     Shortcut { sequence: (Qt.platform.os === "osx" ? "Meta" : "Ctrl") + "+Shift+M"; enabled: view.visible; onActivated: view.switchMode(5) }
-    spacing: 8
-    RowLayout {
+    spacing: 4
+    Flow {
+        objectName: "navigationTools"
         Layout.fillWidth: true
         Layout.margins: 12
-        Button { text: qsTr("上一页"); enabled: view.shell.currentPage > 1; onClicked: view.shell.goToPage(view.shell.currentPage - 1) }
+        spacing: 4
+        ActionButton { symbol: "previous"; compact: true; text: qsTr("上一页"); enabled: view.shell.currentPage > 1; onClicked: view.shell.goToPage(view.shell.currentPage - 1) }
         SpinBox {
             objectName: "pageNumber"
             from: 1
@@ -36,51 +38,53 @@ ColumnLayout {
             onValueModified: view.shell.goToPage(value)
             Accessible.name: qsTr("页码")
         }
-        Label { text: qsTr("/ %1 页").arg(view.shell.pageCount); color: view.theme.text }
-        Button { text: qsTr("下一页"); enabled: view.shell.currentPage < view.shell.pageCount; onClicked: view.shell.goToPage(view.shell.currentPage + 1) }
-        Item { Layout.fillWidth: true }
-        Button { text: qsTr("关闭文档"); onClicked: view.shell.clearSelection() }
+        Label { height: 40; verticalAlignment: Text.AlignVCenter; text: qsTr("/ %1 页").arg(view.shell.pageCount); color: view.theme.text }
+        ActionButton { symbol: "next"; compact: true; text: qsTr("下一页"); enabled: view.shell.currentPage < view.shell.pageCount; onClicked: view.shell.goToPage(view.shell.currentPage + 1) }
+        ToolButton { text: "−"; Accessible.name: qsTr("缩小"); onClicked: view.shell.setZoom(view.shell.zoom / 1.2) }
+        Label { height: 40; verticalAlignment: Text.AlignVCenter; text: qsTr("%1%").arg(Math.round(view.shell.zoom * 100)); color: view.theme.text }
+        ToolButton { text: "+"; Accessible.name: qsTr("放大"); onClicked: view.shell.setZoom(view.shell.zoom * 1.2) }
+        Button { text: qsTr("适应页宽"); onClicked: view.shell.setZoom(1) }
+        ActionButton { symbol: "close"; compact: true; text: qsTr("关闭文档"); onClicked: view.shell.clearSelection() }
     }
-    RowLayout {
+    Flow {
+        objectName: "editingTools"
         Layout.fillWidth: true
         Layout.leftMargin: 12
         Layout.rightMargin: 12
-        Button { text: "−"; Accessible.name: qsTr("缩小"); onClicked: view.shell.setZoom(view.shell.zoom / 1.2) }
-        Label { text: qsTr("%1%").arg(Math.round(view.shell.zoom * 100)); color: view.theme.text }
-        Button { text: "+"; Accessible.name: qsTr("放大"); onClicked: view.shell.setZoom(view.shell.zoom * 1.2) }
-        Button { text: qsTr("适应页宽"); onClicked: view.shell.setZoom(1) }
-        Button { objectName: "copyTextButton"; text: qsTr("复制选中文字"); enabled: view.shell.textSelection.ready; onClicked: view.shell.textSelection.copy() }
+        spacing: 6
+        ActionButton { symbol: "copy"; compact: true; objectName: "copyTextButton"; text: qsTr("复制选中文字"); enabled: view.shell.textSelection.ready; onClicked: view.shell.textSelection.copy() }
         ComboBox {
             enabled: view.shell.storageReady
             objectName: "inputMode"
-            model: [qsTr("自动：空白输入 / 文字拖选"), qsTr("选择原文"), qsTr("输入答案"), qsTr("画笔"), qsTr("整笔橡皮擦"), qsTr("选择 / 移动笔迹")]
+            model: [qsTr("自动输入 / 拖选"), qsTr("选择原文"), qsTr("输入答案"), qsTr("画笔"), qsTr("整笔橡皮擦"), qsTr("选择 / 移动笔迹")]
             currentIndex: view.inputMode
             onActivated: view.switchMode(currentIndex)
             Accessible.name: qsTr("页面交互模式")
         }
-        Item { Layout.fillWidth: true }
-    }
-    RowLayout {
-        Layout.leftMargin: 12
         Button {
             text: qsTr("完成编辑")
             focusPolicy: Qt.NoFocus
             enabled: view.shell.annotations.selectedId.length > 0
             onClicked: { view.shell.finishTextEditing(); selectionMouse.forceActiveFocus() }
         }
-        Button {
+        ActionButton {
+            symbol: "delete"
+            compact: true
             objectName: "deleteNoteButton"
             text: qsTr("删除文字框")
             focusPolicy: Qt.NoFocus
             enabled: view.shell.annotations.selectedId.length > 0
             onClicked: { view.shell.resetInput(); view.shell.annotations.removeSelected(); selectionMouse.forceActiveFocus() }
         }
-        Button { text: qsTr("撤销标注"); focusPolicy: Qt.NoFocus; enabled: view.shell.annotations.canUndo; onClicked: { view.shell.finishTextEditing(); view.shell.annotations.undo() } }
-        Button { text: qsTr("重做标注"); focusPolicy: Qt.NoFocus; enabled: view.shell.annotations.canRedo; onClicked: view.shell.annotations.redo() }
-        Label { text: view.shell.storageStatus; textFormat: Text.PlainText; Layout.fillWidth: true; elide: Text.ElideRight; color: view.theme.muted }
+        ActionButton { symbol: "undo"; compact: true; text: qsTr("撤销标注"); focusPolicy: Qt.NoFocus; enabled: view.shell.annotations.canUndo; onClicked: { view.shell.finishTextEditing(); view.shell.annotations.undo() } }
+        ActionButton { symbol: "redo"; compact: true; text: qsTr("重做标注"); focusPolicy: Qt.NoFocus; enabled: view.shell.annotations.canRedo; onClicked: view.shell.annotations.redo() }
     }
-    RowLayout {
+    Flow {
+        Layout.fillWidth: true
         Layout.leftMargin: 12
+        Layout.rightMargin: 12
+        visible: view.inputMode >= 3
+        spacing: 6
         Label { text: qsTr("笔色"); color: view.theme.text }
         ComboBox {
             enabled: view.shell.storageReady
@@ -129,7 +133,7 @@ ColumnLayout {
         onWidthChanged: viewportTimer.restart()
         onHeightChanged: viewportTimer.restart()
         onVisibleChanged: if (visible) viewportTimer.restart()
-        Component.onCompleted: viewport.report()
+        Component.onCompleted: Qt.callLater(viewport.report)
         Connections {
             target: view.shell
             function onLayoutChanged(): void {
@@ -194,7 +198,7 @@ ColumnLayout {
             height: viewport.height
             acceptedButtons: Qt.LeftButton
             preventStealing: true
-            cursorShape: Qt.IBeamCursor
+            cursorShape: view.inputMode === 2 ? Qt.IBeamCursor : Qt.ArrowCursor
             property bool dragging: false
             property bool selecting: false
             property point origin

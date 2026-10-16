@@ -1,4 +1,13 @@
-# 阶段 0 依赖与许可审查
+# 依赖与许可审查
+
+## 阶段 8 Windows 候选包增量
+
+新增轻量线性图标为本项目原创 PathSvg 路径，采用 MIT；由既有 Qt Declarative 的 Quick Shapes 渲染，没有复制 Lucide 资源或增加 QtSvg 依赖。实际供应商 SPDX 的 Shapes 插件提供 LGPL-3.0-only 选项。保持 C++20 / Qt 6.8.3 / PDFium 157.0.8100.0 与 Noto 字体锁定版本。
+
+打包脚本以 windeployqt 的实际部署目录生成逐文件 SHA-256；附带原始 Qt SPDX、版权与第三方通知超集、PDFium 全部通知、字体 OFL、MSVC redist 清单入口及构建源码。deployed-binaries.json 将可识别的实际 DLL 关联供应商 SPDX，并记录 vendor SHA1 是否一致；未匹配项和部署改写不能被当作已审查成功。运行闭包不含 Qt Test、MuPDF、Python 或项目 skills。源码快照含测试与基准脚本，但不含私有 PDF、结果目录或开发工具二进制。
+
+候选包、动态替换权、源码位置、微软 runtime/DirectX、公开发布门槛见 [DISTRIBUTION.md](DISTRIBUTION.md)。此阶段明确交付本地测试候选，不宣称许可闭包、安全更新、签名或干净系统审批全部完成；旧阶段的“尚未制作发行包”是当时的历史状态。
+
 
 ## 阶段 7 产品字体增量
 

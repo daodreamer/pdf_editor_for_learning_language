@@ -1,3 +1,4 @@
+#include "testapplication.h"
 #include <QTemporaryDir>
 #include "shellstate.h"
 #include "inkinput.h"
@@ -177,6 +178,7 @@ private slots:
         qInfo()<<"ink_window"<<w->size()<<"DPR"<<w->devicePixelRatio();
         const auto jobs=s.model().renderJobs;
         QTest::keyClick(w,Qt::Key_P,Qt::ControlModifier|Qt::ShiftModifier); QTRY_COMPARE(input->mode(),3);
+        QTest::qWait(60); // Settle the contextual toolbar layout before projecting input points.
         const auto a=point(s,viewport,.2,.2), b=point(s,viewport,.6,.2);
         QTest::mousePress(w,Qt::LeftButton,Qt::NoModifier,a);
         QTest::mouseMove(w,b,20); QVERIFY(s.annotations()->gestureActive());
@@ -218,6 +220,7 @@ private slots:
         QTest::keyClick(w,Qt::Key_Delete); QTRY_VERIFY(s.annotations()->inkSnapshot().isEmpty());
         s.annotations()->undo(); QCOMPARE(s.annotations()->inkSnapshot(),original);
         QTest::keyClick(w,Qt::Key_P,Qt::ControlModifier|Qt::ShiftModifier);
+        QTest::qWait(60);
         QTest::mousePress(w,Qt::LeftButton,Qt::NoModifier,point(s,viewport,.2,.3));
         QEvent deactivate(QEvent::WindowDeactivate); QGuiApplication::sendEvent(w,&deactivate);
         QTest::mouseRelease(w,Qt::LeftButton,Qt::NoModifier,point(s,viewport,.3,.3));
@@ -362,6 +365,6 @@ private slots:
 int main(int argc,char** argv) {
     QTemporaryDir workspace; qputenv("LANGLERN_WORKSPACE_DIR",workspace.path().toUtf8());
 
-    QGuiApplication app(argc,argv); QQuickStyle::setStyle("Basic"); InkTests tests; return QTest::qExec(&tests,argc,argv);
+    QGuiApplication app(argc,argv); configureTestApplication(app); InkTests tests; return QTest::qExec(&tests,argc,argv);
 }
 #include "ink_tests.moc"

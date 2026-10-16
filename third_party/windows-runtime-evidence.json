@@ -1,0 +1,10 @@
+{
+  "recorded": "2026-10-15",
+  "sdk": "10.0.26100.0",
+  "source": "Windows Kits/10/Redist/D3D/x64/d3dcompiler_47.dll",
+  "dll_sha256": "e407b9ffadef47e87994dc488214f75405cf04ee99589f2315fc7ab99fd1dfe2",
+  "sdk_redist_list": "https://learn.microsoft.com/en-us/legal/windows-sdk/redist",
+  "vs_redist_list": "https://learn.microsoft.com/en-us/visualstudio/releases/2026/redistribution",
+  "scope": "The listed unmodified SDK D3D compiler is eligible for Classic Windows applications, subject to SDK terms and a valid software license. This record is not a blanket legal approval of the distribution.",
+  "dxc": "Excluded: the application selects D3D11, not D3D12."
+}

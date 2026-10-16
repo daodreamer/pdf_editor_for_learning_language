@@ -48,14 +48,14 @@ ApplicationWindow {
     Action {
         id: closeAction
         text: qsTr("关闭文档")
-        shortcut: "Ctrl+W"
+        shortcut: (Qt.platform.os === "osx" ? "Meta" : "Ctrl") + "+W"
         enabled: window.shell.selectedName.length > 0
         onTriggered: window.shell.clearSelection()
     }
     Action {
         id: themeAction
         text: window.themeLabel
-        shortcut: "Ctrl+Shift+L"
+        shortcut: (Qt.platform.os === "osx" ? "Meta" : "Ctrl") + "+Shift+L"
         onTriggered: window.shell.cycleTheme()
     }
     Action {
@@ -120,13 +120,17 @@ ApplicationWindow {
                 standardButtons: Dialog.Ok
                 Component.onCompleted: open()
                 onClosed: helpLoader.active = false
-                contentItem: Label {
-                    text: (Qt.platform.os === "osx" ? "⌘" : "Ctrl") + qsTr("+O  选择 PDF\n")
-                        + (Qt.platform.os === "osx" ? "⌘" : "Ctrl") + qsTr("+W  关闭文档\n")
-                        + (Qt.platform.os === "osx" ? "⌘" : "Ctrl") + qsTr("+Shift+L  切换主题\nF1  快捷键\nTab / Shift+Tab  切换焦点\nEsc  关闭对话框")
-                    lineHeight: 1.6
-                    wrapMode: Text.WordWrap
-                    color: shellTheme.text
+                contentItem: ScrollView {
+                    implicitHeight: Math.min(400, window.height - 180)
+                    clip: true
+                    Label {
+                        width: parent.width
+                        text: (Qt.platform.os === "osx" ? "⌘" : "Ctrl")
+                            + qsTr(" 为修饰键：\nO  打开 PDF    W  关闭文档    S  保存\nZ / Y  撤销 / 重做（编辑时为文字历史）\nC  复制选中原文\nShift+A  自动：空白输入 / 原文拖选\nShift+S / T  原文选择 / 输入答案\nShift+P / E / M  画笔 / 整笔擦除 / 移动笔迹\nShift+L  切换主题\n滚轮  阅读    Ctrl+滚轮  缩放\nEsc / Ctrl+Enter  完成文字编辑\nCtrl+Delete  删除选中文字框\nDelete  删除选中笔迹\n\n答案自动保存在本机。导出时使用新的 PDF 文件名。\nF1  快捷键    Tab / Shift+Tab  切换焦点")
+                        lineHeight: 1.6
+                        wrapMode: Text.WordWrap
+                        color: shellTheme.text
+                    }
                 }
             }
         }
@@ -136,23 +140,32 @@ ApplicationWindow {
         padding: 16
         background: Rectangle { color: shellTheme.surface }
         contentItem: RowLayout {
-            spacing: 16
+            spacing: 8
             Label { text: "Langlern"; font.pixelSize: 20; font.weight: Font.DemiBold; color: shellTheme.text }
             Label { text: qsTr("阅读 · 练习"); color: shellTheme.muted; visible: window.width > 800 }
             Item { Layout.fillWidth: true }
-            ToolButton { objectName: "openButton"; action: openAction; activeFocusOnTab: true }
-            ToolButton { text: qsTr("保存"); enabled: window.shell.storageReady && !window.shell.transitioning; onClicked: window.shell.saveNow() }
-            ToolButton { objectName: "exportButton"; text: qsTr("导出 PDF…"); enabled: window.shell.storageReady && window.shell.pageCount > 0 && !window.shell.exporting && !window.shell.transitioning; onClicked: exportLoader.active = true }
-            ToolButton { action: themeAction; activeFocusOnTab: true; Accessible.name: qsTr("切换主题：") + window.themeLabel }
-            ToolButton { action: helpAction; activeFocusOnTab: true }
+            ActionButton { symbol: "open"; compact: window.width < 920; objectName: "openButton"; action: openAction; activeFocusOnTab: true }
+            ActionButton { symbol: "save"; compact: window.width < 920; text: qsTr("保存"); enabled: window.shell.storageReady && !window.shell.transitioning; onClicked: window.shell.saveNow() }
+            ActionButton { symbol: "export"; compact: window.width < 920; objectName: "exportButton"; text: qsTr("导出 PDF…"); enabled: window.shell.storageReady && window.shell.pageCount > 0 && !window.shell.exporting && !window.shell.transitioning; onClicked: exportLoader.active = true }
+            ActionButton { symbol: "theme"; compact: true; action: themeAction; activeFocusOnTab: true; Accessible.name: qsTr("切换主题：") + window.themeLabel }
+            ActionButton { symbol: "help"; compact: true; action: helpAction; activeFocusOnTab: true }
         }
     }
-    DocumentView {
+    Loader {
+        id: documentLoader
         anchors.fill: parent
         enabled: !window.shell.transitioning
-        shell: window.shell
-        theme: shellTheme
+        active: false
         visible: window.shell.pageCount > 0
+        function ensureLoaded(): void { if (window.shell.pageCount > 0) active = true }
+        Connections {
+            target: window.shell
+            function onSelectionChanged(): void { Qt.callLater(documentLoader.ensureLoaded) }
+        }
+        sourceComponent: DocumentView {
+            shell: window.shell
+            theme: shellTheme
+        }
     }
     ColumnLayout {
         visible: window.shell.pageCount === 0
@@ -221,14 +234,26 @@ ApplicationWindow {
         background: Rectangle { color: shellTheme.surface }
         contentItem: RowLayout {
             Label { text: qsTr("离线 · 本地文件"); color: shellTheme.muted }
-            Item { Layout.fillWidth: true }
-            Label {
+            ColumnLayout {
                 Layout.fillWidth: true
-                horizontalAlignment: Text.AlignRight
-                text: window.shell.exportStatus.length > 0 ? window.shell.exportStatus : window.shell.storageStatus.length > 0 ? window.shell.storageStatus : window.shell.statusText
-                textFormat: Text.PlainText
-                elide: Text.ElideMiddle
-                color: shellTheme.muted
+                Label {
+                    objectName: "storageStatusLabel"
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignRight
+                    text: window.shell.storageStatus.length > 0 ? window.shell.storageStatus : window.shell.statusText
+                    textFormat: Text.PlainText
+                    wrapMode: Text.WordWrap
+                    color: shellTheme.text
+                }
+                Label {
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignRight
+                    visible: text.length > 0
+                    text: window.shell.exportStatus
+                    textFormat: Text.PlainText
+                    wrapMode: Text.WordWrap
+                    color: shellTheme.muted
+                }
             }
         }
     }

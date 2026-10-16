@@ -25,7 +25,7 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             $<TARGET_FILE:pdfium> $<TARGET_FILE_DIR:reading_tests>)
 endif()
-add_test(NAME reading_invariants COMMAND reading_tests)
+add_test(NAME reading_invariants COMMAND reading_tests -o ${CMAKE_CURRENT_BINARY_DIR}/reading.txt,txt)
 set_tests_properties(reading_invariants PROPERTIES TIMEOUT 120)
 
 qt_add_executable(text_tests text_tests.cpp)
@@ -38,7 +38,7 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             $<TARGET_FILE:pdfium> $<TARGET_FILE_DIR:text_tests>)
 endif()
-add_test(NAME text_selection COMMAND text_tests)
+add_test(NAME text_selection COMMAND text_tests -o ${CMAKE_CURRENT_BINARY_DIR}/text.txt,txt)
 set_tests_properties(text_selection PROPERTIES TIMEOUT 120)
 
 qt_add_executable(annotation_tests annotation_tests.cpp)
@@ -51,7 +51,7 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             $<TARGET_FILE:pdfium> $<TARGET_FILE_DIR:annotation_tests>)
 endif()
-add_test(NAME text_annotations COMMAND annotation_tests)
+add_test(NAME text_annotations COMMAND annotation_tests -o ${CMAKE_CURRENT_BINARY_DIR}/annotations.txt,txt)
 set_tests_properties(text_annotations PROPERTIES TIMEOUT 120)
 
 qt_add_executable(ink_tests ink_tests.cpp)
@@ -78,5 +78,5 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             $<TARGET_FILE:pdfium> $<TARGET_FILE_DIR:storage_tests>)
 endif()
-add_test(NAME storage_export COMMAND storage_tests)
+add_test(NAME storage_export COMMAND storage_tests -o ${CMAKE_CURRENT_BINARY_DIR}/storage.txt,txt)
 set_tests_properties(storage_export PROPERTIES TIMEOUT 180)

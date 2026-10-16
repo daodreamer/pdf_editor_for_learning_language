@@ -1,3 +1,4 @@
+#include "testapplication.h"
 #include "shellstate.h"
 #include <QDir>
 #include <QFile>
@@ -7,6 +8,7 @@
 #include <QProcess>
 #include <QQuickStyle>
 #include <QQuickWindow>
+#include <QQuickItem>
 #include <QQmlApplicationEngine>
 #include <QSaveFile>
 #include <QSignalSpy>
@@ -32,6 +34,35 @@ class StorageTests : public QObject {
         return {{n},{i},12};
     }
 private slots:
+    void bulkSnapshotDiskRoundtrip() {
+        QTemporaryDir dir;
+        AnnotationSnapshot bulk; bulk.revision=4096;
+        const auto one=sample();
+        for (int index=0;index<2048;++index) {
+            auto note=one.notes.first(); note.id=QUuid::createUuid().toString(QUuid::WithoutBraces);
+            note.order=index; note.page=index%8; bulk.notes.append(std::move(note));
+        }
+        for (int index=0;index<64;++index) {
+            auto ink=one.ink.first(); ink.id=QUuid::createUuid().toString(QUuid::WithoutBraces);
+            ink.order=index; ink.page=index%8; ink.points.clear();
+            for (int point=0;point<4096;++point) ink.points.append({20.0+point%400,40.0+(point%50)*.25});
+            bulk.ink.append(std::move(ink));
+        }
+        StorageWorker store(dir.path());
+        QSignalSpy loaded(&store,&StorageWorker::loaded), saved(&store,&StorageWorker::saved);
+        store.open(1,fixture); QVERIFY(loaded.last()[4].toBool());
+        QElapsedTimer timer; timer.start(); store.save(1,bulk);
+        const double saveMs=timer.nsecsElapsed()/1e6;
+        QVERIFY2(saved.last()[2].toString().isEmpty(),qPrintable(saved.last()[2].toString()));
+        store.close(); timer.restart(); store.open(2,fixture);
+        const double restoreMs=timer.nsecsElapsed()/1e6;
+        QVERIFY(loaded.last()[4].toBool());
+        const auto restored=qvariant_cast<AnnotationSnapshot>(loaded.last()[1]);
+        QCOMPARE(restored.notes,bulk.notes); QCOMPARE(restored.ink,bulk.ink); QCOMPARE(restored.revision,bulk.revision);
+        const auto bytes=QFileInfo(dir.filePath(QString::fromLatin1(StorageWorker::digest(fixture))+".json")).size();
+        qInfo()<<"bulk_snapshot notes"<<bulk.notes.size()<<"strokes"<<bulk.ink.size()<<"points"<<262144
+               <<"file_bytes"<<bytes<<"disk_save_ms"<<saveMs<<"disk_restore_ms"<<restoreMs;
+    }
     void codecAndValidation() {
         const auto original=sample(); const auto identity=StorageWorker::digest(fixture);
         const auto encoded=StorageWorker::encode(original,identity); AnnotationSnapshot restored; QString error;
@@ -132,9 +163,21 @@ private slots:
         {
             ShellState shell; shell.selectFile(QUrl::fromLocalFile(moved)); QTRY_VERIFY(shell.storageReady()); QTRY_VERIFY(shell.annotations()->geometry(0).valid);
             QCOMPARE(shell.annotations()->snapshot(),expected); QCOMPARE(shell.annotations()->inkSnapshot(),expectedInk);
+            QQmlApplicationEngine engine;
+            engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}});
+            engine.loadFromModule("Langlern.Shell","Main");
+            auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(window);
+            window->show(); QVERIFY(QTest::qWaitForWindowExposed(window));
+            const auto exportTarget=source.filePath("before-save-failure.pdf");
+            shell.exportPdf(QUrl::fromLocalFile(exportTarget));
+            QTRY_VERIFY_WITH_TIMEOUT(!shell.exporting(),30000);
+            QVERIFY(shell.exportStatus().contains(QStringLiteral("已导出")));
             const auto main=root.filePath(QString::fromLatin1(StorageWorker::digest(moved))+".json"); QVERIFY(QDir().mkdir(main+".bak"));
             shell.annotations()->select(expected.first().id); shell.annotations()->setText(expected.first().id,"new unsaved",48);
             shell.beginShutdown(); QTRY_VERIFY(shell.storageStatus().contains(QStringLiteral("失败"))); QVERIFY(!shell.shutdownComplete()); QCOMPARE(shell.annotations()->snapshot().first().text,QStringLiteral("new unsaved"));
+            auto* saveLabel=window->findChild<QQuickItem*>("storageStatusLabel"); QVERIFY(saveLabel);
+            QVERIFY(saveLabel->isVisible());
+            QCOMPARE(saveLabel->property("text").toString(),shell.storageStatus());
             QVERIFY(QDir().rmdir(main+".bak")); shell.beginShutdown(); QTRY_VERIFY(shell.shutdownComplete());
         }
         QFile modified(moved); QVERIFY(modified.open(QIODevice::Append)); modified.write("\n% changed\n"); modified.close();
@@ -217,7 +260,7 @@ private slots:
     }
 };
 int main(int argc,char** argv) {
-    QGuiApplication app(argc,argv); QQuickStyle::setStyle("Basic");
+    QGuiApplication app(argc,argv); configureTestApplication(app);
     if(argc==3 && QByteArray(argv[1])=="--interrupted-write") {
         const auto path=QString::fromLocal8Bit(argv[2]); QSaveFile f(path);
         if(!f.open(QIODevice::WriteOnly) || f.write("partial")!=7) return 9;

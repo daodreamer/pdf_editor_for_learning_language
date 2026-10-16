@@ -17,7 +17,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--exe", type=Path, default=Path("build/windows/langlern.exe"))
 parser.add_argument("--run", type=Path, required=True)
 parser.add_argument("--repeat", type=int, default=33)
+parser.add_argument("--control-exe", type=Path)
+parser.add_argument("--control-source-root", type=Path)
 args = parser.parse_args()
+if bool(args.control_exe) != bool(args.control_source_root):
+    parser.error("control executable and its actual source root must be supplied together")
 if args.repeat < 4:
     parser.error("--repeat must include 3 warmups and at least 1 measured run")
 args.run.mkdir(parents=True, exist_ok=False)
@@ -27,9 +31,12 @@ env["PATH"] = str(root / ".deps/Qt/6.8.3/msvc2022_64/bin") + os.pathsep + env["P
 env["QT_FORCE_STDERR_LOGGING"] = "1"
 env["QT_MESSAGE_PATTERN"] = "%{message}"
 rows = []
-for index in range(args.repeat):
+variants = [("optimized", args.exe)]
+if args.control_exe:
+    variants.append(("control", args.control_exe))
+for index, variant, executable in [(i,v,e) for i in range(args.repeat) for v,e in (variants if i%2==0 else variants[::-1])]:
     start = time.monotonic_ns()
-    process = subprocess.Popen([str(args.exe.resolve()), "--startup-probe", "--quit-after-ready"],
+    process = subprocess.Popen([str(executable.resolve()), "--startup-probe", "--quit-after-ready"],
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
     watchdog = threading.Timer(15, process.kill)
     watchdog.start()
@@ -51,18 +58,18 @@ for index in range(args.repeat):
         if process.poll() is None:
             process.kill()
             process.wait()
-    (args.run / f"startup-{index:02}.log").write_bytes(raw)
+    (args.run / f"{variant}-startup-{index:02}.log").write_bytes(raw)
     interactive = [e for e in events if e.get("event") == "interactive_proxy"]
     if process.returncode or len(interactive) != 1:
         raise RuntimeError(f"run {index} failed: exit {process.returncode}; see log")
-    rows.append({"index": index, "warmup": index < 3, "events": events})
+    rows.append({"index": index, "variant": variant, "warmup": index < 3, "events": events})
 
 def stats(values):
     values = sorted(values)
     return {"count": len(values), "median": statistics.median(values),
             "p95": values[math.ceil(.95 * len(values))-1], "min": values[0], "max": values[-1]}
 
-formal = [e for row in rows[3:] for e in row["events"] if e["event"] == "interactive_proxy"]
+formal = [e for row in rows if not row['warmup'] and row['variant']=='optimized' for e in row["events"] if e["event"] == "interactive_proxy"]
 build_types = sorted({e["build_type"] for row in rows for e in row["events"]})
 graphics_apis = sorted({e["graphics_api"] for row in rows for e in row["events"] if "graphics_api" in e})
 qt_versions = sorted({e["qt"] for row in rows for e in row["events"] if "qt" in e})
@@ -81,6 +88,17 @@ manifest = {"platform": platform.platform(), "cpu": platform.processor(), "logic
             "system_input_and_presentation": "not measured", "warmup_count": 3}
 summary = {"external_interactive_proxy_ms": stats([e["external_received_ms"] for e in formal]),
            "main_interactive_proxy_ms": stats([e["main_ms"] for e in formal])}
+if args.control_exe:
+    tree=args.control_source_root.resolve()
+    control_files=[tree/'CMakeLists.txt']+sorted((tree/'src').rglob('*'))+sorted((tree/'qml').rglob('*'))
+    manifest['control']={'exe_sha256':hashlib.sha256(args.control_exe.read_bytes()).hexdigest(),
+                         'source_sha256':{str(p.relative_to(tree)):hashlib.sha256(p.read_bytes()).hexdigest()
+                                          for p in control_files if p.is_file()},
+                         'order':'Alternating AB/BA fresh processes; 3 warmups and 30 measured runs per variant by default'}
+    control=[e for row in rows if not row['warmup'] and row['variant']=='control'
+             for e in row['events'] if e['event']=='interactive_proxy']
+    summary['control']={'external_interactive_proxy_ms':stats([e['external_received_ms'] for e in control]),
+                        'main_interactive_proxy_ms':stats([e['main_ms'] for e in control])}
 for name, value in [("runs.json", rows), ("manifest.json", manifest), ("summary.json", summary)]:
     with (args.run / name).open("x", encoding="utf-8") as file:
         json.dump(value, file, indent=2, ensure_ascii=False)

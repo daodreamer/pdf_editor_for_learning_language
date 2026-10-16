@@ -1,3 +1,4 @@
+#include "testapplication.h"
 #include <QTemporaryDir>
 #include "shellstate.h"
 #include <QClipboard>
@@ -257,7 +258,7 @@ private slots:
 int main(int argc,char** argv) {
     QTemporaryDir workspace; qputenv("LANGLERN_WORKSPACE_DIR",workspace.path().toUtf8());
 
-    QGuiApplication app(argc,argv); QQuickStyle::setStyle("Basic");
+    QGuiApplication app(argc,argv); configureTestApplication(app);
     AnnotationTests tests; return QTest::qExec(&tests,argc,argv);
 }
 #include "annotation_tests.moc"

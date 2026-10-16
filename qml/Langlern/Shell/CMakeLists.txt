@@ -2,8 +2,8 @@ qt_add_qml_module(shell_ui STATIC
     URI Langlern.Shell
     VERSION 1.0
     CLASS_NAME LanglernShellPlugin
-    DEPENDENCIES QtQuick QtQuick.Controls QtQuick.Layouts QtQuick.Dialogs
-    QML_FILES Main.qml Theme.qml DocumentView.qml TextNote.qml
+    DEPENDENCIES QtQuick QtQuick.Shapes QtQuick.Controls QtQuick.Layouts QtQuick.Dialogs
+    QML_FILES Main.qml Theme.qml DocumentView.qml TextNote.qml ActionButton.qml LineIcon.qml
     SOURCES ../../../src/app/storageworker.h ../../../src/app/storageworker.cpp
         ../../../src/app/inkstroke.h
         ../../../src/app/inkitem.h ../../../src/app/inkitem.cpp

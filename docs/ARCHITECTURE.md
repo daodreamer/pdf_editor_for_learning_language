@@ -421,3 +421,10 @@ API 依据：[QQuickItem](https://doc.qt.io/qt-6.8/qquickitem.html)、[QSGGeomet
 API 依据：[QSaveFile](https://doc.qt.io/qt-6.8/qsavefile.html)、[QTextDocument](https://doc.qt.io/qt-6.8/qtextdocument.html)、[QPdfWriter](https://doc.qt.io/qt-6.8/qpdfwriter.html)，以及锁定 PDFium 包 `fpdf_ppo.h` / `fpdf_save.h` 的接口与所有权注释。在线 Qt 文档可能为更高补丁版本，以本地 6.8.3 头文件/实际构建为准。
 
 保存格式、实际限制和恢复流程见 [STORAGE_FORMAT.md](STORAGE_FORMAT.md)。
+
+
+## 阶段 8 窗口与发行增量
+
+空窗口不实例化 DocumentView；第一次文档元信息就绪后通过事件循环加载，后续换文件保留控件实例并由模型虚拟化页面。这样避免首次启动创建整套标注工具，同时保持焦点、控件引用和视口生命周期稳定。Viewport 初次上报延后到组件创建完成之后，防止重入 Loader。只有页面模型/图像需求改变才触发 PDF 调度；线性图标使用既有 Qt Quick Shapes 的公开 PathSvg 接口，无 QtSvg 或第三方图标包。
+
+保存与导出有独立可见状态，旧导出结果不遮挡新的自动保存错误。便携部署由 tools/package-windows.ps1/.py 完成；Qt/PDFium 继续动态链接，字体和许可文件按相对应用目录部署。产品运行路径不依赖构建机 SDK；开发机清理环境后的验证与干净系统验收严格区分。
