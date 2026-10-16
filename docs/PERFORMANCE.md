@@ -293,3 +293,35 @@ handler_ms 仅测 sendEvent 内 GUI 处理，未涵盖几何同步与屏幕呈�
 
 
 阶段 8 还提供 `--profile scrolling --seconds 120 --repeat 5` 的纯滚动（60 s 下滚再返回），与原混合轨迹分列；`fast` 为 8 视口/s、2 s 反向，`navigation` 为 50 次目标，`zoom` 为 20×4 个缩放档。轨迹守卫的速度、距离阈值、间隔和倍数记录在 profile_policy；四个间隔是测试容差，不是 Qt 时限保证。高速停止后在有界等待内检查模型最终位置和全部可见预算目标就绪，记录 input_settled。最终数值以 PHASE8_REPORT 与各运行目录原始数据为准。
+
+
+## 2026-10-16 设计迭代真实启动对照
+
+本机 Windows 11 10.0.26200、Intel Family 6 Model 198、20逻辑CPU、约50.9GB RAM、DPR1.5、Qt6.8.3/D3D11，Release。基线是既有阶段8便携包的实际exe及其source.zip解出的对应源码；新版是本轮Windows构建。每种3次预热+30次测量，交替顺序，新进程、warm OS/Qt缓存；未刷缓存或重启。新版1440×900、旧版1120×760，因此是整轮设计迭代前后对照，不是只隔离某一个控件的实验。
+
+图标优化版本的有效记录：`benchmarks/results/design-20261016-startup-final-ab/`；精确源码/二进制散列、OS与依赖、逐次日志及摘要在该目录。
+
+| 外部首帧+合成F6交互代理（ms） | 旧阶段8 | 图标优化版（视觉微调前） |
+| --- | ---: | ---: |
+| Median | 388.55 | 408.45 |
+| P95 | 406.52 | 422.33 |
+| main内代理Median | 367.25 | 387.93 |
+
+该次外部Median比旧版增加约19.90ms（5.1%），P95增加约15.82ms。热启动<300ms目标仍未达；该代理不是系统输入往返或实际呈现，不能拿它宣布冷启动<800ms或60FPS达标。本轮没有重跑长文档滚动/缩放、30分钟压力或系统显存A/B。
+
+初版设计的有效对照 `design-20261016-startup-ab-v2` 为635.23ms/692.60ms（外部Median/P95）。进一步诊断并将装饰字形改为线性Scene Graph图标、延迟加载非当前页面后，最终Median减少约226.78ms（35.7%）。更早的 `design-20261016-startup-ab` 与截图进程重叠，已写INVALID.txt，弃用，不纳入任何性能结论。
+
+独立诊断构建 `build/design-diagnostics` 使用RelWithDebInfo和 `-DQT_QML_DEBUG`；正式Windows配置未改变。`design-20261016-startup-profile` 与 `...-profile-after` 保留真实qtd、stderr、解析JSON与报告。按钮Text的22次创建累计206.18→0.83ms，支持将装饰符号字体回退列为主要原因；C++构造诊断的WorkspaceState约0.17ms、OfflineServices约0.03ms，不是这次约200ms差距的主体。所有range聚合375.09→185.60ms仅作诊断，不当墙钟或帧时间。普通构建只在显式环境变量 LANGLERN_STARTUP_DETAIL 存在时输出构造诊断。
+
+
+### 交付二进制最后复测
+
+最后对齐了书架导航文字对齐和导入开关样式后，再用交付二进制完整重复33轮（3预热+30正式），序列中没有并行截图或其他GUI验证。有效记录为 `benchmarks/results/design-20261016-delivery-startup-ab/`，其manifest记录的是交付源码/二进制散列。
+
+| 交付版代理（ms） | 同轮旧阶段8 | 交付版 |
+| --- | ---: | ---: |
+| 外部Median | 413.09 | 437.76 |
+| 外部P95 | 439.01 | 451.15 |
+| main内Median | 390.29 | 415.16 |
+
+交付版外部Median多24.66ms（约6.0%）、P95多12.14ms。两轮基线自身约25ms差异说明主机运行状态存在变化，不能将跨轮所有差值都归因于某一行QML。字体热点的诊断证据与整体启动对照分别保留；300ms目标仍未达。所有正式启动测量都使用Release，不把诊断构建的启动时间用于目标验收。

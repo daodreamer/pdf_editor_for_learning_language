@@ -12,6 +12,8 @@ class InkInput : public QQuickItem {
     Q_PROPERTY(double inkWidth READ inkWidth WRITE setInkWidth NOTIFY styleChanged)
     Q_PROPERTY(double contentX READ contentX WRITE setContentX)
     Q_PROPERTY(double contentY READ contentY WRITE setContentY)
+    Q_PROPERTY(QVariantList passiveRects MEMBER passiveRects_)
+    Q_PROPERTY(int passivePage MEMBER passivePage_)
 public:
     explicit InkInput(QQuickItem* parent=nullptr);
     ShellState* shell() const { return shell_; }
@@ -49,4 +51,8 @@ private:
     double contentX_=0,contentY_=0,width_=2;
     QColor color_=QColor("#235fbd");
     bool tablet_=false;
+    bool autoPending_=false;
+    QPointF autoOrigin_;
+    QVariantList passiveRects_;
+    int passivePage_=-1;
 };

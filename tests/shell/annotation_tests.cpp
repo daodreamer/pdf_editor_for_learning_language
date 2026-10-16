@@ -201,13 +201,15 @@ private slots:
         QTest::keyClick(window,Qt::Key_A,Qt::ControlModifier|Qt::ShiftModifier);
         QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,pos(glyph.x(),glyph.y()));
         QCOMPARE(shell.annotations()->snapshot().size(),1);
-        // Blank dragging inside a page scrolls, and does not accidentally create a note.
+        // The approved design uses automatic blank drags for handwriting.
         const auto blank=pos(.85,.25);
         const double beforeScroll=viewport->property("contentY").toDouble();
+        const auto beforeInk=shell.annotations()->inkSnapshot().size();
         QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,blank);
         for(int i=1;i<=5;++i) QTest::mouseMove(window,blank-QPoint(0,15*i),20);
         QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,blank-QPoint(0,75));
-        QTRY_VERIFY(viewport->property("contentY").toDouble()>beforeScroll);
+        QCOMPARE(viewport->property("contentY").toDouble(),beforeScroll);
+        QTRY_COMPARE(shell.annotations()->inkSnapshot().size(),beforeInk+1);
         QCOMPARE(shell.annotations()->snapshot().size(),1);
         viewport->metaObject()->invokeMethod(viewport,"cancelFlick");
         shell.goToPage(1);

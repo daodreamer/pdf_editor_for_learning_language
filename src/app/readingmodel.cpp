@@ -1,9 +1,11 @@
 #include "readingmodel.h"
 #include <algorithm>
 #include <cmath>
+#include <limits>
+#include <QRectF>
 
 QHash<int, QByteArray> ReadingModel::roleNames() const {
-    return {{PageNumber,"pageNumber"},{Top,"pageTop"},{PageWidth,"pageWidth"},{PageHeight,"pageHeight"},{Pixels,"pixels"}};
+    return {{PageNumber,"pageNumber"},{Top,"pageTop"},{PageWidth,"pageWidth"},{PageHeight,"pageHeight"},{Pixels,"pixels"},{Left,"pageLeft"}};
 }
 QVariant ReadingModel::data(const QModelIndex& i, int role) const {
     if (!i.isValid() || i.row() < 0 || i.row() >= active_.size()) return {};
@@ -14,6 +16,7 @@ QVariant ReadingModel::data(const QModelIndex& i, int role) const {
     case PageWidth: return pageWidth_;
     case PageHeight: return height(p);
     case Pixels: return image(p);
+    case Left: return left(p);
     default: return {};
     }
 }
@@ -31,21 +34,52 @@ void ReadingModel::reset(int count) {
     rebuild(0, 0);
 }
 int ReadingModel::pageAt(double y) const {
-    if (tops_.isEmpty()) return 0;
-    return std::clamp(int(std::upper_bound(tops_.begin(), tops_.end(), y) - tops_.begin()) - 1, 0, count() - 1);
+    if (rowTops_.isEmpty()) return 0;
+    return std::clamp(int(std::upper_bound(rowTops_.begin(), rowTops_.end(), y) - rowTops_.begin()) - 1,0,int(rowTops_.size())-1)*columns();
+}
+double ReadingModel::left(int page) const {
+    if(!doublePage_ || (page==count()-1 && page%2==0))return (contentWidth()-pageWidth_)/2;
+    return (contentWidth()-2*pageWidth_-ReadingConfig::gap)/2+(page%2)*(pageWidth_+ReadingConfig::gap);
+}
+int ReadingModel::pageAtPosition(double x,double y,bool nearest) const {
+    if(!count()||!std::isfinite(x)||!std::isfinite(y))return -1;
+    const int first=pageAt(y),last=std::min(count()-1,first+columns()-1);
+    int best=first;double distance=std::numeric_limits<double>::max();
+    for(int p=first;p<=last;++p){
+        const QRectF rect(left(p),top(p),pageWidth_,height(p));
+        if(rect.contains(QPointF(x,y)))return p;
+        const double dx=std::max({rect.left()-x,0.0,x-rect.right()}),dy=std::max({rect.top()-y,0.0,y-rect.bottom()});
+        if(dx*dx+dy*dy<distance){distance=dx*dx+dy*dy;best=p;}
+    }
+    return nearest?best:-1;
+}
+void ReadingModel::updateWidth() { pageWidth_=std::max(1.0,(viewWidth_-2*ReadingConfig::margin-(columns()-1)*ReadingConfig::gap)/columns())*zoom_; }
+double ReadingModel::rowHeight(int page) const {
+    const int first=page/columns()*columns();double result=height(first);
+    for(int p=first+1;p<std::min(count(),first+columns());++p)result=std::max(result,height(p));
+    return result;
+}
+void ReadingModel::setDoublePage(bool enabled) {
+    if(doublePage_==enabled)return;
+    const int anchor=pageAt(y_);doublePage_=enabled;updateWidth();rebuild(anchor,0);
 }
 void ReadingModel::rebuild(int anchor, double fraction) {
     double top = ReadingConfig::gap;
     tops_.resize(count());
-    for (int p = 0; p < count(); ++p) { tops_[p] = top; top += height(p) + ReadingConfig::gap; }
+    rowTops_.clear();
+    for(int p=0;p<count();p+=columns()) {
+        rowTops_.append(top);double rowHeight=0;
+        for(int i=p;i<std::min(count(),p+columns());++i){tops_[i]=top;rowHeight=std::max(rowHeight,height(i));}
+        top+=rowHeight+ReadingConfig::gap;
+    }
     total_ = count() ? top : 0;
-    y_ = std::clamp(this->top(anchor) + fraction * height(anchor), 0.0, std::max(0.0,total_ - viewHeight_));
+    y_ = std::clamp(this->top(anchor) + fraction * rowHeight(anchor), 0.0, std::max(0.0,total_ - viewHeight_));
     activate(true);
     emit geometryChanged();
 }
 void ReadingModel::setSizes(int first, const QList<QSizeF>& sizes) {
     const int anchor = pageAt(y_);
-    const double fraction = (y_ - top(anchor)) / std::max(1.0,height(anchor));
+    const double fraction = (y_ - top(anchor)) / std::max(1.0,rowHeight(anchor));
     bool changed = false;
     for (int i = 0; i < sizes.size() && first+i < count(); ++i) {
         const auto s = sizes[i];
@@ -58,19 +92,19 @@ void ReadingModel::setSizes(int first, const QList<QSizeF>& sizes) {
 void ReadingModel::setViewport(double y, double h, double w, double zoom) {
     if (!std::isfinite(y) || !std::isfinite(h) || !std::isfinite(w) || !std::isfinite(zoom)) return;
     const int anchor = pageAt(y_);
-    const double fraction = (y_ - top(anchor)) / std::max(1.0,height(anchor));
+    const double fraction = (y_ - top(anchor)) / std::max(1.0,rowHeight(anchor));
     viewHeight_ = std::max(1.0,h);
     const bool resized = viewWidth_ != w || zoom_ != zoom;
     viewWidth_ = std::max(1.0,w); zoom_ = std::clamp(zoom,0.25,4.0);
-    pageWidth_ = std::max(1.0,viewWidth_ - 2*ReadingConfig::margin)*zoom_;
+    updateWidth();
     if (resized) rebuild(anchor,fraction);
     else { y_ = std::clamp(y,0.0,std::max(0.0,total_-viewHeight_)); activate(); }
 }
 void ReadingModel::activate(bool geometryChanged) {
     QList<int> active;
     if (count()) {
-        const int first = std::max(0,pageAt(y_) - ReadingConfig::neighbors);
-        const int last = std::min(count()-1,pageAt(y_+viewHeight_) + ReadingConfig::neighbors);
+        const int first = std::max(0,pageAt(y_) - columns()*ReadingConfig::neighbors);
+        const int last = std::min(count()-1,pageAt(y_+viewHeight_) + columns()-1 + columns()*ReadingConfig::neighbors);
         for (int p=first;p<=last;++p) active.append(p);
     }
     // Preserve overlapping delegates and their textures during ordinary scrolling.
@@ -94,13 +128,13 @@ void ReadingModel::activate(bool geometryChanged) {
         }
     }
     if (geometryChanged && !active_.isEmpty())
-        emit dataChanged(index(0),index(rowCount()-1),{Top,PageWidth,PageHeight});
+        emit dataChanged(index(0),index(rowCount()-1),{Top,PageWidth,PageHeight,Left});
     for (int p : active_) if (cache_.contains(p)) cache_[p].use = ++tick_;
     evict();
 }
 QList<int> ReadingModel::priority() const {
     auto pages = active_;
-    const int first = pageAt(y_), last = pageAt(y_+viewHeight_);
+    const int first = pageAt(y_), last = std::min(count()-1,pageAt(y_+viewHeight_)+columns()-1);
     std::stable_sort(pages.begin(),pages.end(),[=](int a,int b) {
         const auto distance = [=](int p) { return p < first ? first-p : p > last ? p-last : 0; };
         return distance(a) < distance(b);

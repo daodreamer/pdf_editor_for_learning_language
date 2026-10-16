@@ -123,6 +123,26 @@ void TextSelection::rebuild() {
 void TextSelection::copy() {
     if (ready()) QGuiApplication::clipboard()->setText(text_);
 }
+void TextSelection::expandWord() {
+    const auto data=pages_.value(anchorPage_);if(!data || anchorIndex_<0 || anchorIndex_>=data->characters.size())return;
+    const auto wordCharacter=[](const TextCharacter& c) {
+        return c.visible && (QChar::isLetterOrNumber(c.unicode) || c.unicode==U'\'' || c.unicode==U'’');
+    };
+    int first=anchorIndex_,last=first;
+    if(!wordCharacter(data->characters[first]))return;
+    while(first>0 && wordCharacter(data->characters[first-1]))--first;
+    while(last+1<data->characters.size() && wordCharacter(data->characters[last+1]))++last;
+    anchor_=data->characters[first].box.center();end_=data->characters[last].box.center();endPage_=anchorPage_;extended_=true;rebuild();
+}
+QString TextSelection::context() const {
+    const auto data=pages_.value(anchorPage_);if(!data||anchorIndex_<0||anchorIndex_>=data->characters.size())return text_;
+    const auto boundary=[](char32_t c){return c==U'\r'||c==U'\n';};
+    int first=anchorIndex_,last=anchorIndex_;
+    while(first>0&&anchorIndex_-first<1000&&!boundary(data->characters[first-1].unicode))--first;
+    while(last+1<data->characters.size()&&last-anchorIndex_<1000&&!boundary(data->characters[last+1].unicode))++last;
+    QString result;for(int i=first;i<=last;++i){const auto& c=data->characters[i];if(c.visible&&c.unicode&&c.unicode<=0x10ffff)result+=QString::fromUcs4(&c.unicode,1);}
+    return result;
+}
 QVariantList TextSelection::rectangles(int page) const {
     QVariantList result;
     const auto data=pages_.value(page);

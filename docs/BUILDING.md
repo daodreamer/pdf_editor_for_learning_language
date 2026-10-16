@@ -202,3 +202,19 @@ $env:PATH = "$pwd/.deps/Qt/6.8.3/msvc2022_64/bin;" + $env:PATH
 run-ink.py 要求全新的目录，记录二进制/源码/样本散列、三个独立进程的输入处理和 frameSwapped 原始 trace、Windows 进程内存。该脚本测试真实 Qt Quick/D3D11 上注入的长笔迹，不模拟硬件延迟。`LANGLERN_SCREENSHOT_DIR` 指向已存在的新目录时，ink_tests 额外保存 ink-tools.png 和 ink-colors.png；`QT_SCALE_FACTOR=2` 可执行高 DPI 回归，实际 DPR 以日志为准。`LANGLERN_INK_TRACE` 指定新文件保存单次 longStrokeTrace 的 JSON；默认 CTest 不写原始 trace。QML lint 需 MSVC DevShell，与已有构建脚本同一环境中运行 `cmake --build build/windows --target all_qmllint`。
 
 阶段 6 不包含自动保存和导出。macOS、物理触控笔/触控板、实际跨屏 DPR 留待实机验证，详情见 PHASE6_REPORT。
+
+
+## LinguaPDF 设计迭代增量（2026-10-16）
+
+固定Qt/PDFium/MSVC版本沿用阶段8。新增Qt Sql来自原qtbase安装，不需要新增Qt下载模块。可选离线词库准备与重建：
+
+```powershell
+.tools/venv/Scripts/python tools/bootstrap-dictionary.py
+./tools/build-windows.ps1 -Test -Lint
+```
+
+词库源、许可证散列及提交在 third_party/dictionary.lock.json；开发命令首次联网取源，应用没有联网取词库功能。未安装词库时阅读正常，真实词库测试明确skipped，正式CI配置已加入准备步骤，但本轮未执行远端CI。
+
+新增design_tests使用Windows实际OCR语言包，缺引擎/英文包时明确skipped；本机实际识别已通过。语音以本机SAPI离线包为准，UK/US包缺失时明确报错。音频测试使用临时生成的静音WAV，不用假进度。上述本机Windows后端不代表macOS已支持。
+
+截图复现（输出目录先创建且保持独立）：在Qt bin PATH下设置 LANGLERN_SCREENSHOT_DIR，运行 `build/windows/design_tests.exe screenLayoutsAndScreenshots`。整套验证 `build/windows/design_tests.exe` 包括词库、OCR和真实导出；CTest的design_workflows默认包含这些检查。

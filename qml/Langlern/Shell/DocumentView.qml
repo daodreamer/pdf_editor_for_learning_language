@@ -7,6 +7,7 @@ ColumnLayout {
     id: view
     required property ShellState shell
     required property Theme theme
+    required property OfflineServices services
     property int inputMode: 0 // 0 automatic, 1 original text selection, 2 answer input, 3 pen, 4 eraser, 5 move ink
     function switchMode(mode: int): void {
         shell.annotations.cancelGesture()
@@ -21,98 +22,18 @@ ColumnLayout {
     Shortcut { sequence: (Qt.platform.os === "osx" ? "Meta" : "Ctrl") + "+Shift+P"; enabled: view.visible; onActivated: view.switchMode(3) }
     Shortcut { sequence: (Qt.platform.os === "osx" ? "Meta" : "Ctrl") + "+Shift+E"; enabled: view.visible; onActivated: view.switchMode(4) }
     Shortcut { sequence: (Qt.platform.os === "osx" ? "Meta" : "Ctrl") + "+Shift+M"; enabled: view.visible; onActivated: view.switchMode(5) }
-    spacing: 4
-    Flow {
-        objectName: "navigationTools"
-        Layout.fillWidth: true
-        Layout.margins: 12
-        spacing: 4
-        ActionButton { symbol: "previous"; compact: true; text: qsTr("上一页"); enabled: view.shell.currentPage > 1; onClicked: view.shell.goToPage(view.shell.currentPage - 1) }
-        SpinBox {
-            objectName: "pageNumber"
-            from: 1
-            to: Math.max(1, view.shell.pageCount)
-            value: view.shell.currentPage
-            editable: true
-            enabled: view.shell.pageCount > 0
-            onValueModified: view.shell.goToPage(value)
-            Accessible.name: qsTr("页码")
-        }
-        Label { height: 40; verticalAlignment: Text.AlignVCenter; text: qsTr("/ %1 页").arg(view.shell.pageCount); color: view.theme.text }
-        ActionButton { symbol: "next"; compact: true; text: qsTr("下一页"); enabled: view.shell.currentPage < view.shell.pageCount; onClicked: view.shell.goToPage(view.shell.currentPage + 1) }
-        ToolButton { text: "−"; Accessible.name: qsTr("缩小"); onClicked: view.shell.setZoom(view.shell.zoom / 1.2) }
-        Label { height: 40; verticalAlignment: Text.AlignVCenter; text: qsTr("%1%").arg(Math.round(view.shell.zoom * 100)); color: view.theme.text }
-        ToolButton { text: "+"; Accessible.name: qsTr("放大"); onClicked: view.shell.setZoom(view.shell.zoom * 1.2) }
-        Button { text: qsTr("适应页宽"); onClicked: view.shell.setZoom(1) }
-        ActionButton { symbol: "close"; compact: true; text: qsTr("关闭文档"); onClicked: view.shell.clearSelection() }
+    property color inkColor: inkColors.colors[inkColors.currentIndex]
+    property real inkWidth: inkSize.value
+    property bool marking: false
+    property bool reading: false
+    signal wordRequested(string text, string context)
+    spacing: 0
+    ComboBox {
+        id: inkColors; objectName: "inkColors"; visible: false
+        readonly property var colors: ["#235fbd", "#ce3446", "#188450", "#242424"]
+        model: colors
     }
-    Flow {
-        objectName: "editingTools"
-        Layout.fillWidth: true
-        Layout.leftMargin: 12
-        Layout.rightMargin: 12
-        spacing: 6
-        ActionButton { symbol: "copy"; compact: true; objectName: "copyTextButton"; text: qsTr("复制选中文字"); enabled: view.shell.textSelection.ready; onClicked: view.shell.textSelection.copy() }
-        ComboBox {
-            enabled: view.shell.storageReady
-            objectName: "inputMode"
-            model: [qsTr("自动输入 / 拖选"), qsTr("选择原文"), qsTr("输入答案"), qsTr("画笔"), qsTr("整笔橡皮擦"), qsTr("选择 / 移动笔迹")]
-            currentIndex: view.inputMode
-            onActivated: view.switchMode(currentIndex)
-            Accessible.name: qsTr("页面交互模式")
-        }
-        Button {
-            text: qsTr("完成编辑")
-            focusPolicy: Qt.NoFocus
-            enabled: view.shell.annotations.selectedId.length > 0
-            onClicked: { view.shell.finishTextEditing(); selectionMouse.forceActiveFocus() }
-        }
-        ActionButton {
-            symbol: "delete"
-            compact: true
-            objectName: "deleteNoteButton"
-            text: qsTr("删除文字框")
-            focusPolicy: Qt.NoFocus
-            enabled: view.shell.annotations.selectedId.length > 0
-            onClicked: { view.shell.resetInput(); view.shell.annotations.removeSelected(); selectionMouse.forceActiveFocus() }
-        }
-        ActionButton { symbol: "undo"; compact: true; text: qsTr("撤销标注"); focusPolicy: Qt.NoFocus; enabled: view.shell.annotations.canUndo; onClicked: { view.shell.finishTextEditing(); view.shell.annotations.undo() } }
-        ActionButton { symbol: "redo"; compact: true; text: qsTr("重做标注"); focusPolicy: Qt.NoFocus; enabled: view.shell.annotations.canRedo; onClicked: view.shell.annotations.redo() }
-    }
-    Flow {
-        Layout.fillWidth: true
-        Layout.leftMargin: 12
-        Layout.rightMargin: 12
-        visible: view.inputMode >= 3
-        spacing: 6
-        Label { text: qsTr("笔色"); color: view.theme.text }
-        ComboBox {
-            enabled: view.shell.storageReady
-            id: inkColors
-            objectName: "inkColors"
-            model: [qsTr("蓝"), qsTr("红"), qsTr("绿"), qsTr("黑")]
-            readonly property var colors: ["#235fbd", "#ce3446", "#188450", "#242424"]
-            Accessible.name: qsTr("画笔颜色")
-        }
-        Label { text: qsTr("粗细（页面单位）"); color: view.theme.text }
-        SpinBox { id: inkSize; objectName: "inkSize"; from: 1; to: 16; value: 2; Accessible.name: qsTr("画笔粗细") }
-        Button {
-            text: qsTr("删除所选笔迹")
-            focusPolicy: Qt.NoFocus
-            enabled: view.shell.annotations.inkSelection.length > 0
-            onClicked: view.shell.annotations.removeInk()
-        }
-        Label { text: view.shell.annotations.gestureError; color: view.theme.muted }
-    }
-    Label {
-        Layout.fillWidth: true
-        Layout.leftMargin: 12
-        Layout.rightMargin: 12
-        visible: text.length > 0
-        text: view.shell.textSelection.status
-        color: view.theme.muted
-        wrapMode: Text.WordWrap
-    }
+    SpinBox { id: inkSize; objectName: "inkSize"; visible: false; from: 1; to: 16; value: 2 }
     Flickable {
         id: viewport
         objectName: "pdfViewport"
@@ -150,16 +71,19 @@ ColumnLayout {
                 required property real pageTop
                 required property real pageWidth
                 required property real pageHeight
+                required property real pageLeft
                 required property var pixels
-                x: (viewport.contentWidth - width) / 2
+                x: sheet.pageLeft
                 y: sheet.pageTop
                 width: sheet.pageWidth
                 height: sheet.pageHeight
-                color: "white"
+                color: view.theme.dark ? "black" : "white"
+                Rectangle { x: 3; y: 5; width: parent.width; height: parent.height; z: -1; color: "#18000000" }
                 PageItem {
                     objectName: "pdfPage"
                     anchors.fill: parent
                     image: sheet.pixels
+                    opacity: view.theme.dark ? 0.88 : 1
                     Accessible.role: Accessible.Graphic
                     Accessible.name: qsTr("PDF 第 %1 页").arg(sheet.pageNumber)
                 }
@@ -177,6 +101,18 @@ ColumnLayout {
                         return view.shell.textSelection.rectangles(sheet.pageNumber - 1)
                     }
                     Accessible.ignored: true
+                }
+                Repeater {
+                    model: (view.reading || (view.inputMode === 0 && !view.marking)) && view.services.document === String(view.shell.selectedUrl) && view.services.page === sheet.pageNumber ? view.services.words : []
+                    delegate: Rectangle {
+                        id: ocrWord
+                        required property var modelData
+                        x: modelData.x * sheet.width; y: modelData.y * sheet.height
+                        width: modelData.w * sheet.width; height: modelData.h * sheet.height
+                        color: "#10007aff"; border.color: "#30007aff"; radius: 2
+                        TapHandler { onTapped: view.wordRequested(ocrWord.modelData.word, ocrWord.modelData.context) }
+                        Accessible.role: Accessible.Button; Accessible.name: modelData.word
+                    }
                 }
             }
         }
@@ -223,7 +159,12 @@ ColumnLayout {
                 if (Math.abs(mouse.x - origin.x) + Math.abs(mouse.y - origin.y) > 3) dragging = true
                 if (dragging && selecting) extend()
             }
-            onReleased: { if (dragging && selecting) extend(); dragging = false }
+            onReleased: {
+                if (dragging && selecting) extend()
+                if (selecting && !dragging) view.shell.textSelection.expandWord()
+                if (selecting && view.shell.textSelection.ready && (view.reading || !dragging)) view.wordRequested(view.shell.textSelection.text, view.shell.textSelection.context)
+                dragging = false
+            }
             onCanceled: dragging = false
             Keys.onEscapePressed: view.shell.textSelection.clear()
             Shortcut {
@@ -250,7 +191,7 @@ ColumnLayout {
             acceptedButtons: Qt.LeftButton
             gesturePolicy: TapHandler.DragThreshold
             onTapped: function(eventPoint) {
-                if (view.inputMode >= 3 || selectionMouse.selecting || view.inputMode === 1 || view.shell.annotations.selectedId.length > 0) return
+                if (view.marking || view.reading || view.inputMode === 0 || view.inputMode >= 3 || selectionMouse.selecting || view.inputMode === 1 || view.shell.annotations.selectedId.length > 0) return
                 const p = viewport.contentItem.mapFromItem(null, eventPoint.scenePosition.x, eventPoint.scenePosition.y)
                 if (view.shell.containsPage(p.x, p.y)) view.shell.createTextBox(p.x, p.y)
             }
@@ -261,9 +202,11 @@ ColumnLayout {
                 onEditingFinished: selectionMouse.forceActiveFocus()
                 shell: view.shell
                 enabled: view.inputMode < 3 && view.shell.storageReady
+                marking: view.marking
                 pageWidth: view.shell.displayPageWidth
                 pageHeight: pageWidth * notePageUnits.height / notePageUnits.width
                 pageTop: view.shell.contentHeight >= 0 ? view.shell.pageTop(notePage) : 0
+                pageLeft: view.shell.displayPageWidth > 0 ? view.shell.pageLeft(notePage) : 0
                 contentWidth: viewport.contentWidth
             }
         }
@@ -275,15 +218,17 @@ ColumnLayout {
             y: viewport.contentY
             width: viewport.width
             height: viewport.height
-            enabled: view.inputMode >= 3 && view.shell.storageReady
+            enabled: (view.inputMode === 0 || view.inputMode >= 3) && !view.marking && view.shell.storageReady
             visible: enabled
             shell: view.shell
             mode: view.inputMode
+            passivePage: view.services.document === String(view.shell.selectedUrl) ? view.services.page - 1 : -1
+            passiveRects: view.services.words.map(word => Qt.rect(word.x, word.y, word.w, word.h))
             onGestureStarting: viewport.cancelFlick()
             contentX: viewport.contentX
             contentY: viewport.contentY
-            inkColor: inkColors.colors[inkColors.currentIndex]
-            inkWidth: inkSize.value
+            inkColor: view.inkColor
+            inkWidth: view.inkWidth
         }
         Shortcut {
             sequences: [StandardKey.Undo]

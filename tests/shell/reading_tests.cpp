@@ -6,6 +6,10 @@
 #include <QEventLoop>
 #include <QTimer>
 #include <QFile>
+#include <QDir>
+#include <QPdfWriter>
+#include <QPainter>
+#include <QPageSize>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -36,6 +40,77 @@ class ReadingTests : public QObject {
     std::unique_ptr<QTemporaryDir> caseWorkspace;
 private slots:
     void init() { caseWorkspace=std::make_unique<QTemporaryDir>(); qputenv("LANGLERN_WORKSPACE_DIR",caseWorkspace->path().toUtf8()); }
+
+    void doublePageGeometryAndBudgets() {
+        ReadingModel m;QAbstractItemModelTester tester(&m,QAbstractItemModelTester::FailureReportingMode::QtTest);
+        m.reset(5);m.setViewport(0,600,1000,1);m.setSizes(0,{{600,800},{800,600},{400,1200},{600,800},{600,800}});m.setDoublePage(true);
+        QCOMPARE(m.pageWidth(),472.0);QCOMPARE(m.top(0),m.top(1));QCOMPARE(m.top(2),m.top(3));
+        QCOMPARE(m.top(2),m.top(0)+m.height(0)+ReadingConfig::gap);
+        QCOMPARE(m.top(4),m.top(2)+m.height(2)+ReadingConfig::gap);
+        QCOMPARE(m.left(1),m.left(0)+m.pageWidth()+ReadingConfig::gap);
+        QCOMPARE(m.left(4),(m.contentWidth()-m.pageWidth())/2);
+        QCOMPARE(m.pageAtPosition(m.left(1)+10,m.top(1)+10),1);
+        QCOMPARE(m.pageAtPosition(m.left(0)+m.pageWidth()+8,m.top(0)+10),-1);
+        QCOMPARE(m.pageAtPosition(m.left(1)+10,m.top(1)+m.height(1)+5),-1);
+        QVERIFY(m.visible(0));QVERIFY(m.visible(1));
+        m.reset(1001);m.setBudgets(4*1024*1024,2*1024*1024);
+        QImage image(64,64,QImage::Format_ARGB32);image.fill(Qt::blue);
+        for(int page=0;page<1001;page+=40){m.setViewport(m.top(page),600,1000,1);QVERIFY(m.rowCount()<=8);for(int active:m.priority())m.put(active,image,64,true);QVERIFY(m.cpuBytes()<=m.config.cpuBytes);QVERIFY(m.gpuBytes()<=m.config.gpuBytes);}
+        m.setDoublePage(false);QVERIFY(m.top(1)>m.top(0));m.reset(0);QCOMPARE(m.pageAtPosition(0,0),-1);
+    }
+    void doublePageRightPageInteractions() {
+        ShellState s;QQmlApplicationEngine engine;QStringList warnings;
+        connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError>& errors){for(const auto& e:errors)warnings.append(e.toString());});
+        engine.setInitialProperties({{"shell",QVariant::fromValue(&s)}});engine.loadFromModule("Langlern.Shell","Main");
+        auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));QVERIFY(window);window->show();QVERIFY(QTest::qWaitForWindowExposed(window));
+        s.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/text.pdf"));QTRY_VERIFY(s.storageReady());QTRY_VERIFY(!s.busy());
+        s.setZoom(.65);s.setDoublePage(true);QCOMPARE(s.zoom(),1.0);
+        QTRY_VERIFY(s.annotations()->geometry(1).valid);QTRY_VERIFY(s.textSelection()->snapshot(1));QTest::qWait(150);
+        const auto find=[](auto&& self,QQuickItem* item,const QString& name)->QQuickItem*{if(item->objectName()==name)return item;for(auto* child:item->childItems())if(auto* found=self(self,child,name))return found;return nullptr;};
+        auto* viewport=find(find,window->contentItem(),"pdfViewport");QVERIFY(viewport);
+        const auto point=[&](int page,double x,double y){return viewport->mapToScene(QPointF(s.pageLeft(page)+x*s.pageWidth()-viewport->property("contentX").toDouble(),s.pageTop(page)+y*s.pageHeight(page)-viewport->property("contentY").toDouble())).toPoint();};
+        const auto data=s.textSelection()->snapshot(1);int hello=-1;for(int i=0;i<data->characters.size();++i)if(data->characters[i].unicode==U'H'&&data->characters[i].visible){hello=i;break;}QVERIFY(hello>=0);
+        const auto first=data->characters[hello].box.center(),last=data->characters[hello+10].box.center();
+        QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,point(1,first.x(),first.y()));QTest::mouseMove(window,point(1,last.x(),last.y()),30);QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,point(1,last.x(),last.y()));
+        QTRY_COMPARE(s.textSelection()->text(),QStringLiteral("Hello World"));QCOMPARE(s.currentPage(),2);
+        QTest::keyClick(window,Qt::Key_T,Qt::ControlModifier|Qt::ShiftModifier);QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,point(1,.2,.5));
+        QTRY_COMPARE(s.annotations()->snapshot().size(),1);QCOMPARE(s.annotations()->snapshot().first().page,1);
+        for(char c:QByteArray("answer"))QTest::keyClick(window,c);QTest::keyClick(window,Qt::Key_Escape);
+        QCOMPARE(s.annotations()->snapshot().first().text,QStringLiteral("answer"));
+        auto* note=find(find,window->contentItem(),"annotationEditor");QVERIFY(note);QVERIFY(note->mapToScene(QPointF(0,0)).x()>point(0,1,0).x());
+        QTest::keyClick(window,Qt::Key_P,Qt::ControlModifier|Qt::ShiftModifier);
+        QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,point(1,.2,.7));QTest::mouseMove(window,point(1,.6,.7),20);QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,point(1,.6,.7));
+        QCOMPARE(s.annotations()->inkSnapshot().size(),1);QCOMPARE(s.annotations()->inkSnapshot().first().page,1);
+        const auto normalized=s.annotations()->geometry(1).pdfToDisplay.map(s.annotations()->inkSnapshot().first().points.first());QVERIFY(std::abs(normalized.x()-.2)<.005);QVERIFY(std::abs(normalized.y()-.7)<.005);
+        const auto output=qEnvironmentVariable("LANGLERN_SCREENSHOT_DIR");if(!output.isEmpty()){QTest::qWait(100);QVERIFY(window->grabWindow().save(QDir(output).filePath("two-page.png")));}
+        QTest::keyClick(window,Qt::Key_E,Qt::ControlModifier|Qt::ShiftModifier);QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,point(1,.4,.7));QVERIFY(s.annotations()->inkSnapshot().isEmpty());
+        const auto savedAnchor=s.annotations()->snapshot().first().anchor;
+        s.setZoom(1.2);QTRY_VERIFY(!s.busy());QTest::qWait(100);
+        const auto noteAnchor=s.annotations()->geometry(1).pdfToDisplay.map(savedAnchor);
+        QVERIFY(QLineF(note->parentItem()->parentItem()->mapToScene(QPointF()),QPointF(point(1,noteAnchor.x(),noteAnchor.y()))).length()<2);
+        QTest::keyClick(window,Qt::Key_P,Qt::ControlModifier|Qt::ShiftModifier);QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,point(1,.2,.7));QTest::mouseMove(window,point(1,.4,.7),20);
+        QVERIFY(s.annotations()->gestureActive());s.setDoublePage(false);QVERIFY(!s.annotations()->gestureActive());QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,point(0,.4,.7));QVERIFY(s.annotations()->inkSnapshot().isEmpty());
+        QCOMPARE(s.annotations()->snapshot().first().anchor,savedAnchor);s.setDoublePage(true);
+        s.goToPage(6);QTest::qWait(80);QCOMPARE(s.currentPage(),6);s.updateViewport(s.scrollOffset(),viewport->height(),viewport->width(),window->devicePixelRatio());QCOMPARE(s.currentPage(),6);
+        s.setDoublePage(false);QCOMPARE(s.zoom(),.65);QTRY_VERIFY(!s.busy());QCOMPARE(s.currentPage(),6);
+        auto* toggle=find(find,window->contentItem(),"doublePageButton");QVERIFY(toggle);QVERIFY(toggle->isVisible());
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,toggle->mapToScene(QPointF(toggle->width()/2,toggle->height()/2)).toPoint());QVERIFY(s.doublePage());
+        s.setZoom(1.4);s.goToPage(2);QTRY_VERIFY(!s.busy());
+        auto* next=find(find,window->contentItem(),"nextPageButton");auto* previous=find(find,window->contentItem(),"previousPageButton");QVERIFY(next);QVERIFY(previous);
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,next->mapToScene(QPointF(next->width()/2,next->height()/2)).toPoint());QCOMPARE(s.currentPage(),3);
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,previous->mapToScene(QPointF(previous->width()/2,previous->height()/2)).toPoint());QCOMPARE(s.currentPage(),1);
+        QVERIFY2(warnings.isEmpty(),qPrintable(warnings.join('\n')));window->close();QTRY_VERIFY(s.shutdownComplete());
+    }
+    void doublePageShortLastSpreadKeepsTarget() {
+        const auto path=caseWorkspace->filePath("landscape.pdf");
+        {QPdfWriter writer(path);writer.setResolution(72);writer.setPageSize(QPageSize(QSizeF(800,600),QPageSize::Point));QPainter painter(&writer);for(int i=0;i<4;++i){if(i)QVERIFY(writer.newPage());painter.drawText(40,80,QStringLiteral("Page %1").arg(i+1));}}
+        ShellState s;s.updateViewport(0,700,1000,1);s.selectFile(QUrl::fromLocalFile(path));QTRY_VERIFY(s.storageReady());QTRY_COMPARE(s.model().nextUnknown(),-1);
+        s.setDoublePage(true);s.goToPage(3);QCOMPARE(s.currentPage(),3);QVERIFY(s.scrollOffset()<s.pageTop(2));
+        s.updateViewport(s.scrollOffset(),700,1000,1);QCOMPARE(s.currentPage(),3);
+        s.focusPage(3);s.updateViewport(s.scrollOffset(),700,1000,1);QCOMPARE(s.currentPage(),4);
+        s.updateViewport(0,700,1000,1);QCOMPARE(s.currentPage(),1);
+        s.beginShutdown();QTRY_VERIFY(s.shutdownComplete());
+    }
 
     void geometryAndBudgets() {
         ReadingModel m;

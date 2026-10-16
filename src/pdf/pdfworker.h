@@ -52,9 +52,13 @@ public:
     void shutdown();
     void cancel(quint64 revision);
     void exportPdf(quint64 session, QString source, QString target, QByteArray identity, AnnotationSnapshot snapshot);
+    void optimizeScan(quint64 session, QString target, QByteArray identity, QVariantMap options);
+    void cancelScan() { scanCancelled_.store(true); }
 signals:
     void exportProgress(quint64 session, int page, int pages);
     void exportFinished(quint64 session, quint64 revision, QString error);
+    void scanProgress(quint64 session, int page, int pages);
+    void scanFinished(quint64 session, QString target, QString error);
     void frameReady(PdfFrame frame);
     void nativeClosed(quint64 session, int handles);
     void requestStarted(quint64 revision);
@@ -72,4 +76,5 @@ private:
     std::atomic<quint64> latest_{0};
     std::atomic<bool> stopping_{false};
     bool scheduled_ = false;
+    std::atomic<bool> scanCancelled_{false};
 };

@@ -308,7 +308,7 @@ private slots:
         auto* w=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(w);
         w->show(); QVERIFY(QTest::qWaitForWindowExposed(w));
         s.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/scan.pdf"));
-        QTRY_VERIFY(s.annotations()->geometry(0).valid); QTRY_VERIFY(!s.busy()); s.setZoom(.6); QTRY_VERIFY(!s.busy()); QTest::qWait(300);
+        QTRY_VERIFY(s.annotations()->geometry(0).valid); QTRY_VERIFY(s.storageReady()); QTRY_VERIFY(!s.busy()); s.setZoom(.6); QTRY_VERIFY(!s.busy()); QTest::qWait(300);
         auto* viewport=find(w->contentItem(),"pdfViewport"); QVERIFY(viewport);
         QTest::keyClick(w,Qt::Key_P,Qt::ControlModifier|Qt::ShiftModifier);
         const auto jobs=s.model().renderJobs;
@@ -326,6 +326,7 @@ private slots:
         qInfo()<<"ink_trace_window"<<w->size()<<"DPR"<<w->devicePixelRatio()<<"bottom"<<bottom;
         const auto start=point(s,viewport,.12,center);
         QTest::mousePress(w,Qt::LeftButton,Qt::NoModifier,start);
+        QVERIFY(s.annotations()->gestureActive());
         for(int i=1;i<=samples;++i) {
             const auto p=point(s,viewport,.12+.7*i/samples,center+amplitude*std::sin(i*.05));
             QVERIFY(viewport->contains(viewport->mapFromScene(QPointF(p))));

@@ -13,3 +13,10 @@
 `manifest.json` 记录包内文件与源码 SHA-256；`source.zip` 是本候选包实际使用的项目源码（含未提交修改），含构建脚本和依赖锁文件。`licenses/` 提供 Qt、PDFium、字体、runtime 通知及对应源码位置。兼容的 Qt 动态库可以替换；本项目不限制许可证允许的修改、调试或逆向工程。
 
 已测范围与限制见 `source.zip` 内 `docs/PHASE8_REPORT.md`。开发机清理 SDK 搜索路径验证不等同于干净 Windows 虚拟机验收；系统 IME、真实触控笔/触控板、跨屏、冷启动和远程 CI 仍需要对应设备或环境。macOS 按用户安排留待项目完成后运行。当前不作为已完成安全与许可发布审批的正式公开发行版。
+
+
+## 2026-10-16 设计迭代候选包
+
+`build/packages/LinguaPDF-design-20261016-final.zip` 为本轮本机未签名候选包，解压后启动 `langlern.exe`。包含离线ECDICT索引及对应通知文件，仅部署qsqlite SQL驱动。不要把候选包称为整体许可审查完成或双平台发行完成。
+
+本轮SDK-free PATH验证增加design_tests，共7个运行套件，均已在本机通过；源文件/二进制校验及实际Qt模块来源验证也通过。Windows OCR语言包与SAPI语音来自本机，不随包复制；缺包时显示不可用。原始PDF和已有练习数据不因解压/运行候选包而迁移或删除。完整记录见DESIGN_ALIGNMENT.md和PERFORMANCE.md。

@@ -1,5 +1,6 @@
 #include "pdfworker.h"
 #include "exporttext.h"
+#include "scancleanup.h"
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QFile>
@@ -17,6 +18,7 @@
 #include <QPainterPath>
 #include <QPdfWriter>
 #include <QPageSize>
+#include <QPageLayout>
 #include <QTemporaryFile>
 #include <QSet>
 #include <algorithm>
@@ -97,6 +99,51 @@ void PdfWorker::cancel(quint64 revision) {
     std::lock_guard lock(mutex_);
     latest_.store(revision);
     pending_.reset();
+}
+void PdfWorker::optimizeScan(quint64 session,QString target,QByteArray identity,QVariantMap options) {
+    scanCancelled_.store(false);
+    QMetaObject::invokeMethod(this,[this,session,target,identity,options] {
+        QString error;
+        try {
+            require(engine_ && engine_->session==session && engine_->document,"原文档已关闭。");
+            require(!QFileInfo::exists(target),"请使用尚未存在的新 PDF 文件名，不能覆盖原文件。");
+            QFile input(engine_->file.fileName());require(input.open(QIODevice::ReadOnly),"无法校验原文件。");
+            QCryptographicHash hash(QCryptographicHash::Sha256);require(hash.addData(&input)&&hash.result().toHex()==identity,"原文件已改变，未执行扫描优化。");
+            const int pages=FPDF_GetPageCount(engine_->document.get());require(pages>0,"文档没有可处理的页面。");
+            QTemporaryFile output(QFileInfo(target).absolutePath()+"/.linguapdf-scan-XXXXXX");require(output.open(),"无法创建扫描优化临时文件。");
+            {
+                QPdfWriter writer(&output);writer.setResolution(72);writer.setTitle(QStringLiteral("LinguaPDF optimized scan"));
+                writer.setPageMargins(QMarginsF(0,0,0,0),QPageLayout::Point);
+                QPainter painter;
+                for(int i=0;i<pages;++i) {
+                    require(!stopping_&&!scanCancelled_,"扫描优化已取消，未提交输出。");
+                    ScopedFPDFPage page(FPDF_LoadPage(engine_->document.get(),i));require(bool(page),"无法加载扫描页面。");
+                    const double width=FPDF_GetPageWidthF(page.get()),height=FPDF_GetPageHeightF(page.get());
+                    require(width>0&&height>0&&std::isfinite(width)&&std::isfinite(height),"扫描页面尺寸无效。");
+                    const double scale=std::min({150./72.,4096./width,4096./height,std::sqrt(double(maxImageBytes)/(4*width*height))});
+                    const int pw=std::max(1,int(std::floor(width*scale))),ph=std::max(1,int(std::floor(height*scale)));
+                    QImage image(pw,ph,QImage::Format_ARGB32);require(!image.isNull(),"扫描图像内存分配失败。");image.fill(Qt::white);
+                    ScopedFPDFBitmap bitmap(FPDFBitmap_CreateEx(pw,ph,FPDFBitmap_BGRA,image.bits(),int(image.bytesPerLine())));require(bool(bitmap),"无法创建扫描位图。");
+                    FPDF_RenderPageBitmap(bitmap.get(),page.get(),0,0,pw,ph,0,FPDF_ANNOT);bitmap.reset();page.reset();
+                    image=cleanScan(std::move(image),options);
+                    writer.setPageSize(QPageSize(QSizeF(width,height),QPageSize::Point));
+                    writer.setPageMargins(QMarginsF(0,0,0,0),QPageLayout::Point);
+                    if(i==0)require(painter.begin(&writer),"无法初始化优化 PDF 写入器。");else require(writer.newPage(),"无法写入优化 PDF 页面。");
+                    painter.drawImage(QRectF(0,0,width,height),image);
+                    emit scanProgress(session,i+1,pages);
+                }
+                require(painter.end(),"扫描优化 PDF 写入失败。");
+            }
+            require(output.flush(),"无法刷新扫描优化文件。");
+            require(quint64(output.size())<=std::numeric_limits<unsigned long>::max(),"结果超过当前校验接口上限，未提交。");
+            FPDF_FILEACCESS access{};access.m_FileLen=static_cast<unsigned long>(output.size());access.m_GetBlock=readBlock;access.m_Param=&output;
+            {ScopedFPDFDocument check(FPDF_LoadCustomDocument(&access,nullptr));require(bool(check)&&FPDF_GetPageCount(check.get())==pages,"优化 PDF 回读失败。");}
+            hash.reset();require(input.seek(0)&&hash.addData(&input)&&hash.result().toHex()==identity,"处理期间原文件改变，未提交。");
+            require(!stopping_&&!scanCancelled_,"扫描优化已取消，未提交输出。");
+            require(output.rename(target),"无法提交优化文件；目标可能已存在。");output.setAutoRemove(false);
+        }catch(const std::exception& e){error=QString::fromUtf8(e.what());}
+        emit scanFinished(session,target,error);
+    },Qt::QueuedConnection);
 }
 void PdfWorker::shutdown() {
     std::lock_guard lock(mutex_);

@@ -16,9 +16,12 @@ class AnnotationModel : public QAbstractListModel {
     Q_PROPERTY(bool canRedo READ canRedo NOTIFY historyChanged)
     Q_PROPERTY(QString inkSelection READ inkSelection NOTIFY inkSelectionChanged)
     Q_PROPERTY(QString gestureError READ gestureError NOTIFY gestureErrorChanged)
+    Q_PROPERTY(quint64 version READ version NOTIFY contentChanged)
 public:
     enum Role { Id=Qt::UserRole+1, Page, Anchor, BoxWidth, BoxHeight, FontSize, Text, Family, Color, PageUnits, Order };
-    explicit AnnotationModel(QObject* parent=nullptr) : QAbstractListModel(parent) {}
+    explicit AnnotationModel(QObject* parent=nullptr) : QAbstractListModel(parent) { connect(this,&AnnotationModel::contentChanged,this,[this]{++version_;}); }
+    quint64 version() const { return version_; }
+    Q_INVOKABLE QVariantMap pageStats(int page) const;
     int rowCount(const QModelIndex& parent={}) const override { return parent.isValid()?0:int(visible_.size()); }
     QVariant data(const QModelIndex&,int role) const override;
     QHash<int,QByteArray> roleNames() const override;
@@ -53,6 +56,8 @@ public:
     Q_INVOKABLE void removeSelected();
     Q_INVOKABLE void undo();
     Q_INVOKABLE void redo();
+    Q_INVOKABLE void cycleMark(const QString& id);
+    Q_INVOKABLE bool selectNext(const QString& id);
 signals:
     void contentChanged();
     void selectionChanged();
@@ -64,6 +69,7 @@ private:
     struct Command {
         TextAnnotation before, after;
         QList<InkStroke> inkBefore, inkAfter;
+        TextAnnotation linkedBefore, linkedAfter;
         qsizetype bytes() const;
     };
     void record(TextAnnotation before,TextAnnotation after);
@@ -93,4 +99,5 @@ private:
     QString selectedInk_, gestureError_;
     quint64 nextInkOrder_ = 0;
     quint64 nextTextOrder_ = 0;
+    quint64 version_ = 0;
 };

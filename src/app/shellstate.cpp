@@ -20,6 +20,16 @@ ShellState::ShellState(QObject* parent) : QObject(parent) {
     connect(worker_, &PdfWorker::nativeClosed, this, &ShellState::documentClosed);
     connect(worker_, &PdfWorker::requestStarted, this, &ShellState::renderStarted);
     connect(worker_, &PdfWorker::discarded, this, &ShellState::renderDiscarded);
+    connect(worker_,&PdfWorker::scanProgress,this,[this](quint64 session,int page,int pages){
+        if(session!=session_)return;
+        exportStatus_=tr("扫描优化 %1 / %2 页…").arg(page).arg(pages);emit storageChanged();
+    });
+    connect(worker_,&PdfWorker::scanFinished,this,[this](quint64 session,const QString& target,const QString& error){
+        scanning_=false;
+        if(session!=session_)return;
+        exportStatus_=error.isEmpty()?tr("扫描优化完成，已创建新 PDF"):error;emit storageChanged();
+        if(error.isEmpty()&&!shuttingDown_)selectFile(QUrl::fromLocalFile(target));
+    });
     connect(&thread_, &QThread::finished, this, [this] {
         shutdownComplete_ = true;
         emit shutdownChanged();
@@ -58,7 +68,7 @@ bool ShellState::dark() const {
 }
 
 void ShellState::selectFile(const QUrl& url) {
-    if (url.isEmpty() || shuttingDown_) return;
+    if (url.isEmpty() || shuttingDown_ || scanning_) return;
     if(!applyingTransition_) { flushBefore([this,url] { selectFile(url); }); return; }
     const QFileInfo file(url.toLocalFile());
     if (!url.isLocalFile() || url.toLocalFile().isEmpty()) {
@@ -88,7 +98,7 @@ void ShellState::selectFile(const QUrl& url) {
 }
 
 void ShellState::clearSelection() {
-    if (shuttingDown_) return;
+    if (shuttingDown_ || scanning_) return;
     if(!applyingTransition_) { flushBefore([this] { clearSelection(); }); return; }
     storageReady_=false; loadingStorage_=false; editRevision_=savedRevision_=0;
     QMetaObject::invokeMethod(storage_,&StorageWorker::close,Qt::QueuedConnection);
@@ -196,10 +206,13 @@ void ShellState::updateViewport(double y,double height,double width,double dpr) 
         || !std::isfinite(dpr) || dpr <= 0 || height <= 0 || width <= 0) return;
     const auto oldPages = model_.priority();
     const auto oldWidth = model_.targetWidth(page_,dpr_);
+    const bool scrolled=std::abs(y-model_.offset())>0.5;
     viewportAttached_ = true;
     viewportWidth_ = width; viewportHeight_ = height; dpr_ = dpr;
     model_.setViewport(y,height,width,zoom_);
-    page_ = model_.pageAt(model_.offset());
+    const int first=model_.pageAt(model_.offset());
+    const int columns=doublePage()?2:1;
+    if(!model_.visible(page_) || (scrolled && page_/columns!=first/columns))page_=first;
     if (oldPages != model_.priority()) syncAnnotations();
     busy_ = pageCount_ > 0 && !failed_.contains(page_) && !model_.ready(page_,model_.targetWidth(page_,dpr_));
     emit selectionChanged(); emit imageChanged();
@@ -208,6 +221,23 @@ void ShellState::updateViewport(double y,double height,double width,double dpr) 
         invalidate();
     }
     else if (!inFlight_ && !scheduleTimer_.isActive()) scheduleTimer_.start();
+}
+void ShellState::focusPage(int page) {
+    if(shuttingDown_||page<0||page>=pageCount_||page_==page)return;
+    page_=page;
+    busy_=!model_.ready(page_,model_.targetWidth(page_,dpr_));
+    emit selectionChanged();emit imageChanged();
+}
+void ShellState::setDoublePage(bool enabled) {
+    if(shuttingDown_||doublePage()==enabled)return;
+    const int anchor=page_;
+    annotations_.cancelGesture();finishTextEditing();textSelection_.clear();
+    if(enabled)singlePageZoom_=zoom_;
+    model_.setDoublePage(enabled);
+    zoom_=enabled?1.0:singlePageZoom_;
+    model_.setViewport(model_.offset(),viewportHeight_,viewportWidth_,zoom_);
+    if(pageCount_>0)goToPage(anchor+1);
+    else { emit layoutChanged();emit selectionChanged(); }
 }
 void ShellState::setZoom(double zoom) {
     if (shuttingDown_ || !std::isfinite(zoom)) return;
@@ -265,6 +295,7 @@ void ShellState::acceptFrame(const PdfFrame& frame) {
 }
 void ShellState::beginShutdown() {
     if (shuttingDown_) return;
+    worker_->cancelScan();
     if(!applyingTransition_) { flushBefore([this] { beginShutdown(); }); return; }
     QMetaObject::invokeMethod(storage_,&StorageWorker::close,Qt::QueuedConnection);
     shuttingDown_ = true;
@@ -279,20 +310,46 @@ void ShellState::beginShutdown() {
 
 bool ShellState::beginTextSelection(double x,double y) {
     if (shuttingDown_ || !pageCount_ || !std::isfinite(x) || !std::isfinite(y)) return false;
-    const int page=model_.pageAt(y);
+    const int page=model_.pageAtPosition(x,y);
+    if(page<0){textSelection_.clear();return false;}
     const double width=model_.pageWidth();
-    const double left=(model_.contentWidth()-width)/2;
+    const double left=model_.left(page);
     if (x<left || x>left+width || y<model_.top(page) || y>model_.top(page)+model_.height(page)) {
         textSelection_.clear(); return false;
     }
+    focusPage(page);
     textSelection_.begin(page,(x-left)/width,(y-model_.top(page))/model_.height(page),3/width,3/model_.height(page));
     return textSelection_.canStart();
 }
+bool ShellState::interactiveContentAt(double x,double y) const {
+    if(!containsPage(x,y))return true;
+    const int page=model_.pageAtPosition(x,y);
+    if(page<0)return false;const double width=model_.pageWidth(),height=model_.height(page);
+    const QPointF p((x-model_.left(page))/width,(y-model_.top(page))/height);
+    const auto text=textSelection_.snapshot(page);if(!text)return true;
+    for(const auto& c:text->characters)if(c.visible&&c.box.adjusted(-3/width,-3/height,3/width,3/height).contains(p))return true;
+    const auto g=annotations_.geometry(page);if(!g.valid)return true;
+    for(const auto& n:annotations_.snapshot())if(n.page==page){const auto anchor=g.pdfToDisplay.map(n.anchor);
+        if(QRectF(anchor,QSizeF(n.width/g.units.width(),n.height/g.units.height())).adjusted(-3/width,-18/height,3/width,3/height).contains(p))return true;}
+    return false;
+}
+bool ShellState::eraseTextAt(double x,double y) {
+    if(!containsPage(x,y))return false;
+    const int page=model_.pageAtPosition(x,y);
+    if(page<0)return false;const auto g=annotations_.geometry(page);if(!g.valid)return false;
+    const QPointF p((x-model_.left(page))/model_.pageWidth(),(y-model_.top(page))/model_.height(page));
+    auto notes=annotations_.snapshot();std::sort(notes.begin(),notes.end(),[](const auto& a,const auto& b){return a.order>b.order;});
+    for(const auto& n:notes)if(n.page==page){const auto anchor=g.pdfToDisplay.map(n.anchor);
+        if(QRectF(anchor,QSizeF(n.width/g.units.width(),n.height/g.units.height())).contains(p)){
+            focusPage(page);annotations_.select(n.id);annotations_.removeSelected();return true;}}
+    return false;
+}
 void ShellState::extendTextSelection(double x,double y) {
     if (shuttingDown_ || !pageCount_ || !std::isfinite(x) || !std::isfinite(y)) return;
-    const int page=model_.pageAt(y);
+    const int page=model_.pageAtPosition(x,y,true);
+    if(page<0)return;
     const double width=model_.pageWidth();
-    const double left=(model_.contentWidth()-width)/2;
+    const double left=model_.left(page);
     textSelection_.extend(page,std::clamp((x-left)/width,0.0,1.0),std::clamp((y-model_.top(page))/model_.height(page),0.0,1.0));
 }
 
@@ -307,17 +364,20 @@ void ShellState::finishTextEditing() {
 }
 QString ShellState::createTextBox(double x,double y) {
     if(shuttingDown_ || !storageReady_ || transitioning_ || !pageCount_ || !std::isfinite(x) || !std::isfinite(y)) return {};
-    const int page=model_.pageAt(y);
-    const double w=model_.pageWidth(), h=model_.height(page), left=(model_.contentWidth()-w)/2;
+    const int page=model_.pageAtPosition(x,y);
+    if(page<0)return {};
+    const double w=model_.pageWidth(), h=model_.height(page), left=model_.left(page);
     if(x<left || x>=left+w || y<model_.top(page) || y>=model_.top(page)+h) return {};
     finishTextEditing(); textSelection_.clear();
+    focusPage(page);
     return annotations_.create(page,(x-left)/w,(y-model_.top(page))/h);
 }
 
 bool ShellState::containsPage(double x,double y) const {
     if(shuttingDown_ || !storageReady_ || transitioning_ || !pageCount_ || !std::isfinite(x) || !std::isfinite(y)) return false;
-    const int page=model_.pageAt(y);
-    const double w=model_.pageWidth(), left=(model_.contentWidth()-w)/2;
+    const int page=model_.pageAtPosition(x,y);
+    if(page<0)return false;
+    const double w=model_.pageWidth(), left=model_.left(page);
     return x>=left && x<left+w && y>=model_.top(page) && y<model_.top(page)+model_.height(page);
 }
 
@@ -407,10 +467,16 @@ void ShellState::flushBefore(std::function<void()> action) {
     applyingTransition_=true; action(); applyingTransition_=false;
 }
 void ShellState::exportPdf(const QUrl& target) {
-    if(shuttingDown_ || transitioning_ || exporting_ || !storageReady_ || !pageCount_) return;
+    if(shuttingDown_ || transitioning_ || exporting_ || scanning_ || !storageReady_ || !pageCount_) return;
     finishTextEditing(); annotations_.cancelGesture();
     if(!target.isLocalFile()) { exportStatus_=QStringLiteral("请选择本地新 PDF 文件。"); emit storageChanged(); return; }
     exporting_=true; exportStatus_=QStringLiteral("正在导出当前修订；可以继续编辑…"); emit storageChanged();
     const auto session=session_; const auto path=path_; const auto destination=target.toLocalFile(); const auto identity=identity_; const auto snapshot=annotationSnapshot();
     QMetaObject::invokeMethod(worker_,[this,session,path,destination,identity,snapshot] { worker_->exportPdf(session,path,destination,identity,snapshot); },Qt::QueuedConnection);
+}
+void ShellState::optimizeScan(const QUrl& target,const QVariantMap& options) {
+    if(shuttingDown_||transitioning_||exporting_||scanning_||!storageReady_||!pageCount_)return;
+    if(!target.isLocalFile()||QFileInfo::exists(target.toLocalFile())){exportStatus_=tr("请选择尚未存在的新 PDF 文件名。");emit storageChanged();return;}
+    finishTextEditing();annotations_.cancelGesture();scanning_=true;exportStatus_=tr("正在重建扫描 PDF…");emit storageChanged();
+    worker_->optimizeScan(session_,target.toLocalFile(),identity_,options);
 }

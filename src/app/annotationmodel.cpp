@@ -9,6 +9,14 @@ QHash<int,QByteArray> AnnotationModel::roleNames() const {
     return {{Id,"noteId"},{Page,"notePage"},{Anchor,"noteAnchor"},{BoxWidth,"noteWidth"},{BoxHeight,"noteHeight"},
         {FontSize,"noteFontSize"},{Text,"noteText"},{Family,"noteFamily"},{Color,"noteColor"},{PageUnits,"notePageUnits"},{Order,"noteOrder"}};
 }
+QVariantMap AnnotationModel::pageStats(int page) const {
+    int answered=0,right=0,wrong=0,ink=0;
+    for(const auto& n:notes_)if(n.page==page&&!n.text.isEmpty()){
+        if(n.id.endsWith("-review")){right+=n.text==QStringLiteral("✓");wrong+=n.text==QStringLiteral("×");}else ++answered;
+    }
+    for(const auto& stroke:strokes_)if(stroke.page==page)++ink;
+    return {{"answered",answered},{"right",right},{"wrong",wrong},{"ink",ink}};
+}
 QVariant AnnotationModel::data(const QModelIndex& index,int role) const {
     if (!index.isValid() || index.row()<0 || index.row()>=visible_.size()) return {};
     const auto& n=notes_[visible_[index.row()]];
@@ -88,8 +96,11 @@ void AnnotationModel::finishEditing() {
     if(selected_.isEmpty()) return;
     const auto id=selected_;
     auto after=notes_.value(id);
-    if(after.text.isEmpty()) { notes_.remove(id); after={}; emit contentChanged(); }
-    selected_.clear(); record(beforeEdit_,after); beforeEdit_={};
+    TextAnnotation linked;
+    if(after.text.isEmpty()) { notes_.remove(id);linked=notes_.take(id+"-review");after={};emit contentChanged(); }
+    selected_.clear();
+    if(linked.id.isEmpty())record(beforeEdit_,after);else record(Command{beforeEdit_,after,{},{},linked,{}});
+    beforeEdit_={};
     emit selectionChanged(); refreshRows();
 }
 void AnnotationModel::setText(const QString& id,const QString& text,double height) {
@@ -107,13 +118,39 @@ void AnnotationModel::move(const QString& id,double x,double y) {
     auto& n=notes_[id]; const auto before=n; const auto g=geometry_[n.page];
     x=std::clamp(x,0.0,std::max(0.0,1-n.width/g.units.width()));
     y=std::clamp(y,0.0,std::max(0.0,1-std::min(n.height,g.units.height())/g.units.height()));
-    n.anchor=g.displayToPdf.map(QPointF(x,y)); notify(id,{Anchor}); record(before,n);
+    n.anchor=g.displayToPdf.map(QPointF(x,y)); notify(id,{Anchor});
+    const auto markBefore=notes_.value(id+"-review");auto markAfter=markBefore;
+    if(!markBefore.id.isEmpty()){markAfter.anchor+=n.anchor-before.anchor;notes_[markAfter.id]=markAfter;notify(markAfter.id,{Anchor});}
+    record(Command{before,n,{},{},markBefore,markAfter});
 }
 void AnnotationModel::removeSelected() {
     if(selected_.isEmpty()) return;
     const auto id=selected_; finishEditing();
     if(!notes_.contains(id)) return;
-    const auto before=notes_.take(id); record(before,{}); refreshRows();
+    const auto before=notes_.take(id);const auto mark=notes_.take(id+"-review");record(Command{before,{},{},{},mark,{}});refreshRows();
+}
+void AnnotationModel::cycleMark(const QString& id) {
+    finishEditing();
+    if(!notes_.contains(id) || id.endsWith("-review")) return;
+    const auto source=notes_.value(id); const auto key=id+"-review";
+    const auto before=notes_.value(key);
+    if(before.text==QStringLiteral("×")) { notes_.remove(key);record(before,{});refreshRows();return; }
+    auto after=source;after.id=key;after.order=nextTextOrder_++;after.width=24;after.height=24;after.fontSize=18;
+    const auto g=geometry_.value(source.page);if(!g.valid)return;
+    auto pos=g.pdfToDisplay.map(source.anchor);pos.setX(std::min(.96,pos.x()+source.width/g.units.width()));
+    pos.setY(std::max(0.0,pos.y()-14/g.units.height()));after.anchor=g.displayToPdf.map(pos);
+    after.text=before.id.isEmpty()?QStringLiteral("✓"):QStringLiteral("×");
+    after.color=before.id.isEmpty()?QColor("#2fb457"):QColor("#ff3b30");
+    notes_[key]=after;record(before,after);refreshRows();notify(key,{});
+}
+bool AnnotationModel::selectNext(const QString& id) {
+    if(!notes_.contains(id))return false;
+    const auto page=notes_.value(id).page;const auto g=geometry_.value(page);QList<TextAnnotation> answers;
+    for(const auto& n:notes_)if(n.page==page&&!n.id.endsWith("-review"))answers.append(n);
+    if(answers.size()<2)return false;
+    std::sort(answers.begin(),answers.end(),[&g](const auto& a,const auto& b){const auto p=g.pdfToDisplay.map(a.anchor),q=g.pdfToDisplay.map(b.anchor);return p.y()!=q.y()?p.y()<q.y():p.x()<q.x();});
+    for(int i=0;i<answers.size();++i)if(answers[i].id==id){select(answers[(i+1)%answers.size()].id);return true;}
+    return false;
 }
 void AnnotationModel::apply(const TextAnnotation& from,const TextAnnotation& to) {
     if(!from.id.isEmpty()) notes_.remove(from.id);
@@ -123,12 +160,12 @@ void AnnotationModel::apply(const TextAnnotation& from,const TextAnnotation& to)
 void AnnotationModel::undo() {
     cancelGesture(); clearInkSelection();
     finishEditing(); if(undo_.isEmpty()) return;
-    const auto c=undo_.takeLast(); apply(c.after,c.before); applyInk(c.inkAfter,c.inkBefore); redo_.append(c); trimHistory(); emit historyChanged(); emit contentChanged();
+    const auto c=undo_.takeLast(); apply(c.after,c.before);apply(c.linkedAfter,c.linkedBefore);applyInk(c.inkAfter,c.inkBefore); redo_.append(c); trimHistory(); emit historyChanged(); emit contentChanged();
 }
 void AnnotationModel::redo() {
     cancelGesture(); clearInkSelection();
     finishEditing(); if(redo_.isEmpty()) return;
-    const auto c=redo_.takeLast(); apply(c.before,c.after); applyInk(c.inkBefore,c.inkAfter); undo_.append(c); trimHistory(); emit historyChanged(); emit contentChanged();
+    const auto c=redo_.takeLast(); apply(c.before,c.after);apply(c.linkedBefore,c.linkedAfter);applyInk(c.inkBefore,c.inkAfter); undo_.append(c); trimHistory(); emit historyChanged(); emit contentChanged();
 }
 
 
@@ -164,7 +201,8 @@ qsizetype inkBytes(const QList<InkStroke>& strokes) {
 }
 qsizetype AnnotationModel::Command::bytes() const {
     return (before.id.capacity()+after.id.capacity()+before.text.capacity()+after.text.capacity()
-        +before.family.capacity()+after.family.capacity())*2+inkBytes(inkBefore)+inkBytes(inkAfter);
+        +before.family.capacity()+after.family.capacity()+linkedBefore.id.capacity()+linkedAfter.id.capacity()
+        +linkedBefore.text.capacity()+linkedAfter.text.capacity()+linkedBefore.family.capacity()+linkedAfter.family.capacity())*2+inkBytes(inkBefore)+inkBytes(inkAfter);
 }
 qsizetype AnnotationModel::historyBytes() const {
     qsizetype bytes=(undo_.capacity()+redo_.capacity())*sizeof(Command);

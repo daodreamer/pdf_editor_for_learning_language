@@ -106,5 +106,13 @@
   {
     "file": "notices/windows-sdk/sdk_third_party_notices.rtf",
     "sha256": "ebb6640a8246b39b70322c5cec9aad7a71e86ea7b86c9c604d3a7f3ff1b30e89"
+  },
+  {
+    "file": "notices/ECDICT-MIT.txt",
+    "sha256": "f8552dd246f61a4e064569eae6194a01c6b3d63b03bf27c6ca863593c549ed0f"
+  },
+  {
+    "file": "notices/CppWinRT-MIT.txt",
+    "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
   }
 ]

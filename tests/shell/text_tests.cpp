@@ -76,7 +76,9 @@ private slots:
         }
         int changedPixels=0;
         const int top=int(viewport->mapToScene(QPointF(0,0)).y()*dpr);
-        for(int y=top;y<selected.height();++y) for(int x=0;x<selected.width();++x) {
+        const auto bottomRight=viewport->mapToScene(QPointF(viewport->width(),viewport->height()))*dpr;
+        const int left=int(viewport->mapToScene(QPointF(0,0)).x()*dpr);
+        for(int y=top;y<int(bottomRight.y());++y) for(int x=left;x<int(bottomRight.x());++x) {
             if(selected.pixel(x,y)==unselected.pixel(x,y)) continue;
             ++changedPixels;
             bool inside=false;
@@ -111,6 +113,7 @@ private slots:
         QTRY_VERIFY(s->ready());
         QTest::keyClick(window,Qt::Key_Escape);
         const auto blank=viewport->mapToScene(QPointF(5,viewport->height()/2)).toPoint();
+        QTest::keyClick(window,Qt::Key_S,Qt::ControlModifier|Qt::ShiftModifier);
         const double blankBefore=viewport->property("contentY").toDouble();
         QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,blank);
         for(int i=1;i<=5;++i) QTest::mouseMove(window,blank-QPoint(0,15*i),20);

@@ -99,3 +99,18 @@ PyMuPDF 1.26.5 / MuPDF 只做独立进程的本地验证，是 AGPL-3.0/商业�
 ## 结论与待办
 
 已形成可执行的候选分发路径和通知草案，但**没有制作或批准最终发行包**。阶段 0 当前不存在 Qt 核心模块或 Noto 实验使用的已知许可阻断；仍需核对最终部署闭包、相应源码可得性、微软 runtime、macOS 打包与签名，以及供应商构建的全部实际传递依赖。阶段报告保留这些风险，不能用 MIT 项目声明覆盖第三方义务。
+
+
+## 2026-10-16 离线学习服务增量
+
+用户已授权新增本地依赖，运行时保持离线。
+
+| 组件 | 实际采用/来源 | 用途与维护成本 | 许可证/分发要求及未决项 |
+| --- | --- | --- | --- |
+| Qt Sql 6.8.3 / qsqlite | 既有官方 qtbase 安装；CMake 显式链接 Qt6::Sql | 只读索引查询，不把约80 MB词库载入进程堆；维护一个简单SQL schema | 沿用Qt动态库及SQLite的实际SBOM/通知审查；候选包需包含Qt6Sql与qsqlite插件。不是增加网络SQL服务。 |
+| ECDICT | skywind3000/ECDICT 固定提交 `bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b`；CSV SHA-256 `1a6947e04785db63613a92e14903cdae7954f7e84860b10e68e5c7cbb3f9c3cf` | 770611条英汉/英文释义，开发工具转换SQLite；源约65.9 MB，当前DB约80.2 MB。更新需重做散列、词条回归和审查 | 上游LICENSE声明MIT，原文见 notices/ECDICT-MIT.txt，来源和散列见 dictionary.lock.json。上游README说明词条汇集自多种材料；未逐条核实各数据来源权利链，公开发行前仍须审查，不能只凭仓库MIT标签宣称整库分发已合规。 |
+| Windows.Media.Ocr | 当前Windows 11本机API、SDK 10.0.26100.0 | 使用已安装系统语言包，不随程序下载模型；OCR不是字符级PDF原生文字层，当前只处理当前页 | 系统提供的Windows API，不打包Windows OCR系统DLL或语言包；缺包时显示不可用，不自动联网安装。macOS需另实现本机OCR。官方接口依据：https://learn.microsoft.com/en-us/uwp/api/windows.media.ocr.ocrengine |
+| C++/WinRT headers | 实际SDK头部版本2.0.250303.5 | 编译时投影WinRT接口；不新增独立运行库 | 实际头部声明MIT；随附 notices/CppWinRT-MIT.txt，官方仓库LICENSE Git blob `9e841e7a26e4eb057b24511e7b92d42b257a80e5`，SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`。该份许可证文本来自官方仓库；尚未将整个SDK投影源码与仓库固定提交逐文件对应。 |
+| Windows SAPI / WinMM MCI | 本机Windows桌面API、Windows SDK | 本地语音和本地教材音频；无云语音和FFmpeg二进制 | 系统组件不随包复制；系统已有语音、音频解码器决定可用语言/格式。英式或美式语音未安装时明确报错，不伪造口音。SDK分发依据沿用既有候选包审查。 |
+
+词库准备：`.tools/venv/Scripts/python tools/bootstrap-dictionary.py`。首次下载需网络，普通应用没有下载逻辑。数据库可通过 LANGLERN_DICTIONARY 指定已有本地路径，默认位于可执行文件旁 dictionary/ecdict.sqlite。SQLite成品散列记录当前构建产物；不同SQLite开发版本的文件布局可能变化，固定CSV和实际内容检查是重建依据。

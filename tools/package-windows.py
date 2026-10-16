@@ -57,14 +57,18 @@ def package(build, out, vs):
     shutil.copy2(build/'langlern.exe', out)
     shutil.copy2(build/'pdfium.dll', out)
     shutil.copytree(build/'fonts', out/'fonts')
+    if (build/'dictionary').is_dir():
+        shutil.copytree(build/'dictionary', out/'dictionary')
     command = [str(qt/'bin/windeployqt.exe'), '--release', '--qmldir', str(ROOT/'qml'),
                '--no-compiler-runtime', '--no-translations', '--no-opengl-sw',
                '--no-system-d3d-compiler', '--no-system-dxc-compiler',
-               '--skip-plugin-types', 'qmltooling,generic,networkinformation,tls',
+               '--skip-plugin-types', 'qmltooling,generic,networkinformation,tls,sqldrivers',
                '--verbose', '1', str(out/'langlern.exe')]
     result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     (out/'deployment.log').write_bytes(result.stdout)
     result.check_returncode()
+    (out/'sqldrivers').mkdir(exist_ok=True)
+    shutil.copy2(qt/'plugins/sqldrivers/qsqlite.dll',out/'sqldrivers/qsqlite.dll')
     sdk=Path(os.environ['WindowsSdkDir'])
     sdk_version=os.environ['WindowsSDKVersion'].strip('\\/')
     d3d_compiler=sdk/'Redist/D3D/x64/d3dcompiler_47.dll'
@@ -87,6 +91,7 @@ def package(build, out, vs):
     shutil.copy2(ROOT/'LICENSE', out)
     shutil.copy2(ROOT/'third_party/qt-sbom-evidence.json', licenses)
     shutil.copy2(ROOT/'third_party/dependencies.lock.json', licenses)
+    shutil.copy2(ROOT/'third_party/dictionary.lock.json', licenses)
     shutil.copy2(vs/'Licenses/1033/Redist.txt', licenses/'Microsoft-Redist.txt')
     sdk_notices=licenses/'windows-sdk';sdk_notices.mkdir(exist_ok=True)
     for name in ('sdk_license.rtf','sdk_third_party_notices.rtf'):

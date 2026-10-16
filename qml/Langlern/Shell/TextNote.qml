@@ -4,6 +4,7 @@ import QtQuick
 Item {
     id: note
     signal editingFinished()
+    property bool marking: false
     required property ShellState shell
     required property string noteId
     required property real noteOrder
@@ -20,11 +21,12 @@ Item {
     required property real pageWidth
     required property real pageHeight
     required property real pageTop
+    required property real pageLeft
     required property real contentWidth
     readonly property bool selected: shell.annotations.selectedId === noteId
     readonly property real unitScale: pageWidth / notePageUnits.width
     property point dragOffset: Qt.point(0, 0)
-    x: (contentWidth - pageWidth) / 2 + noteAnchor.x * pageWidth + dragOffset.x
+    x: pageLeft + noteAnchor.x * pageWidth + dragOffset.x
     y: pageTop + noteAnchor.y * pageHeight + dragOffset.y
     width: noteWidth * unitScale
     height: Math.min(noteHeight * unitScale, (1 - noteAnchor.y) * pageHeight)
@@ -68,6 +70,7 @@ Item {
             Accessible.name: qsTr("第 %1 页文字答案").arg(note.notePage + 1)
             onActiveFocusChanged: {
                 if (activeFocus) {
+                    note.shell.focusPage(note.notePage)
                     note.shell.textSelection.clear()
                     note.shell.annotations.select(note.noteId)
                 } else if (note.selected) {
@@ -83,6 +86,16 @@ Item {
             onContentHeightChanged: syncText()
             Keys.onEscapePressed: { note.shell.finishTextEditing(); focus = false }
             Keys.onPressed: function(event) {
+                if (preeditText.length > 0) return
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                    if (!(event.modifiers & Qt.ShiftModifier)) { note.shell.finishTextEditing(); focus = false; event.accepted = true; return }
+                }
+                if (event.key === Qt.Key_Tab) {
+                    note.shell.commitInput()
+                    syncText()
+                    event.accepted = note.shell.annotations.selectNext(note.noteId)
+                    return
+                }
                 if ((event.modifiers & (Qt.platform.os === "osx" ? Qt.MetaModifier : Qt.ControlModifier)) && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
                     note.shell.finishTextEditing()
                     focus = false
@@ -94,6 +107,17 @@ Item {
                 }
             }
         }
+    }
+    MouseArea {
+        anchors.fill: parent
+        enabled: note.marking
+        cursorShape: Qt.PointingHandCursor
+        onClicked: note.shell.annotations.cycleMark(note.noteId)
+        Accessible.name: qsTr("批改答案：正确、错误、清除")
+    }
+    TapHandler {
+        acceptedModifiers: Qt.AltModifier
+        onTapped: note.shell.annotations.cycleMark(note.noteId)
     }
     Rectangle {
         objectName: "annotationMoveHandle"

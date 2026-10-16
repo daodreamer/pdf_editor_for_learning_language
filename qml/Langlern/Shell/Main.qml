@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls.Basic
-import QtQuick.Layouts
 import QtQuick.Dialogs
 
 ApplicationWindow {
@@ -11,13 +10,14 @@ ApplicationWindow {
     onProbeAcknowledged: shell.acknowledgeProbe()
     property bool probeEnabled: false
     readonly property string themeLabel: [qsTr("跟随系统"), qsTr("浅色"), qsTr("深色")][shell.themeMode]
-    width: 1120
-    height: 760
+    width: 1440
+    height: 900
     minimumWidth: 640
     minimumHeight: 480
-    title: shell.selectedName.length > 0 ? qsTr("%1 — Langlern").arg(shell.selectedName) : "Langlern"
+    title: shell.selectedName.length > 0 ? qsTr("%1 — LinguaPDF").arg(shell.selectedName) : "LinguaPDF"
     color: shellTheme.canvas
     onClosing: function(close) {
+        workspace.updateProgress(window.shell.selectedUrl, window.shell.pageCount, window.shell.currentPage)
         if (!window.shell.shutdownComplete) {
             close.accepted = false
             window.shell.beginShutdown()
@@ -37,7 +37,9 @@ ApplicationWindow {
     palette.highlight: shellTheme.accent
     palette.highlightedText: shellTheme.surface
 
-    Theme { id: shellTheme; dark: window.shell.dark }
+    Theme { id: shellTheme; dark: window.shell.dark; paper: workspace.paper }
+    WorkspaceState { id: workspace }
+    OfflineServices { id: offline }
 
     Action {
         id: openAction
@@ -136,125 +138,14 @@ ApplicationWindow {
         }
     }
 
-    header: ToolBar {
-        padding: 16
-        background: Rectangle { color: shellTheme.surface }
-        contentItem: RowLayout {
-            spacing: 8
-            Label { text: "Langlern"; font.pixelSize: 20; font.weight: Font.DemiBold; color: shellTheme.text }
-            Label { text: qsTr("阅读 · 练习"); color: shellTheme.muted; visible: window.width > 800 }
-            Item { Layout.fillWidth: true }
-            ActionButton { symbol: "open"; compact: window.width < 920; objectName: "openButton"; action: openAction; activeFocusOnTab: true }
-            ActionButton { symbol: "save"; compact: window.width < 920; text: qsTr("保存"); enabled: window.shell.storageReady && !window.shell.transitioning; onClicked: window.shell.saveNow() }
-            ActionButton { symbol: "export"; compact: window.width < 920; objectName: "exportButton"; text: qsTr("导出 PDF…"); enabled: window.shell.storageReady && window.shell.pageCount > 0 && !window.shell.exporting && !window.shell.transitioning; onClicked: exportLoader.active = true }
-            ActionButton { symbol: "theme"; compact: true; action: themeAction; activeFocusOnTab: true; Accessible.name: qsTr("切换主题：") + window.themeLabel }
-            ActionButton { symbol: "help"; compact: true; action: helpAction; activeFocusOnTab: true }
-        }
-    }
-    Loader {
-        id: documentLoader
+    WorkspaceFrame {
         anchors.fill: parent
-        enabled: !window.shell.transitioning
-        active: false
-        visible: window.shell.pageCount > 0
-        function ensureLoaded(): void { if (window.shell.pageCount > 0) active = true }
-        Connections {
-            target: window.shell
-            function onSelectionChanged(): void { Qt.callLater(documentLoader.ensureLoaded) }
-        }
-        sourceComponent: DocumentView {
-            shell: window.shell
-            theme: shellTheme
-        }
-    }
-    ColumnLayout {
-        visible: window.shell.pageCount === 0
-        anchors.centerIn: parent
-        width: Math.min(520, window.width - 80)
-        spacing: 18
-        Label {
-            Layout.fillWidth: true
-            text: qsTr("为每一次练习，留一处空间。")
-            font.pixelSize: 28
-            font.weight: Font.DemiBold
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.WordWrap
-            color: shellTheme.text
-        }
-        Label {
-            Layout.fillWidth: true
-            text: qsTr("本地 PDF 阅读与语言练习工具")
-            horizontalAlignment: Text.AlignHCenter
-            color: shellTheme.muted
-        }
-        Button {
-            id: chooseButton
-            Layout.alignment: Qt.AlignHCenter
-            action: openAction
-            highlighted: true
-            padding: 16
-            activeFocusOnTab: true
-            palette.buttonText: shellTheme.surface
-            palette.highlightedText: shellTheme.surface
-            background: Rectangle {
-                radius: 6
-                color: chooseButton.down ? Qt.darker(shellTheme.accent, 1.12) : shellTheme.accent
-                border.width: chooseButton.visualFocus ? 2 : 0
-                border.color: shellTheme.text
-            }
-        }
-        Label {
-            Layout.fillWidth: true
-            text: window.shell.selectedName
-            visible: text.length > 0
-            horizontalAlignment: Text.AlignHCenter
-            elide: Text.ElideMiddle
-            color: shellTheme.text
-            textFormat: Text.PlainText
-        }
-        Label {
-            Layout.fillWidth: true
-            text: window.shell.statusText.length > 0 ? window.shell.statusText
-                  : qsTr("打开本地 PDF，开始阅读。")
-            wrapMode: Text.WordWrap
-            horizontalAlignment: Text.AlignHCenter
-            color: shellTheme.muted
-            textFormat: Text.PlainText
-        }
-        Button {
-            Layout.alignment: Qt.AlignHCenter
-            action: closeAction
-            visible: closeAction.enabled
-            flat: true
-            activeFocusOnTab: true
-        }
-    }
-    footer: ToolBar {
-        padding: 12
-        background: Rectangle { color: shellTheme.surface }
-        contentItem: RowLayout {
-            Label { text: qsTr("离线 · 本地文件"); color: shellTheme.muted }
-            ColumnLayout {
-                Layout.fillWidth: true
-                Label {
-                    objectName: "storageStatusLabel"
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignRight
-                    text: window.shell.storageStatus.length > 0 ? window.shell.storageStatus : window.shell.statusText
-                    textFormat: Text.PlainText
-                    wrapMode: Text.WordWrap
-                    color: shellTheme.text
-                }
-                Label {
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignRight
-                    visible: text.length > 0
-                    text: window.shell.exportStatus
-                    textFormat: Text.PlainText
-                    wrapMode: Text.WordWrap
-                    color: shellTheme.muted
-                }
-            }
-        }
+        shell: window.shell
+        theme: shellTheme
+        workspace: workspace
+        services: offline
+        onOpenRequested: window.chooseFile()
+        onExportRequested: exportLoader.active = true
+        onHelpRequested: helpLoader.active = true
     }
 }

@@ -10,6 +10,7 @@
 #include "storageworker.h"
 #include <functional>
 #include <QTimer>
+#include <QCache>
 #include <QtQml/qqmlregistration.h>
 
 class ShellState : public QObject {
@@ -17,6 +18,8 @@ class ShellState : public QObject {
     QML_ELEMENT
     QML_UNCREATABLE("Owned by the application")
     Q_PROPERTY(QString selectedName READ selectedName NOTIFY selectionChanged)
+    Q_PROPERTY(QUrl selectedUrl READ selectedUrl NOTIFY selectionChanged)
+    Q_PROPERTY(quint64 sessionId READ sessionId NOTIFY selectionChanged)
     Q_PROPERTY(QString statusText READ statusText NOTIFY selectionChanged)
     Q_PROPERTY(int themeMode READ themeMode NOTIFY themeChanged)
     Q_PROPERTY(bool dark READ dark NOTIFY themeChanged)
@@ -31,6 +34,7 @@ class ShellState : public QObject {
     Q_PROPERTY(double contentWidth READ contentWidth NOTIFY layoutChanged)
     Q_PROPERTY(double scrollOffset READ scrollOffset NOTIFY layoutChanged)
     Q_PROPERTY(double zoom READ zoom NOTIFY layoutChanged)
+    Q_PROPERTY(bool doublePage READ doublePage WRITE setDoublePage NOTIFY layoutChanged)
     Q_PROPERTY(double pageRatio READ pageRatio NOTIFY selectionChanged)
     Q_PROPERTY(QString errorCode READ errorCode NOTIFY selectionChanged)
     Q_PROPERTY(TextSelection* textSelection READ textSelection CONSTANT)
@@ -40,10 +44,20 @@ class ShellState : public QObject {
     Q_PROPERTY(bool storageReady READ storageReady NOTIFY storageChanged)
     Q_PROPERTY(bool transitioning READ transitioning NOTIFY storageChanged)
     Q_PROPERTY(bool exporting READ exporting NOTIFY storageChanged)
+    Q_PROPERTY(bool scanning READ scanning NOTIFY storageChanged)
 public:
     explicit ShellState(QObject* parent = nullptr);
     ~ShellState() override;
     QString selectedName() const { return selectedName_; }
+    QUrl selectedUrl() const { return path_.isEmpty()?QUrl{}:QUrl::fromLocalFile(path_); }
+    quint64 sessionId() const { return session_; }
+    Q_INVOKABLE QImage cachedPage(int page) const {
+        const auto image=model_.image(page);if(image.isNull())return {};
+        const auto key=image.cacheKey();if(const auto* old=thumbnails_.object(key))return *old;
+        auto thumb=image.scaled(216,300,Qt::KeepAspectRatio,Qt::SmoothTransformation);
+        thumbnails_.insert(key,new QImage(thumb),int(thumb.sizeInBytes()/1024)+1);return thumb;
+    }
+    Q_INVOKABLE bool hasCachedPage(int page) const { return !model_.image(page).isNull(); }
     QString statusText() const { return statusText_; }
     int themeMode() const { return themeMode_; }
     bool dark() const;
@@ -56,11 +70,15 @@ public:
     ReadingModel& model() { return model_; }
     AnnotationModel* annotations() { return &annotations_; }
     Q_INVOKABLE bool containsPage(double x,double y) const;
+    bool interactiveContentAt(double x,double y) const;
+    bool eraseTextAt(double x,double y);
     Q_INVOKABLE QString createTextBox(double x,double y);
     Q_INVOKABLE void finishTextEditing();
     Q_INVOKABLE void commitInput();
     Q_INVOKABLE void resetInput();
     Q_INVOKABLE double pageTop(int page) const { return model_.top(page); }
+    Q_INVOKABLE double pageLeft(int page) const { return model_.left(page); }
+    Q_INVOKABLE void focusPage(int page);
     Q_INVOKABLE double pageHeight(int page) const { return model_.height(page); }
     Q_INVOKABLE double pageWidth() const { return model_.pageWidth(); }
     TextSelection* textSelection() { return &textSelection_; }
@@ -70,6 +88,8 @@ public:
     double contentWidth() const { return model_.contentWidth(); }
     double scrollOffset() const { return model_.offset(); }
     double zoom() const { return zoom_; }
+    bool doublePage() const { return model_.doublePage(); }
+    void setDoublePage(bool enabled);
     Q_INVOKABLE void updateViewport(double y, double height, double width, double dpr);
     Q_INVOKABLE void setZoom(double zoom);
     double pageRatio() const { return model_.ratio(page_); }
@@ -85,6 +105,9 @@ public:
     bool storageReady() const { return storageReady_; }
     bool transitioning() const { return transitioning_; }
     bool exporting() const { return exporting_; }
+    bool scanning() const { return scanning_; }
+    Q_INVOKABLE void optimizeScan(const QUrl& target,const QVariantMap& options);
+    Q_INVOKABLE void cancelScan() { worker_->cancelScan(); }
     Q_INVOKABLE void saveNow();
     Q_INVOKABLE void exportPdf(const QUrl& target);
     Q_INVOKABLE void acknowledgeProbe() { emit startupAcknowledged(); }
@@ -117,8 +140,10 @@ private:
     bool storageReady_ = false, loadingStorage_ = false, restoring_ = false;
     bool saving_ = false, transitioning_ = false, exporting_ = false;
     bool applyingTransition_ = false;
+    bool scanning_ = false;
     std::function<void()> pendingTransition_;
     ReadingModel model_;
+    mutable QCache<qint64,QImage> thumbnails_{8192}; // KiB, separate from full page cache
     TextSelection textSelection_;
     AnnotationModel annotations_;
     QTimer scheduleTimer_;
@@ -127,6 +152,7 @@ private:
     int requestedWidth_ = 1200;
     int metadataCursor_ = 0;
     double zoom_ = 1, dpr_ = 1, viewportWidth_ = 1000, viewportHeight_ = 700;
+    double singlePageZoom_=1;
     bool viewportAttached_ = false;
     QString selectedName_;
     QString statusText_;
