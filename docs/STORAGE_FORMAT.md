@@ -22,6 +22,9 @@ payload 包含 notes 与 ink：
 | notes.anchor / right / down | PDF 原始页面坐标及正交单位方向，保留 CropBox、固有旋转与 UserUnit 契约 |
 | notes.width / height / size | 原始页面单位中的框宽高与字体大小；高度随编辑器内容扩展 |
 | notes.text / family / color | 已提交文字（不含 IME preedit）、受控 Noto Sans SC、`#AARRGGBB` |
+| notes.widthLocked | 可选布尔值；新建为 false，首次显式换行或到达页右边界后为 true。缺失时按 true 读取以保留旧答案版式 |
+| notes.minimumHeight | 可选正数，缺失为 24；用户手动调整的高度下限，实际框高还会为完整文字排版扩展 |
+| notes.styles | 可选有序数组，缺失为空；start/length 为纯文字 UTF-16 区间，size 为 8–72 整数字号，color 为 #AARRGGBB，bold/italic 为布尔值。区间不能重叠或越界；不保存 HTML、图片或外部资源 |
 | notes.order | 字符串创建序号；文字内部叠放顺序 |
 | ink.id / page / points | UUID、页号、PDF 原始点列；不保存视口像素 |
 | ink.width / color / order | 原始单位笔宽、`#AARRGGBB`、字符串创建序号 |

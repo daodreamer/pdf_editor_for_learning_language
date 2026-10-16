@@ -1,13 +1,17 @@
 #include "annotationmodel.h"
+#include "textstyles.h"
 #include <QUuid>
 #include <QLineF>
 #include <QSet>
+#include <QFontMetricsF>
+#include <QTextDocument>
+#include <QTextOption>
 #include <algorithm>
 #include <cmath>
 
 QHash<int,QByteArray> AnnotationModel::roleNames() const {
     return {{Id,"noteId"},{Page,"notePage"},{Anchor,"noteAnchor"},{BoxWidth,"noteWidth"},{BoxHeight,"noteHeight"},
-        {FontSize,"noteFontSize"},{Text,"noteText"},{Family,"noteFamily"},{Color,"noteColor"},{PageUnits,"notePageUnits"},{Order,"noteOrder"}};
+        {FontSize,"noteFontSize"},{Text,"noteText"},{Family,"noteFamily"},{Color,"noteColor"},{PageUnits,"notePageUnits"},{Order,"noteOrder"},{WidthLocked,"noteWidthLocked"},{Styles,"noteStyles"}};
 }
 QVariantMap AnnotationModel::pageStats(int page) const {
     int answered=0,right=0,wrong=0,ink=0;
@@ -26,6 +30,8 @@ QVariant AnnotationModel::data(const QModelIndex& index,int role) const {
     case Page: return n.page;
     case Anchor: return g.pdfToDisplay.map(n.anchor);
     case BoxWidth: return n.width;
+    case WidthLocked: return n.widthLocked;
+    case Styles: return encodeTextStyles(n.styles);
     case BoxHeight: return n.height;
     case FontSize: return n.fontSize;
     case Text: return n.text;
@@ -82,7 +88,9 @@ QString AnnotationModel::create(int page,double x,double y) {
     n.order=nextTextOrder_++;
     n.id=QUuid::createUuid().toString(QUuid::WithoutBraces); n.page=page;
     n.anchor=g.displayToPdf.map(QPointF(x,y)); n.right=g.right(); n.down=g.down();
-    n.width=std::min(200.0,(1-x)*g.units.width());
+    QFont font(n.family); font.setPixelSize(qRound(n.fontSize));
+    n.width=std::min(std::ceil(QFontMetricsF(font).horizontalAdvance(QStringLiteral("this")))+2,(1-x)*g.units.width());
+    n.widthLocked=false;
     notes_.insert(n.id,n); refreshRows();
     // Creation and its first text session form one history transaction.
     beforeEdit_={}; selected_=n.id; emit selectionChanged();
@@ -103,11 +111,44 @@ void AnnotationModel::finishEditing() {
     beforeEdit_={};
     emit selectionChanged(); refreshRows();
 }
-void AnnotationModel::setText(const QString& id,const QString& text,double height) {
+void AnnotationModel::setText(const QString& id,const QString& text,double height,const QVariantList& styles) {
+    if(id!=selected_ || !notes_.contains(id)) return;
+    setEditorText(id,text,height,styles);
+    notify(id,{Text,Styles});
+}
+void AnnotationModel::setEditorText(const QString& id,const QString& text,double height,const QVariantList& styles) {
     if(id!=selected_ || !notes_.contains(id) || !std::isfinite(height)) return;
-    auto& n=notes_[id]; n.text=text;
-    const double h=std::max(24.0,height);
-    if(n.height!=h) { n.height=h; notify(id,{BoxHeight}); }
+    auto& n=notes_[id];
+    QList<TextStyle> decoded; if(!decodeTextStyles(styles,int(text.size()),decoded)) return;
+    n.styles=std::move(decoded);
+    QList<int> changedRoles;
+    if(!n.widthLocked) {
+        const auto g=geometry_.value(n.page);
+        const double available=(1-g.pdfToDisplay.map(n.anchor).x())*g.units.width();
+        QFont font(n.family); font.setPixelSize(qRound(n.fontSize));
+        const QFontMetricsF metrics(font);
+        const auto newline=text.indexOf('\n');
+        double natural=std::ceil(metrics.horizontalAdvance(newline<0?text:text.left(newline)))+2;
+        if(!n.styles.isEmpty()) {
+            const auto firstLine=newline<0?text:text.left(newline);
+            QList<TextStyle> firstStyles;
+            for(auto style:n.styles) if(style.start<firstLine.size()) {
+                style.length=std::min(style.length,int(firstLine.size())-style.start); firstStyles.append(style);
+            }
+            QTextDocument layout; layout.setDocumentMargin(0); layout.setDefaultFont(font); layout.setPlainText(firstLine);
+            applyTextStyles(layout,firstStyles); layout.setTextWidth(-1); natural=std::ceil(layout.idealWidth())+2;
+        }
+        const double wanted=std::max(n.width,natural);
+        n.widthLocked=newline>=0 || wanted>=available;
+        if(n.widthLocked) changedRoles.append(WidthLocked);
+        const double width=std::min(wanted,available);
+        if(width!=n.width) { n.width=width; changedRoles.append(BoxWidth); }
+    }
+    n.text=text;
+    const double h=std::max(n.minimumHeight,height);
+    if(n.height!=h) { n.height=h; changedRoles.append(BoxHeight); }
+    // Publish after all fields are updated: relayout can synchronously call setText again.
+    if(!changedRoles.isEmpty()) notify(id,changedRoles);
     emit contentChanged();
     // No Text role notification: resetting the TextEdit would destroy its local undo/IME state.
 }
@@ -123,6 +164,33 @@ void AnnotationModel::move(const QString& id,double x,double y) {
     if(!markBefore.id.isEmpty()){markAfter.anchor+=n.anchor-before.anchor;notes_[markAfter.id]=markAfter;notify(markAfter.id,{Anchor});}
     record(Command{before,n,{},{},markBefore,markAfter});
 }
+void AnnotationModel::resize(const QString& id,double x,double y,double width,double height) {
+    if(!notes_.contains(id) || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(width) || !std::isfinite(height)) return;
+    finishEditing();
+    if(!notes_.contains(id)) return;
+    const auto g=geometry_.value(notes_[id].page);
+    if(!g.valid) return;
+    cancelGesture();
+    auto& n=notes_[id]; const auto before=n;
+    n.width=std::clamp(width,std::min(24.0,g.units.width()),g.units.width());
+    n.widthLocked=true;
+    n.minimumHeight=std::clamp(height,std::min(24.0,g.units.height()),g.units.height());
+    QFont font(n.family); font.setPixelSize(qRound(n.fontSize));
+    QTextDocument layout; layout.setDocumentMargin(0); layout.setDefaultFont(font);
+    QTextOption option; option.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+    layout.setDefaultTextOption(option); layout.setPlainText(n.text); layout.setTextWidth(n.width);
+    applyTextStyles(layout,n.styles);
+    n.height=std::min(g.units.height(),std::max(n.minimumHeight,layout.size().height()));
+    x=std::clamp(x,0.0,std::max(0.0,1-n.width/g.units.width()));
+    y=std::clamp(y,0.0,std::max(0.0,1-n.height/g.units.height()));
+    n.anchor=g.displayToPdf.map(QPointF(x,y));
+    const auto markBefore=notes_.value(id+"-review"); auto markAfter=markBefore;
+    if(!markBefore.id.isEmpty()) {
+        markAfter.anchor+=n.anchor-before.anchor; notes_[markAfter.id]=markAfter; notify(markAfter.id,{Anchor});
+    }
+    notify(id,{Anchor,BoxWidth,BoxHeight,WidthLocked});
+    record(Command{before,n,{},{},markBefore,markAfter});
+}
 void AnnotationModel::removeSelected() {
     if(selected_.isEmpty()) return;
     const auto id=selected_; finishEditing();
@@ -135,7 +203,7 @@ void AnnotationModel::cycleMark(const QString& id) {
     const auto source=notes_.value(id); const auto key=id+"-review";
     const auto before=notes_.value(key);
     if(before.text==QStringLiteral("×")) { notes_.remove(key);record(before,{});refreshRows();return; }
-    auto after=source;after.id=key;after.order=nextTextOrder_++;after.width=24;after.height=24;after.fontSize=18;
+    auto after=source;after.id=key;after.order=nextTextOrder_++;after.width=24;after.height=24;after.fontSize=18;after.styles.clear();
     const auto g=geometry_.value(source.page);if(!g.valid)return;
     auto pos=g.pdfToDisplay.map(source.anchor);pos.setX(std::min(.96,pos.x()+source.width/g.units.width()));
     pos.setY(std::max(0.0,pos.y()-14/g.units.height()));after.anchor=g.displayToPdf.map(pos);
@@ -202,7 +270,8 @@ qsizetype inkBytes(const QList<InkStroke>& strokes) {
 qsizetype AnnotationModel::Command::bytes() const {
     return (before.id.capacity()+after.id.capacity()+before.text.capacity()+after.text.capacity()
         +before.family.capacity()+after.family.capacity()+linkedBefore.id.capacity()+linkedAfter.id.capacity()
-        +linkedBefore.text.capacity()+linkedAfter.text.capacity()+linkedBefore.family.capacity()+linkedAfter.family.capacity())*2+inkBytes(inkBefore)+inkBytes(inkAfter);
+        +linkedBefore.text.capacity()+linkedAfter.text.capacity()+linkedBefore.family.capacity()+linkedAfter.family.capacity())*2+inkBytes(inkBefore)+inkBytes(inkAfter)
+        +(before.styles.capacity()+after.styles.capacity()+linkedBefore.styles.capacity()+linkedAfter.styles.capacity())*sizeof(TextStyle);
 }
 qsizetype AnnotationModel::historyBytes() const {
     qsizetype bytes=(undo_.capacity()+redo_.capacity())*sizeof(Command);

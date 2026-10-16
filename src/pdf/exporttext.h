@@ -4,7 +4,7 @@
 #include <fpdf_edit.h>
 #include <QByteArray>
 
-struct ExportGlyph { uint32_t cid; QPointF baseline; };
+struct ExportGlyph { uint32_t cid; QPointF baseline; TextStyle style; int character = 0; };
 struct ExportNote { TextAnnotation note; QList<ExportGlyph> glyphs; };
 struct ExportText {
     QByteArray font, cmap, cidToGid;

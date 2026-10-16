@@ -330,7 +330,7 @@ bool ShellState::interactiveContentAt(double x,double y) const {
     for(const auto& c:text->characters)if(c.visible&&c.box.adjusted(-3/width,-3/height,3/width,3/height).contains(p))return true;
     const auto g=annotations_.geometry(page);if(!g.valid)return true;
     for(const auto& n:annotations_.snapshot())if(n.page==page){const auto anchor=g.pdfToDisplay.map(n.anchor);
-        if(QRectF(anchor,QSizeF(n.width/g.units.width(),n.height/g.units.height())).adjusted(-3/width,-18/height,3/width,3/height).contains(p))return true;}
+        if(QRectF(anchor,QSizeF(n.width/g.units.width(),n.height/g.units.height())).adjusted(-10/width,-18/height,10/width,10/height).contains(p))return true;}
     return false;
 }
 bool ShellState::eraseTextAt(double x,double y) {
@@ -360,6 +360,7 @@ void ShellState::cycleTheme() {
 
 void ShellState::finishTextEditing() {
     QGuiApplication::inputMethod()->commit();
+    emit textCommitRequested();
     annotations_.finishEditing();
 }
 QString ShellState::createTextBox(double x,double y) {
@@ -452,6 +453,7 @@ AnnotationSnapshot ShellState::annotationSnapshot() const {
     return {annotations_.snapshot(),annotations_.inkSnapshot(),editRevision_};
 }
 void ShellState::saveNow() {
+    if(storageReady_) emit textCommitRequested();
     if(!storageReady_ || saving_ || editRevision_==savedRevision_) return;
     saveTimer_.stop(); maxSaveTimer_.stop(); saving_=true;
     storageStatus_=QStringLiteral("正在保存练习…"); emit storageChanged();

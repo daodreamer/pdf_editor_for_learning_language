@@ -5,6 +5,14 @@
 #include <QString>
 #include <QMetaType>
 
+struct TextStyle {
+    int start = 0, length = 0;
+    double size = 14;
+    QColor color = QColor(30,70,140);
+    bool bold = false, italic = false;
+    bool operator==(const TextStyle&) const = default;
+};
+
 struct TextAnnotation {
     QString id;
     int page = 0;
@@ -14,6 +22,9 @@ struct TextAnnotation {
     QString family = QStringLiteral("Noto Sans SC");
     QColor color = QColor(30,70,140);
     quint64 order = 0;
+    bool widthLocked = true;
+    double minimumHeight = 24;
+    QList<TextStyle> styles;
     bool operator==(const TextAnnotation&) const = default;
 };
 struct InkStroke {

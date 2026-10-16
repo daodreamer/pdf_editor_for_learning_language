@@ -18,7 +18,7 @@ class AnnotationModel : public QAbstractListModel {
     Q_PROPERTY(QString gestureError READ gestureError NOTIFY gestureErrorChanged)
     Q_PROPERTY(quint64 version READ version NOTIFY contentChanged)
 public:
-    enum Role { Id=Qt::UserRole+1, Page, Anchor, BoxWidth, BoxHeight, FontSize, Text, Family, Color, PageUnits, Order };
+    enum Role { Id=Qt::UserRole+1, Page, Anchor, BoxWidth, BoxHeight, FontSize, Text, Family, Color, PageUnits, Order, WidthLocked, Styles };
     explicit AnnotationModel(QObject* parent=nullptr) : QAbstractListModel(parent) { connect(this,&AnnotationModel::contentChanged,this,[this]{++version_;}); }
     quint64 version() const { return version_; }
     Q_INVOKABLE QVariantMap pageStats(int page) const;
@@ -51,8 +51,10 @@ public:
     Q_INVOKABLE QString create(int page,double x,double y);
     Q_INVOKABLE void select(const QString& id);
     Q_INVOKABLE void finishEditing();
-    Q_INVOKABLE void setText(const QString& id,const QString& text,double height);
+    Q_INVOKABLE void setText(const QString& id,const QString& text,double height,const QVariantList& styles = {});
+    Q_INVOKABLE void setEditorText(const QString& id,const QString& text,double height,const QVariantList& styles);
     Q_INVOKABLE void move(const QString& id,double x,double y);
+    Q_INVOKABLE void resize(const QString& id,double x,double y,double width,double height);
     Q_INVOKABLE void removeSelected();
     Q_INVOKABLE void undo();
     Q_INVOKABLE void redo();

@@ -8,6 +8,7 @@ class InkInput : public QQuickItem {
     QML_ELEMENT
     Q_PROPERTY(ShellState* shell READ shell WRITE setShell NOTIFY shellChanged)
     Q_PROPERTY(int mode READ mode WRITE setMode NOTIFY modeChanged)
+    Q_PROPERTY(bool drawingEnabled READ drawingEnabled WRITE setDrawingEnabled)
     Q_PROPERTY(QColor inkColor READ inkColor WRITE setInkColor NOTIFY styleChanged)
     Q_PROPERTY(double inkWidth READ inkWidth WRITE setInkWidth NOTIFY styleChanged)
     Q_PROPERTY(double contentX READ contentX WRITE setContentX)
@@ -20,6 +21,8 @@ public:
     void setShell(ShellState* shell);
     int mode() const { return mode_; }
     void setMode(int mode);
+    bool drawingEnabled() const { return drawingEnabled_; }
+    void setDrawingEnabled(bool enabled);
     QColor inkColor() const { return color_; }
     void setInkColor(QColor color);
     double inkWidth() const { return width_; }
@@ -41,9 +44,10 @@ protected:
     void keyPressEvent(QKeyEvent*) override;
     bool eventFilter(QObject*,QEvent*) override;
 private:
-    bool begin(QPointF position);
+    bool begin(QPointF position, bool erase = false);
     void extend(QPointF position);
     void cancel();
+    void updateMouseInput();
     QPointF normalized(QPointF position) const;
     QPointer<ShellState> shell_;
     QPointer<QQuickWindow> filteredWindow_;
@@ -51,6 +55,8 @@ private:
     double contentX_=0,contentY_=0,width_=2;
     QColor color_=QColor("#235fbd");
     bool tablet_=false;
+    bool rightErasing_=false;
+    bool drawingEnabled_=true;
     bool autoPending_=false;
     QPointF autoOrigin_;
     QVariantList passiveRects_;

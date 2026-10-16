@@ -208,6 +208,8 @@ ColumnLayout {
                 pageTop: view.shell.contentHeight >= 0 ? view.shell.pageTop(notePage) : 0
                 pageLeft: view.shell.displayPageWidth > 0 ? view.shell.pageLeft(notePage) : 0
                 contentWidth: viewport.contentWidth
+                viewportX: viewport.contentX
+                viewportY: viewport.contentY
             }
         }
         InkInput {
@@ -218,7 +220,8 @@ ColumnLayout {
             y: viewport.contentY
             width: viewport.width
             height: viewport.height
-            enabled: (view.inputMode === 0 || view.inputMode >= 3) && !view.marking && view.shell.storageReady
+            enabled: view.shell.storageReady
+            drawingEnabled: !view.marking && !view.reading
             visible: enabled
             shell: view.shell
             mode: view.inputMode

@@ -112,6 +112,7 @@ public:
     Q_INVOKABLE void exportPdf(const QUrl& target);
     Q_INVOKABLE void acknowledgeProbe() { emit startupAcknowledged(); }
 signals:
+    void textCommitRequested();
     void storageChanged();
     void startupAcknowledged();
     void selectionChanged();

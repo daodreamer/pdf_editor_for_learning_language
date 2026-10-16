@@ -30,6 +30,7 @@ class StorageTests : public QObject {
     static AnnotationSnapshot sample() {
         TextAnnotation n; n.id=QUuid::createUuid().toString(QUuid::WithoutBraces); n.page=0;
         n.anchor={120,560}; n.right={1,0}; n.down={0,-1}; n.text=QStringLiteral("Bonjour 中文练习 e\u0301\n第二行 answer"); n.height=80;
+        n.styles={{0,7,22,QColor("#e5484d"),true,true},{8,4,18,QColor("#30a46c"),false,false}};
         InkStroke i; i.id=QUuid::createUuid().toString(QUuid::WithoutBraces); i.page=0; i.points={{10,40},{100,60}}; i.color=QColor(220,20,60,128); i.width=5;
         return {{n},{i},12};
     }
@@ -68,6 +69,10 @@ private slots:
         const auto encoded=StorageWorker::encode(original,identity); AnnotationSnapshot restored; QString error;
         QVERIFY(StorageWorker::decode(encoded,identity,restored,error)); QCOMPARE(restored.notes,original.notes); QCOMPARE(restored.ink,original.ink); QCOMPARE(restored.revision,original.revision);
         QVERIFY(!StorageWorker::decode(encoded,"wrong",restored,error));
+        auto growing=original; growing.notes[0].widthLocked=false; growing.notes[0].minimumHeight=60;
+        growing.notes[0].styles={{0,7,22,QColor("#e5484d"),true,true},{8,4,18,QColor("#30a46c"),false,false}};
+        QVERIFY(StorageWorker::decode(StorageWorker::encode(growing,identity),identity,restored,error));
+        QCOMPARE(restored.notes,growing.notes);
         auto object=QJsonDocument::fromJson(encoded).object(); object["schema"]=2;
         QVERIFY(!StorageWorker::decode(QJsonDocument(object).toJson(),identity,restored,error)); QVERIFY(error.contains(QStringLiteral("版本")));
         object=QJsonDocument::fromJson(encoded).object(); object["payload"]=QStringLiteral("{}");
@@ -76,13 +81,17 @@ private slots:
         QVERIFY(!StorageWorker::decode(StorageWorker::encode(invalid,identity),identity,restored,error));
         invalid=original; invalid.ink.append(invalid.ink.first());
         QVERIFY(!StorageWorker::decode(StorageWorker::encode(invalid,identity),identity,restored,error));
+        invalid=original; invalid.notes[0].styles={{0,2,14,Qt::red,true,false},{1,3,14,Qt::blue,false,true}};
+        QVERIFY(!StorageWorker::decode(StorageWorker::encode(invalid,identity),identity,restored,error));
+        invalid=original; invalid.notes[0].styles={{0,200,14,Qt::red,true,false}};
+        QVERIFY(!StorageWorker::decode(StorageWorker::encode(invalid,identity),identity,restored,error));
     }
     void backupVersionsLocksAndFailures() {
         QTemporaryDir dir; const auto identity=StorageWorker::digest(fixture); const auto main=dir.filePath(QString::fromLatin1(identity)+".json");
         StorageWorker store(dir.path()); QSignalSpy loaded(&store,&StorageWorker::loaded),saved(&store,&StorageWorker::saved);
         store.open(1,fixture); QVERIFY(loaded.last()[4].toBool());
         const auto original=sample(); store.save(1,original); QVERIFY(saved.last()[2].toString().isEmpty());
-        auto later=original; later.notes[0].text="later"; later.revision++;
+        auto later=original; later.notes[0].text="later"; later.notes[0].styles.clear(); later.revision++;
         store.save(1,later); QVERIFY(saved.last()[2].toString().isEmpty());
         StorageWorker conflict(dir.path()); QSignalSpy locked(&conflict,&StorageWorker::loaded);
         conflict.open(2,fixture); QVERIFY(!locked.last()[4].toBool()); conflict.close();
@@ -204,6 +213,8 @@ private slots:
         exportSnapshot={shell.annotations()->snapshot(),shell.annotations()->inkSnapshot(),0};
         // Exercise alpha in the data/export contract, though the MVP pen UI is opaque.
         exportSnapshot.ink[0].color.setAlpha(128); shell.annotations()->restore(exportSnapshot);
+        for(auto& note:exportSnapshot.notes) if(note.page==0) note.styles={{0,7,22,QColor("#e5484d"),true,true},{8,4,18,QColor("#30a46c"),false,false}};
+        shell.annotations()->restore(exportSnapshot);
         if(!artifactRoot.isEmpty()) {
             QQmlApplicationEngine engine; QStringList warnings;
             connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError>& errors) { for(const auto& e:errors) warnings.append(e.toString()); });
@@ -239,7 +250,7 @@ private slots:
         shell.exportPdf(QUrl::fromLocalFile(sparseTarget)); QTRY_VERIFY_WITH_TIMEOUT(!shell.exporting(),30000);
         QVERIFY2(shell.exportStatus().contains(QStringLiteral("已导出")),qPrintable(shell.exportStatus()));
         // Unsupported glyphs fail explicitly and do not leave an output file.
-        auto unsupported=sparse; unsupported.notes[0].text=QString::fromUcs4(U"😀"); shell.annotations()->restore(unsupported);
+        auto unsupported=sparse; unsupported.notes[0].text=QString::fromUcs4(U"😀"); unsupported.notes[0].styles.clear(); shell.annotations()->restore(unsupported);
         const auto invalidTarget=output.filePath("unsupported.pdf"); shell.exportPdf(QUrl::fromLocalFile(invalidTarget)); QTRY_VERIFY(!shell.exporting());
         QVERIFY(shell.exportStatus().contains(QStringLiteral("不支持"))); QVERIFY(!QFileInfo::exists(invalidTarget));
         shell.selectFile(QUrl::fromLocalFile(target)); QTRY_COMPARE(shell.selectedName(),QStringLiteral("annotated.pdf")); QTRY_VERIFY(shell.storageReady()); QTRY_COMPARE(shell.pageCount(),8);
@@ -247,7 +258,8 @@ private slots:
             shell.goToPage(page+1); QTRY_VERIFY(shell.textSelection()->snapshot(page));
             const auto text=shell.textSelection()->snapshot(page); QString extracted;
             for(const auto& c:text->characters) extracted+=QString::fromUcs4(&c.unicode,1);
-            QVERIFY2(extracted.contains(QStringLiteral("中文练习")),qPrintable(extracted)); QVERIFY(!extracted.contains("EDIT AFTER EXPORT"));
+            auto joined=extracted; joined.remove(' '); joined.remove('\r'); joined.remove('\n');
+            QVERIFY2(joined.contains(QStringLiteral("中文练习")),qPrintable(extracted)); QVERIFY(!extracted.contains("EDIT AFTER EXPORT"));
             if(!artifactRoot.isEmpty() && (page==0 || page==1 || page==4 || page==7)) {
                 QTRY_VERIFY(!shell.busy()); QVERIFY(!shell.pageImage().isNull());
                 QVERIFY(shell.pageImage().save(artifactRoot+QStringLiteral("/pdfium-page-%1.png").arg(page+1)));

@@ -1,4 +1,5 @@
 #include "exporttext.h"
+#include "textstyles.h"
 #include <QCoreApplication>
 #include <QFile>
 #include <QFont>
@@ -26,6 +27,8 @@ ExportText prepareExportText(const QList<TextAnnotation>& notes) {
     if(notes.isEmpty()) return result;
     QFile file(QCoreApplication::applicationDirPath()+"/fonts/NotoSansSC-Regular.ttf");
     check(file.open(QIODevice::ReadOnly),"缺少导出字体文件。"); result.font=file.readAll();
+    const QRawFont sourceFont(result.font,14,QFont::PreferDefaultHinting);
+    check(sourceFont.isValid(),"内嵌字体文件无效。");
     QMap<QByteArray,uint32_t> codes; QList<QByteArray> unicode;
     result.cidToGid=QByteArray(2,0); // CID zero reserved.
     auto ordered=notes;
@@ -40,6 +43,7 @@ ExportText prepareExportText(const QList<TextAnnotation>& notes) {
         QTextDocument document; document.setDocumentMargin(0); document.setDefaultFont(font);
         QTextOption option; option.setAlignment(Qt::AlignLeft); option.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
         document.setDefaultTextOption(option); document.setPlainText(note.text); document.setTextWidth(note.width);
+        applyTextStyles(document,note.styles);
         (void)document.documentLayout()->documentSize();
         ExportNote out{note,{}};
         for(auto block=document.begin();block.isValid();block=block.next()) {
@@ -52,6 +56,8 @@ ExportText prepareExportText(const QList<TextAnnotation>& notes) {
             for(const auto& run:runs) {
                 const auto glyphs=run.glyphIndexes(); const auto positions=run.positions(); const auto indexes=run.stringIndexes();
                 check(run.rawFont().familyName()==note.family,"排版发生未授权字体回退，未导出。");
+                check(run.rawFont().fontTable("head")==sourceFont.fontTable("head") && run.rawFont().fontTable("maxp")==sourceFont.fontTable("maxp"),
+                    "排版字体与内嵌字体版本或字形不一致，未导出；请使用应用随附字体。");
                 check(glyphs.size()==positions.size() && glyphs.size()==indexes.size(),"字形布局不完整。");
                 for(qsizetype i=0;i<glyphs.size();++i) {
                     const auto index=indexes[i]; const auto end=std::upper_bound(boundaries.begin(),boundaries.end(),index);
@@ -64,10 +70,15 @@ ExportText prepareExportText(const QList<TextAnnotation>& notes) {
                         cid=uint32_t(codes.size()+1); codes[key]=cid; unicode.append(u);
                         result.cidToGid.append(char(glyphs[i]>>8)); result.cidToGid.append(char(glyphs[i]&255));
                     }
-                    out.glyphs.append({cid,positions[i]+layout->position()});
+                    TextStyle style; style.size=note.fontSize;style.color=note.color;
+                    const int character=block.position()+int(index);
+                    auto styled=std::upper_bound(note.styles.cbegin(),note.styles.cend(),character,[](int p,const TextStyle& s){return p<s.start;});
+                    if(styled!=note.styles.cbegin()) { --styled; if(character<styled->start+styled->length)style=*styled; }
+                    out.glyphs.append({cid,positions[i]+layout->position(),style,character});
                 }
             }
         }
+        std::stable_sort(out.glyphs.begin(),out.glyphs.end(),[](const auto& a,const auto& b){return a.character<b.character;});
         result.notes.append(std::move(out));
     }
     result.cmap="/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n/CMapName /LanglernUTF16 def\n/CMapType 2 def\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n";
@@ -84,18 +95,25 @@ void insertExportText(FPDF_DOCUMENT document,FPDF_PAGE page,FPDF_FONT font,const
     for(qsizetype start=0;start<out.glyphs.size();) {
         const auto first=out.glyphs[start];
         qsizetype end=start+1;
-        while(end<out.glyphs.size() && std::abs(out.glyphs[end].baseline.y()-first.baseline.y())<1e-6) ++end;
+        while(end<out.glyphs.size() && out.glyphs[end].style==first.style && std::abs(out.glyphs[end].baseline.y()-first.baseline.y())<1e-6) ++end;
         QList<uint32_t> codes; QList<float> positions;
         for(qsizetype i=start;i<end;++i) {
             codes.append(out.glyphs[i].cid);
             if(i>start) positions.append(float(out.glyphs[i].baseline.x()-first.baseline.x()));
         }
-        ScopedFPDFPageObject object(FPDFPageObj_CreateTextObj(document,font,float(qRound(n.fontSize))));
+        ScopedFPDFPageObject object(FPDFPageObj_CreateTextObj(document,font,float(qRound(first.style.size))));
         check(bool(object),"创建导出文字失败。"); check(FPDFText_SetCharcodes(object.get(),codes.constData(),size_t(codes.size())),"导出字形写入失败。");
         if(!positions.isEmpty()) check(FPDFText_SetPositions(object.get(),positions.constData(),size_t(positions.size())),"导出字形位置失败。");
         const auto baseline=n.anchor+n.right*first.baseline.x()+n.down*first.baseline.y();
-        FPDFPageObj_Transform(object.get(),n.right.x(),n.right.y(),-n.down.x(),-n.down.y(),baseline.x(),baseline.y());
-        check(FPDFPageObj_SetFillColor(object.get(),n.color.red(),n.color.green(),n.color.blue(),n.color.alpha()),"导出文字颜色失败。");
+        const auto up=-n.down+(first.style.italic?.2:0)*n.right;
+        FPDFPageObj_Transform(object.get(),n.right.x(),n.right.y(),up.x(),up.y(),baseline.x(),baseline.y());
+        const auto color=first.style.color;
+        check(FPDFPageObj_SetFillColor(object.get(),color.red(),color.green(),color.blue(),color.alpha()),"导出文字颜色失败。");
+        if(first.style.bold) {
+            check(FPDFTextObj_SetTextRenderMode(object.get(),FPDF_TEXTRENDERMODE_FILL_STROKE),"导出粗体失败。");
+            check(FPDFPageObj_SetStrokeColor(object.get(),color.red(),color.green(),color.blue(),color.alpha()),"导出粗体颜色失败。");
+            check(FPDFPageObj_SetStrokeWidth(object.get(),float(first.style.size/40)),"导出粗体线宽失败。");
+        }
         FPDFPage_InsertObject(page,object.release());
         start=end;
     }

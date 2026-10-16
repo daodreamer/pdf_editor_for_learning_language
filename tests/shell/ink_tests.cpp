@@ -186,6 +186,46 @@ private slots:
         QTest::mouseRelease(w,Qt::LeftButton,Qt::NoModifier,b);
         QTRY_COMPARE(s.annotations()->inkSnapshot().size(),1);
         const auto original=s.annotations()->inkSnapshot();
+        // Right-button erasing overrides every tool without changing the selected mode.
+        for(const auto key:{Qt::Key_A,Qt::Key_S,Qt::Key_T,Qt::Key_P,Qt::Key_E,Qt::Key_M}) {
+            QTest::keyClick(w,key,Qt::ControlModifier|Qt::ShiftModifier);
+            QTest::qWait(60);
+            const int mode=input->mode();
+            QTest::mousePress(w,Qt::RightButton,Qt::NoModifier,point(s,viewport,.4,.1));
+            QTest::mouseMove(w,point(s,viewport,.4,.3),20);
+            QTest::mouseRelease(w,Qt::RightButton,Qt::NoModifier,point(s,viewport,.4,.3));
+            QTRY_VERIFY(s.annotations()->inkSnapshot().isEmpty());
+            QCOMPARE(input->mode(),mode);
+            QVERIFY(!s.annotations()->gestureActive());
+            QVERIFY(s.annotations()->snapshot().isEmpty());
+            s.annotations()->undo(); QCOMPARE(s.annotations()->inkSnapshot(),original);
+        }
+        // Review and reading tools also allow the override while left-button drawing is disabled.
+        for(const auto key:{Qt::Key_C,Qt::Key_R}) {
+            QTest::keyClick(w,key);
+            QTRY_VERIFY(!input->drawingEnabled());
+            QTest::mousePress(w,Qt::RightButton,Qt::NoModifier,point(s,viewport,.4,.1));
+            QTest::mouseMove(w,point(s,viewport,.4,.3),20);
+            QTest::mouseRelease(w,Qt::RightButton,Qt::NoModifier,point(s,viewport,.4,.3));
+            QTRY_VERIFY(s.annotations()->inkSnapshot().isEmpty());
+            s.annotations()->undo(); QCOMPARE(s.annotations()->inkSnapshot(),original);
+        }
+        QTest::keyClick(w,Qt::Key_P);
+        QTRY_VERIFY(input->drawingEnabled());
+        // The second press in a fast repeated right-button gesture arrives as a double click.
+        QTest::mouseClick(w,Qt::RightButton,Qt::NoModifier,point(s,viewport,.4,.1),10);
+        QTest::mousePress(w,Qt::RightButton,Qt::NoModifier,point(s,viewport,.4,.1),10);
+        QVERIFY(s.annotations()->gestureActive());
+        QTest::mouseMove(w,point(s,viewport,.4,.3),20);
+        QTest::mouseRelease(w,Qt::RightButton,Qt::NoModifier,point(s,viewport,.4,.3));
+        QTRY_VERIFY(s.annotations()->inkSnapshot().isEmpty());
+        s.annotations()->undo(); QCOMPARE(s.annotations()->inkSnapshot(),original);
+        // A deactivated window rolls back a right-button erase.
+        QTest::mousePress(w,Qt::RightButton,Qt::NoModifier,point(s,viewport,.4,.2));
+        QEvent rightDeactivate(QEvent::WindowDeactivate); QGuiApplication::sendEvent(w,&rightDeactivate);
+        QTest::mouseRelease(w,Qt::RightButton,Qt::NoModifier,point(s,viewport,.4,.2));
+        QCOMPARE(s.annotations()->inkSnapshot(),original);
+        QTest::keyClick(w,Qt::Key_P,Qt::ControlModifier|Qt::ShiftModifier);
         QTest::keyClick(w,Qt::Key_Z,Qt::ControlModifier); QTRY_VERIFY(s.annotations()->inkSnapshot().isEmpty());
         QTest::keyClick(w,Qt::Key_Y,Qt::ControlModifier); QTRY_COMPARE(s.annotations()->inkSnapshot(),original);
         // Compare actual pixels at the middle of the new stroke, away from endpoints.

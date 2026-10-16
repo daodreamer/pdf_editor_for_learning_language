@@ -1,4 +1,4 @@
-qt_add_library(langlern_pdf STATIC pdfworker.h pdfworker.cpp annotationdata.h exporttext.h exporttext.cpp scancleanup.h scancleanup.cpp)
+qt_add_library(langlern_pdf STATIC pdfworker.h pdfworker.cpp annotationdata.h textstyles.h textstyles.cpp exporttext.h exporttext.cpp scancleanup.h scancleanup.cpp)
 target_include_directories(langlern_pdf PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(langlern_pdf PUBLIC Qt6::Gui PRIVATE pdfium)
 langlern_warnings(langlern_pdf)
