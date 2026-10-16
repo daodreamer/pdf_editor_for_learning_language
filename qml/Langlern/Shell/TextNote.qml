@@ -190,7 +190,7 @@ Item {
     }
     Rectangle {
         objectName: "annotationMoveHandle"
-        visible: opacity > 0
+        visible: note.showFrame || opacity > 0
         enabled: editor.text.length > 0 && !note.marking
         opacity: frame.opacity
         width: Math.min(64, note.width)
@@ -245,7 +245,7 @@ Item {
             border.width: 1
             radius: 2
             opacity: frame.opacity
-            visible: opacity > 0 && !note.marking && editor.text.length > 0
+            visible: (note.showFrame || opacity > 0) && !note.marking && editor.text.length > 0
             MouseArea {
                 anchors.fill: parent
                 anchors.margins: -4

@@ -18,7 +18,14 @@ try {
     cmake --build $BuildDir --parallel 6
     if ($LASTEXITCODE) { throw 'Build failed' }
     if ($Test) {
-        ctest --test-dir $BuildDir --output-on-failure
+        try { ctest --test-dir $BuildDir --output-on-failure }
+        finally {
+            if ($LASTEXITCODE) {
+                Get-ChildItem -LiteralPath (Join-Path $BuildDir 'tests/shell') -Filter '*.txt' -ErrorAction SilentlyContinue | ForEach-Object {
+                    Get-Content -LiteralPath $_.FullName | Select-String -Pattern 'FAIL!|failure location|QWARN|SKIP' -Context 0,4 | Write-Output
+                }
+            }
+        }
         if ($LASTEXITCODE) { throw 'CTest failed' }
     }
     if ($Lint) {

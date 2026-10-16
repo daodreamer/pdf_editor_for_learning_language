@@ -10,6 +10,8 @@ jobs:
           python-version: '3.13'
       - shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           python -m venv .tools/venv
           .tools/venv/Scripts/python -m pip install -r tools/requirements-phase0.lock.txt
           .tools/venv/Scripts/python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 -O .deps/Qt --archives qtbase qtdeclarative qttools

@@ -389,6 +389,7 @@ private slots:
         auto* handle=find(window->contentItem(),QStringLiteral("annotationMoveHandle")); QVERIFY(handle);
         const auto start=handle->mapToScene(QPointF(15,8)).toPoint();
         QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,start);
+        QVERIFY2(note->property("moving").toBool(),"Move handle did not receive the press");
         QTest::mouseMove(window,start+QPoint(65,35),40);
         QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,start+QPoint(65,35));
         QTRY_VERIFY(shell.annotations()->snapshot().first().anchor!=anchor);

@@ -14,6 +14,10 @@
 #include <QQuickItem>
 #include <QTest>
 #include <QtQml/QQmlExtensionPlugin>
+#ifdef Q_OS_WIN
+#include <qt_windows.h>
+#include <mmsystem.h>
+#endif
 Q_IMPORT_QML_PLUGIN(LanglernShellPlugin)
 
 class DesignTests : public QObject {
@@ -60,6 +64,8 @@ private slots:
     void realLocalAudioPlaybackAndSeeking() {
 #ifndef Q_OS_WIN
         QSKIP("Native audio currently Windows only");
+#else
+        if(waveOutGetNumDevs()==0) QSKIP("No WinMM audio output device; real playback requires an audio-capable runner");
 #endif
         QFile file(root_->filePath("silent.wav"));QVERIFY(file.open(QIODevice::WriteOnly));
         QDataStream out(&file);out.setByteOrder(QDataStream::LittleEndian);
@@ -67,7 +73,7 @@ private slots:
         out<<quint32(16)<<quint16(1)<<quint16(1)<<quint32(16000)<<quint32(32000)<<quint16(2)<<quint16(16);
         out.writeRawData("data",4);out<<quint32(32000*3);file.write(QByteArray(32000*3,'\0'));file.close();
         OfflineServices service;service.openAudio(QUrl::fromLocalFile(file.fileName()));
-        QTRY_VERIFY_WITH_TIMEOUT(service.duration()>2.9,10000);service.toggleAudio();QTRY_VERIFY(service.playing());
+        QTRY_VERIFY2_WITH_TIMEOUT(service.duration()>2.9,qPrintable(service.status()),10000);service.toggleAudio();QTRY_VERIFY(service.playing());
         QTRY_VERIFY(service.position()>.05);service.toggleAudio();QTRY_VERIFY(!service.playing());
         service.seek(1.5);QTRY_VERIFY(service.position()>1.4);QVERIFY(service.position()<1.7);
         service.setLoop(.5,1);service.seek(.9);service.toggleAudio();QTRY_VERIFY(service.playing());

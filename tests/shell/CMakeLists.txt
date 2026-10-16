@@ -87,6 +87,7 @@ target_link_libraries(design_tests PRIVATE shell_ui shell_uiplugin Qt6::Test Qt6
 target_compile_definitions(design_tests PRIVATE LANGLERN_FIXTURES="${PROJECT_SOURCE_DIR}/tests/fixtures")
 langlern_warnings(design_tests)
 if(WIN32)
+    target_link_libraries(design_tests PRIVATE winmm)
     add_custom_command(TARGET design_tests POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:pdfium> $<TARGET_FILE_DIR:design_tests>)
 endif()

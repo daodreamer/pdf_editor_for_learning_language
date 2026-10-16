@@ -10,6 +10,8 @@ jobs:
           python-version: '3.13'
       - shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           python -m venv .tools/venv
           .tools/venv/Scripts/python -m pip install -r tools/requirements-phase0.lock.txt
           .tools/venv/Scripts/python tools/bootstrap.py --platform windows
