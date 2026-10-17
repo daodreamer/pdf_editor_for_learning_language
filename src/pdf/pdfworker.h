@@ -40,6 +40,8 @@ struct PdfFrame {
     QList<QSizeF> sizes;
     TextSnapshot text;
     bool textOnly = false;
+    QList<QRectF> answerLines;
+    bool answerLinesReady = false;
 };
 Q_DECLARE_METATYPE(PdfFrame)
 

@@ -78,12 +78,12 @@ void AnnotationModel::record(TextAnnotation before,TextAnnotation after) {
     if(before==after) return;
     record(Command{std::move(before),std::move(after),{}, {}});
 }
-QString AnnotationModel::create(int page,double x,double y) {
-    if(!geometry_.contains(page) || !std::isfinite(x) || !std::isfinite(y) || x<0 || y<0 || x>=1 || y>=1) return {};
+QString AnnotationModel::create(int page,double x,double y,double maximumWidth) {
+    if(!geometry_.contains(page) || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(maximumWidth) || maximumWidth<0 || x<0 || y<0 || x>=1 || y>=1) return {};
     cancelGesture(); clearInkSelection(); finishEditing();
     // Leave room for a usable editor at the right/bottom edge.
     const auto g=geometry_[page];
-    x=std::min(x,std::max(0.0,1-48/g.units.width()));
+    x=std::min(x,std::max(0.0,1-(maximumWidth>0?std::min(48.0,maximumWidth):48)/g.units.width()));
     y=std::min(y,std::max(0.0,1-24/g.units.height()));
     TextAnnotation n;
     n.order=nextTextOrder_++;
@@ -92,10 +92,18 @@ QString AnnotationModel::create(int page,double x,double y) {
     QFont font(n.family); font.setPixelSize(qRound(n.fontSize));
     n.width=std::min(std::ceil(QFontMetricsF(font).horizontalAdvance(QStringLiteral("this")))+2,(1-x)*g.units.width());
     n.widthLocked=false;
+    n.maximumWidth=maximumWidth;
+    if(maximumWidth>0) n.width=std::min(maximumWidth,(1-x)*g.units.width());
     notes_.insert(n.id,n); refreshRows();
     // Creation and its first text session form one history transaction.
     beforeEdit_={}; selected_=n.id; emit selectionChanged();
     return n.id;
+}
+double AnnotationModel::textWidthLimit(const QString& id) const {
+    const auto n=notes_.value(id); const auto g=geometry_.value(n.page);
+    if(!g.valid) return 0;
+    const double available=(1-g.pdfToDisplay.map(n.anchor).x())*g.units.width();
+    return n.maximumWidth>0?std::min(available,n.maximumWidth):available;
 }
 void AnnotationModel::select(const QString& id) {
     if(id==selected_ || !notes_.contains(id)) return;
@@ -123,30 +131,31 @@ void AnnotationModel::setEditorText(const QString& id,const QString& text,double
     QList<TextStyle> decoded; if(!decodeTextStyles(styles,int(text.size()),decoded)) return;
     n.styles=std::move(decoded);
     QList<int> changedRoles;
+    // A deletion must also release boxes locked by older automatic sizing or resizing.
+    // Keep the former width as a wrap limit, while fitting the visible frame to the text.
+    if(text.size()<n.text.size()) {
+        if(n.widthLocked) {
+            if(n.maximumWidth==0) n.maximumWidth=n.width;
+            n.widthLocked=false; changedRoles.append(WidthLocked);
+        }
+        n.minimumHeight=24;
+    }
+    QFont font(n.family); font.setPixelSize(qRound(n.fontSize));
+    QTextDocument layout; layout.setDocumentMargin(0); layout.setDefaultFont(font);
+    QTextOption option; option.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+    layout.setDefaultTextOption(option); layout.setPlainText(text); applyTextStyles(layout,n.styles);
     if(!n.widthLocked) {
         const auto g=geometry_.value(n.page);
-        const double available=(1-g.pdfToDisplay.map(n.anchor).x())*g.units.width();
-        QFont font(n.family); font.setPixelSize(qRound(n.fontSize));
-        const QFontMetricsF metrics(font);
-        const auto newline=text.indexOf('\n');
-        double natural=std::ceil(metrics.horizontalAdvance(newline<0?text:text.left(newline)))+2;
-        if(!n.styles.isEmpty()) {
-            const auto firstLine=newline<0?text:text.left(newline);
-            QList<TextStyle> firstStyles;
-            for(auto style:n.styles) if(style.start<firstLine.size()) {
-                style.length=std::min(style.length,int(firstLine.size())-style.start); firstStyles.append(style);
-            }
-            QTextDocument layout; layout.setDocumentMargin(0); layout.setDefaultFont(font); layout.setPlainText(firstLine);
-            applyTextStyles(layout,firstStyles); layout.setTextWidth(-1); natural=std::ceil(layout.idealWidth())+2;
-        }
-        const double wanted=std::max(n.width,natural);
-        n.widthLocked=newline>=0 || wanted>=available;
-        if(n.widthLocked) changedRoles.append(WidthLocked);
-        const double width=std::min(wanted,available);
+        double available=(1-g.pdfToDisplay.map(n.anchor).x())*g.units.width();
+        if(n.maximumWidth>0) available=std::min(available,n.maximumWidth);
+        layout.setTextWidth(-1);
+        const double natural=text.isEmpty()?(n.text.isEmpty()?n.width:24.0):std::max(4.0,std::ceil(layout.idealWidth())+2);
+        const double width=std::min(natural,available);
         if(width!=n.width) { n.width=width; changedRoles.append(BoxWidth); }
     }
     n.text=text;
-    const double h=std::max(n.minimumHeight,height);
+    layout.setTextWidth(n.width);
+    const double h=std::max(n.minimumHeight,layout.size().height());
     if(n.height!=h) { n.height=h; changedRoles.append(BoxHeight); }
     // Publish after all fields are updated: relayout can synchronously call setText again.
     if(!changedRoles.isEmpty()) notify(id,changedRoles);
@@ -175,6 +184,7 @@ void AnnotationModel::resize(const QString& id,double x,double y,double width,do
     auto& n=notes_[id]; const auto before=n;
     n.width=std::clamp(width,std::min(24.0,g.units.width()),g.units.width());
     n.widthLocked=true;
+    n.maximumWidth=0;
     n.minimumHeight=std::clamp(height,std::min(24.0,g.units.height()),g.units.height());
     QFont font(n.family); font.setPixelSize(qRound(n.fontSize));
     QTextDocument layout; layout.setDocumentMargin(0); layout.setDefaultFont(font);

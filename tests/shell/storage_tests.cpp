@@ -69,10 +69,12 @@ private slots:
         const auto encoded=StorageWorker::encode(original,identity); AnnotationSnapshot restored; QString error;
         QVERIFY(StorageWorker::decode(encoded,identity,restored,error)); QCOMPARE(restored.notes,original.notes); QCOMPARE(restored.ink,original.ink); QCOMPARE(restored.revision,original.revision);
         QVERIFY(!StorageWorker::decode(encoded,"wrong",restored,error));
-        auto growing=original; growing.notes[0].widthLocked=false; growing.notes[0].minimumHeight=60;
+        auto growing=original; growing.notes[0].widthLocked=false; growing.notes[0].minimumHeight=60; growing.notes[0].maximumWidth=240;
         growing.notes[0].styles={{0,7,22,QColor("#e5484d"),true,true},{8,4,18,QColor("#30a46c"),false,false}};
         QVERIFY(StorageWorker::decode(StorageWorker::encode(growing,identity),identity,restored,error));
         QCOMPARE(restored.notes,growing.notes);
+        auto invalidWidth=growing; invalidWidth.notes[0].maximumWidth=-1;
+        QVERIFY(!StorageWorker::decode(StorageWorker::encode(invalidWidth,identity),identity,restored,error));
         auto object=QJsonDocument::fromJson(encoded).object(); object["schema"]=2;
         QVERIFY(!StorageWorker::decode(QJsonDocument(object).toJson(),identity,restored,error)); QVERIFY(error.contains(QStringLiteral("版本")));
         object=QJsonDocument::fromJson(encoded).object(); object["payload"]=QStringLiteral("{}");

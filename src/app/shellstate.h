@@ -73,6 +73,8 @@ public:
     bool interactiveContentAt(double x,double y) const;
     bool eraseTextAt(double x,double y);
     Q_INVOKABLE QString createTextBox(double x,double y);
+    Q_INVOKABLE QRectF answerBlankAt(double x,double y) const;
+    Q_INVOKABLE QString createAnswerAt(double x,double y);
     Q_INVOKABLE void finishTextEditing();
     Q_INVOKABLE void commitInput();
     Q_INVOKABLE void resetInput();
@@ -112,6 +114,7 @@ public:
     Q_INVOKABLE void exportPdf(const QUrl& target);
     Q_INVOKABLE void acknowledgeProbe() { emit startupAcknowledged(); }
 signals:
+    void answerLinesChanged();
     void textCommitRequested();
     void storageChanged();
     void startupAcknowledged();

@@ -5,6 +5,7 @@
 #include <QMap>
 #include <QSet>
 #include <QSizeF>
+#include <QRectF>
 
 class ReadingModel final : public QAbstractListModel {
     Q_OBJECT
@@ -21,7 +22,8 @@ public:
     void setViewport(double y, double height, double width, double zoom);
     void setDoublePage(bool enabled);
     bool doublePage() const { return doublePage_; }
-    void put(int page, QImage image, int requestedWidth, bool final);
+    void put(int page, QImage image, int requestedWidth, bool final, QList<QRectF> answerLines={}, bool linesReady=false);
+    QList<QRectF> answerLines(int page) const;
     void setBudgets(qint64 cpu, qint64 gpu);
     QImage image(int page) const;
     bool ready(int page, int width) const;
@@ -56,7 +58,7 @@ private:
     int columns() const { return doublePage_ ? 2 : 1; }
     void updateWidth();
     double rowHeight(int page) const;
-    struct Entry { QImage pixels; int requestedWidth = 0; bool final = false; quint64 use = 0; };
+    struct Entry { QImage pixels; int requestedWidth = 0; bool final = false; quint64 use = 0; QList<QRectF> answerLines; };
     QList<QSizeF> sizes_;
     QList<bool> known_;
     QList<double> tops_;

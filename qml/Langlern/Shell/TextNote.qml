@@ -82,7 +82,8 @@ Item {
     }
     HoverHandler { id: hover; margin: 18; blocking: false }
     readonly property real editorWidth: !noteWidthLocked && editor.preeditText.length > 0
-        ? Math.min((1 - noteAnchor.x) * notePageUnits.width, Math.max(noteWidth, Math.ceil(compositionMetrics.advanceWidth) + 2)) : noteWidth
+        ? Math.min(compositionWidthLimit, Math.max(noteWidth, Math.ceil(compositionMetrics.advanceWidth) + 2)) : noteWidth
+    readonly property real compositionWidthLimit: { const version = note.shell.annotations.version; return note.shell.annotations.textWidthLimit(note.noteId) }
     TextMetrics {
         id: compositionMetrics
         font: editor.font

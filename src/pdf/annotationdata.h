@@ -25,6 +25,7 @@ struct TextAnnotation {
     bool widthLocked = true;
     double minimumHeight = 24;
     QList<TextStyle> styles;
+    double maximumWidth = 0; // Optional automatic width cap, in PDF units; 0 uses the page edge.
     bool operator==(const TextAnnotation&) const = default;
 };
 struct InkStroke {

@@ -2,6 +2,9 @@
 #include <QTemporaryDir>
 #include "shellstate.h"
 #include "annotationtext.h"
+#include "answerlines.h"
+#include <QPainter>
+#include <QElapsedTimer>
 #include <QClipboard>
 #include <QLineF>
 #include <algorithm>
@@ -29,6 +32,102 @@ class AnnotationTests : public QObject {
     std::unique_ptr<QTemporaryDir> caseWorkspace;
 private slots:
     void init() { caseWorkspace=std::make_unique<QTemporaryDir>(); qputenv("LANGLERN_WORKSPACE_DIR",caseWorkspace->path().toUtf8()); }
+
+    void answerRuleDetection() {
+        QImage image(600,800,QImage::Format_RGB32); image.fill(QColor(245,245,245));
+        QPainter painter(&image); painter.setPen(QPen(Qt::black,1));
+        painter.drawLine(100,300,280,300); painter.drawLine(100,400,340,400);
+        painter.drawLine(100,200,280,200); painter.fillRect(110,185,150,10,Qt::black);
+        painter.drawRect(350,400,200,100); painter.end();
+        QElapsedTimer timer; timer.start(); const auto areas=AnswerLines::detect(image,{600,800});
+        qInfo()<<"answer_detection_ms"<<timer.nsecsElapsed()/1e6<<"candidates"<<areas.size();
+        QCOMPARE(areas.size(),2); QVERIFY(areas.first().contains(QPointF(.3,.36)));
+        QVERIFY(AnswerLines::detect({}, {600,800}).isEmpty());
+        QVERIFY(AnswerLines::detect(image, {NAN,800}).isEmpty());
+    }
+    void hoverRuleReusesEditorAndShrinksAfterDeletion() {
+        ShellState shell; QQmlApplicationEngine engine; QStringList warnings;
+        connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError>& errors){for(const auto& e:errors)warnings.append(e.toString());});
+        engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}}); engine.loadFromModule("Langlern.Shell","Main");
+        auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(window);
+        window->show(); QVERIFY(QTest::qWaitForWindowExposed(window));
+        shell.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/answer-lines.pdf"));
+        QTRY_VERIFY(shell.storageReady()); QTRY_COMPARE(shell.pageCount(),4); QTRY_VERIFY(!shell.busy());
+        shell.setZoom(.65); QTRY_VERIFY(!shell.busy());
+        auto* viewport=find(window->contentItem(),"pdfViewport"); QVERIFY(viewport);
+        auto area=[&]() {
+            for(int y=3;y<90;++y) {
+                auto rect=shell.answerBlankAt(shell.pageLeft(shell.currentPage()-1)+.3*shell.pageWidth(),shell.pageTop(shell.currentPage()-1)+y*.01*shell.pageHeight(shell.currentPage()-1));
+                if(!rect.isEmpty()) return rect;
+            }
+            return QRectF();
+        };
+        // Real PDFium rendering: vector, cropped, rotated and raster pages all have rules.
+        for(int page=0;page<4;++page) {
+            shell.goToPage(page+1); QTRY_VERIFY_WITH_TIMEOUT(!area().isEmpty(),10000);
+        }
+        shell.goToPage(1); QTRY_COMPARE(shell.currentPage(),1); QTRY_VERIFY(!area().isEmpty());
+        QTRY_VERIFY(std::abs(viewport->property("contentY").toDouble()-shell.scrollOffset())<.5);
+        auto settled=[&] {
+            for(int page:shell.model().priority()) if(!shell.model().ready(page,shell.model().targetWidth(page,window->devicePixelRatio()))) return false;
+            return true;
+        };
+        QTRY_VERIFY(settled());
+        const auto target=area();
+        auto scene=[&](QPointF p) { return viewport->mapToScene(p-QPointF(viewport->property("contentX").toDouble(),viewport->property("contentY").toDouble())).toPoint(); };
+        QTest::mouseMove(window,scene(target.center()),30);
+        auto* hover=engine.rootObjects().first()->findChild<QObject*>("answerHover"); QVERIFY(hover);
+        qInfo()<<"answer_hover"<<target<<scene(target.center())<<viewport->property("contentY")<<hover->property("hovered")<<viewport->property("moving");
+        auto* hint=find(window->contentItem(),"answerLineHint"); QVERIFY(hint); QTRY_VERIFY(hint->isVisible());
+        const auto output=qEnvironmentVariable("LANGLERN_ANSWER_ARTIFACT_DIR");
+        if(!output.isEmpty()) QVERIFY(window->grabWindow().save(output+"/hover-rule.png"));
+        const auto jobs=shell.model().renderJobs;
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,scene(target.center()));
+        QTRY_COMPARE(shell.annotations()->snapshot().size(),1);
+        auto* editor=find(window->contentItem(),"annotationEditor"); QVERIFY(editor); QTRY_VERIFY(editor->hasActiveFocus());
+        auto note=shell.annotations()->snapshot().first();
+        QVERIFY(note.maximumWidth>150 && note.maximumWidth<190);
+        QVERIFY(std::abs(note.width-note.maximumWidth)<.01);
+        const QString text=QStringLiteral("short answer with many words ").repeated(7);
+        QGuiApplication::clipboard()->setText(text); QTest::keyClick(window,Qt::Key_V,Qt::ControlModifier);
+        QTRY_COMPARE(shell.annotations()->snapshot().first().text,text);
+        QTRY_VERIFY(shell.annotations()->snapshot().first().height>48);
+        const auto expanded=shell.annotations()->snapshot().first();
+        QVERIFY(expanded.width<=expanded.maximumWidth);
+        editor->setProperty("cursorPosition",5);
+        QTest::keyClick(window,Qt::Key_End,Qt::ControlModifier|Qt::ShiftModifier); QTest::keyClick(window,Qt::Key_Backspace);
+        QTRY_COMPARE(shell.annotations()->snapshot().first().text,QStringLiteral("short"));
+        QTRY_VERIFY(shell.annotations()->snapshot().first().width<expanded.width);
+        QTRY_COMPARE(shell.annotations()->snapshot().first().height,24.0);
+        QTest::keyClick(window,Qt::Key_Z,Qt::ControlModifier);
+        QTRY_COMPARE(shell.annotations()->snapshot().first().text,text);
+        QTest::keyClick(window,Qt::Key_Y,Qt::ControlModifier);
+        QTRY_COMPARE(shell.annotations()->snapshot().first().text,QStringLiteral("short"));
+        QTest::keyClick(window,Qt::Key_A,Qt::ControlModifier); QTest::keyClick(window,Qt::Key_Backspace);
+        QTRY_VERIFY(shell.annotations()->snapshot().first().text.isEmpty());
+        QTRY_VERIFY(shell.annotations()->snapshot().first().width<=24);
+        QTest::keyClick(window,Qt::Key_Z,Qt::ControlModifier);
+        QTRY_COMPARE(shell.annotations()->snapshot().first().text,QStringLiteral("short"));
+        const auto saved=AnnotationSnapshot{shell.annotations()->snapshot(),{},0};
+        AnnotationSnapshot restored; QString error;
+        QVERIFY(StorageWorker::decode(StorageWorker::encode(saved,"test"),"test",restored,error)); QCOMPARE(restored.notes,saved.notes);
+        QTest::keyClick(window,Qt::Key_Return,Qt::ControlModifier);
+        QVERIFY(shell.answerBlankAt(target.center().x(),target.center().y()).isEmpty());
+        QTest::mouseMove(window,scene(target.center()),20); QVERIFY(!hint->isVisible());
+        if(!output.isEmpty()) QVERIFY(window->grabWindow().save(output+"/answer-shrunk.png"));
+        QCOMPARE(shell.model().renderJobs,jobs);
+        if(!output.isEmpty()) {
+            shell.exportPdf(QUrl::fromLocalFile(output+"/answer-export.pdf")); QTRY_VERIFY_WITH_TIMEOUT(!shell.exporting(),30000);
+            QVERIFY2(shell.exportStatus().contains(QStringLiteral("已导出")),qPrintable(shell.exportStatus()));
+        }
+        shell.saveNow(); QTRY_VERIFY(shell.storageStatus().contains(QStringLiteral("已保存")));
+        shell.clearSelection(); QTRY_COMPARE(shell.pageCount(),0);
+        shell.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/answer-lines.pdf"));
+        QTRY_VERIFY(shell.storageReady()); QTRY_COMPARE(shell.annotations()->snapshot().size(),1);
+        QCOMPARE(shell.annotations()->snapshot().first(),saved.notes.first());
+        QVERIFY2(warnings.isEmpty(),qPrintable(warnings.join('\n')));
+        window->close(); QTRY_VERIFY(shell.shutdownComplete());
+    }
 
     void modelHistoryAndVirtualization() {
         AnnotationModel model;
@@ -70,9 +169,9 @@ private slots:
         QVERIFY(!model.snapshot().first().widthLocked);
         model.setText(id,QString(200,'w'),48);
         QCOMPARE(model.snapshot().first().width,456.0);
-        QVERIFY(model.snapshot().first().widthLocked);
+        QVERIFY(!model.snapshot().first().widthLocked);
         model.setText(id,QStringLiteral("short"),24);
-        QCOMPARE(model.snapshot().first().width,456.0);
+        QVERIFY(model.snapshot().first().width<100);
         model.finishEditing(); const auto saved=model.snapshot();
         model.undo(); QVERIFY(model.snapshot().isEmpty());
         model.redo(); QCOMPARE(model.snapshot(),saved);
@@ -96,7 +195,7 @@ private slots:
         model.undo(); QCOMPARE(model.snapshot().first(),before);
         model.redo(); QCOMPARE(model.snapshot().first(),after);
         model.select(id); model.setText(id,QStringLiteral("short"),24);
-        QCOMPARE(model.snapshot().first().height,80.0); model.finishEditing();
+        QCOMPARE(model.snapshot().first().height,24.0); QVERIFY(model.snapshot().first().width<200); model.finishEditing();
         model.resize(id,2,2,10000,10000);
         const auto bounded=model.snapshot().first();
         QCOMPARE(bounded.width,570.0); QCOMPARE(bounded.height,780.0);
@@ -283,7 +382,7 @@ private slots:
         QGuiApplication::clipboard()->setText(text);
         QTest::keyClick(window,Qt::Key_V,Qt::ControlModifier);
         QTRY_COMPARE(shell.annotations()->snapshot().first().text,text);
-        QVERIFY(shell.annotations()->snapshot().first().widthLocked);
+        QVERIFY(!shell.annotations()->snapshot().first().widthLocked);
         QVERIFY(editor->property("lineCount").toInt()>1);
         QTRY_COMPARE(shell.annotations()->snapshot().first().height,editor->property("contentHeight").toDouble());
         QTest::keyClick(window,Qt::Key_Return,Qt::ControlModifier);
@@ -367,7 +466,7 @@ private slots:
         const double beforeReturn=shell.annotations()->snapshot().first().width;
         QTest::keyClick(window,Qt::Key_Return);
         QVERIFY(!shell.annotations()->selectedId().isEmpty());
-        QVERIFY(shell.annotations()->snapshot().first().widthLocked);
+        QVERIFY(!shell.annotations()->snapshot().first().widthLocked);
         QCOMPARE(shell.annotations()->snapshot().first().width,beforeReturn);
         QGuiApplication::clipboard()->setText(QStringLiteral("\ne\u0301 😀\n多行答案"));
         QTest::keyClick(window,Qt::Key_V,Qt::ControlModifier);

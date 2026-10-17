@@ -159,14 +159,22 @@ bool ReadingModel::ready(int p,int width) const {
     const auto it = cache_.constFind(p);
     return it != cache_.cend() && it->final && it->requestedWidth == width && !image(p).isNull();
 }
-void ReadingModel::put(int p,QImage image,int width,bool final) {
+QList<QRectF> ReadingModel::answerLines(int p) const {
+    const auto it=cache_.constFind(p);
+    return it==cache_.cend()?QList<QRectF>{}:it->answerLines;
+}
+void ReadingModel::put(int p,QImage image,int width,bool final,QList<QRectF> lines,bool linesReady) {
     if (image.isNull() || image.sizeInBytes() > pageBudget()) return;
-    cache_[p] = {std::move(image),width,final,++tick_};
+    if(!linesReady) lines=answerLines(p);
+    const auto cap=config.cpuBytes/(2*std::max(qsizetype(1),active_.size())*qint64(sizeof(QRectF)));
+    if(lines.size()>cap) lines.resize(qsizetype(cap));
+    lines.squeeze();
+    cache_[p] = {std::move(image),width,final,++tick_,std::move(lines)};
     evict();
     const int row = int(active_.indexOf(p));
     if (row >= 0) emit dataChanged(index(row),index(row),{Pixels});
 }
-qint64 ReadingModel::cpuBytes() const { qint64 n=0; for (const auto& e:cache_) n+=e.pixels.sizeInBytes(); return n; }
+qint64 ReadingModel::cpuBytes() const { qint64 n=0; for (const auto& e:cache_) n+=e.pixels.sizeInBytes()+e.answerLines.capacity()*qint64(sizeof(QRectF)); return n; }
 qint64 ReadingModel::gpuBytes() const { qint64 n=0; for(int p:active_) n+=image(p).sizeInBytes(); return n; }
 void ReadingModel::evict() {
     while (cpuBytes() > config.cpuBytes && !cache_.isEmpty()) {

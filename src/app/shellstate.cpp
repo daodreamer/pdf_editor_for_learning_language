@@ -82,6 +82,7 @@ void ShellState::selectFile(const QUrl& url) {
         exportStatus_.clear();
         storageStatus_=QStringLiteral("正在校验 PDF 并恢复练习…"); emit storageChanged();
         textSelection_.reset();
+        emit answerLinesChanged();
         path_ = file.absoluteFilePath();
         selectedName_ = file.fileName();
         const auto storageSession=session_; const auto storagePath=path_;
@@ -107,6 +108,7 @@ void ShellState::clearSelection() {
     QGuiApplication::inputMethod()->reset();
     restoring_=true; annotations_.reset(); restoring_=false;
     textSelection_.reset();
+    emit answerLinesChanged();
     path_.clear();
     selectedName_.clear();
     statusText_.clear();
@@ -284,7 +286,10 @@ void ShellState::acceptFrame(const PdfFrame& frame) {
             model_.reset(pageCount_);
         }
         model_.setSizes(frame.page,{frame.points});
-        model_.put(frame.page,frame.image,requestedWidth_,!frame.preview);
+        model_.put(frame.page,frame.image,requestedWidth_,!frame.preview,frame.answerLines,frame.answerLinesReady);
+        if(frame.answerLinesReady) {
+            emit answerLinesChanged();
+        }
         busy_ = !model_.ready(page_,viewportAttached_ ? model_.targetWidth(page_,dpr_) : renderWidth_);
         statusText_ = frame.preview ? QStringLiteral("预览已显示，正在提高清晰度…")
                     : frame.limited ? QStringLiteral("已显示（受内存预算限制，已降低分辨率）。")
@@ -362,6 +367,34 @@ void ShellState::finishTextEditing() {
     QGuiApplication::inputMethod()->commit();
     emit textCommitRequested();
     annotations_.finishEditing();
+}
+QRectF ShellState::answerBlankAt(double x,double y) const {
+    if(!containsPage(x,y)) return {};
+    const int page=model_.pageAtPosition(x,y);
+    const double w=model_.pageWidth(),h=model_.height(page);
+    if(model_.image(page).isNull()) return {};
+    const QPointF point((x-model_.left(page))/w,(y-model_.top(page))/h);
+    const auto g=annotations_.geometry(page);
+    if(!g.valid) return {};
+    for(const auto& line:model_.answerLines(page)) {
+        if(!line.contains(point)) continue;
+        bool occupied=false;
+        for(const auto& n:annotations_.snapshot()) if(n.page==page) {
+            const auto rect=QRectF(g.pdfToDisplay.map(n.anchor),QSizeF(n.width/g.units.width(),n.height/g.units.height()));
+            if(rect.intersects(line)) { occupied=true; break; }
+        }
+        if(!occupied) return {model_.left(page)+line.x()*w,model_.top(page)+line.y()*h,line.width()*w,line.height()*h};
+    }
+    return {};
+}
+QString ShellState::createAnswerAt(double x,double y) {
+    const auto area=answerBlankAt(x,y);
+    if(area.isEmpty()) return {};
+    const int page=model_.pageAtPosition(x,y);
+    finishTextEditing(); textSelection_.clear(); focusPage(page);
+    const auto g=annotations_.geometry(page);
+    return annotations_.create(page,(area.x()-model_.left(page))/model_.pageWidth(),
+        (area.y()-model_.top(page))/model_.height(page),area.width()/model_.pageWidth()*g.units.width());
 }
 QString ShellState::createTextBox(double x,double y) {
     if(shuttingDown_ || !storageReady_ || transitioning_ || !pageCount_ || !std::isfinite(x) || !std::isfinite(y)) return {};

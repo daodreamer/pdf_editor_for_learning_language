@@ -26,6 +26,16 @@ ColumnLayout {
     property real inkWidth: inkSize.value
     property bool marking: false
     property bool reading: false
+    property rect answerHint: Qt.rect(0, 0, 0, 0)
+    readonly property bool answerHintsEnabled: !marking && !reading && (inputMode === 0 || inputMode === 2) && shell.storageReady
+    onAnswerHintsEnabledChanged: updateAnswerHint()
+    function updateAnswerHint(): void {
+        if (!answerHintsEnabled || !answerHover.hovered || viewport.moving || shell.annotations.gestureActive()) { answerHint = Qt.rect(0, 0, 0, 0); return }
+        const p = viewport.contentItem.mapFromItem(answerHover.parent, answerHover.point.position.x, answerHover.point.position.y)
+        answerHint = shell.answerBlankAt(p.x, p.y)
+    }
+    Connections { target: view.shell; function onAnswerLinesChanged(): void { view.updateAnswerHint() } function onSelectionChanged(): void { view.updateAnswerHint() } }
+    Connections { target: view.shell.annotations; function onContentChanged(): void { view.answerHint = Qt.rect(0, 0, 0, 0) } function onSelectionChanged(): void { view.answerHint = Qt.rect(0, 0, 0, 0) } }
     signal wordRequested(string text, string context)
     spacing: 0
     ComboBox {
@@ -50,7 +60,8 @@ ColumnLayout {
         function report(): void {
             view.shell.updateViewport(contentY, height, width, renderDpr)
         }
-        onContentYChanged: if (!viewportTimer.running) viewportTimer.start()
+        onContentYChanged: { view.answerHint = Qt.rect(0, 0, 0, 0); if (!viewportTimer.running) viewportTimer.start() }
+        onContentXChanged: view.answerHint = Qt.rect(0, 0, 0, 0)
         onWidthChanged: viewportTimer.restart()
         onHeightChanged: viewportTimer.restart()
         onVisibleChanged: if (visible) viewportTimer.restart()
@@ -58,6 +69,7 @@ ColumnLayout {
         Connections {
             target: view.shell
             function onLayoutChanged(): void {
+                view.answerHint = Qt.rect(0, 0, 0, 0)
                 viewport.contentY = view.shell.scrollOffset
                 viewportTimer.restart()
             }
@@ -232,6 +244,33 @@ ColumnLayout {
             contentY: viewport.contentY
             inkColor: view.inkColor
             inkWidth: view.inkWidth
+        }
+        HoverHandler {
+            id: answerHover
+            objectName: "answerHover"
+            enabled: view.answerHintsEnabled
+            parent: viewport.contentItem
+            target: null
+            blocking: false
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+            onPointChanged: view.updateAnswerHint()
+            onHoveredChanged: view.updateAnswerHint()
+        }
+        Rectangle {
+            objectName: "answerLineHint"
+            z: 4
+            x: view.answerHint.x; y: view.answerHint.y
+            width: view.answerHint.width; height: view.answerHint.height
+            visible: view.answerHintsEnabled && width > 0 && height > 0
+            color: "#16007aff"; border.color: "#70007aff"; radius: 3
+            readonly property bool blocksInkInput: true
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.IBeamCursor
+                onClicked: view.shell.createAnswerAt(view.answerHint.x + view.answerHint.width / 2, view.answerHint.y + view.answerHint.height / 2)
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTr("点击填写横线答案")
+            }
         }
         Shortcut {
             sequences: [StandardKey.Undo]

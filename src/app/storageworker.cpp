@@ -50,7 +50,7 @@ QByteArray StorageWorker::encode(const AnnotationSnapshot& s,const QByteArray& i
     for(const auto& n:s.notes) notes.append(QJsonObject{{"id",n.id},{"page",n.page},{"anchor",point(n.anchor)},
         {"right",point(n.right)},{"down",point(n.down)},{"width",n.width},{"height",n.height},{"size",n.fontSize},
         {"text",n.text},{"family",n.family},{"color",n.color.name(QColor::HexArgb)},{"order",QString::number(n.order)},
-        {"widthLocked",n.widthLocked},{"minimumHeight",n.minimumHeight},{"styles",QJsonArray::fromVariantList(encodeTextStyles(n.styles))}});
+        {"widthLocked",n.widthLocked},{"minimumHeight",n.minimumHeight},{"maximumWidth",n.maximumWidth},{"styles",QJsonArray::fromVariantList(encodeTextStyles(n.styles))}});
     for(const auto& i:s.ink) {
         QJsonArray points; for(auto p:i.points) points.append(point(p));
         ink.append(QJsonObject{{"id",i.id},{"page",i.page},{"points",points},{"width",i.width},
@@ -92,6 +92,7 @@ bool StorageWorker::decode(const QByteArray& bytes,const QByteArray& identity,An
             if(v.contains("widthLocked") && !v["widthLocked"].isBool()) throw std::runtime_error("widthLocked");
             n.widthLocked=v["widthLocked"].toBool(true);
             if(v.contains("minimumHeight")) n.minimumHeight=number(v,"minimumHeight",1e-6,1e9);
+            if(v.contains("maximumWidth")) n.maximumWidth=number(v,"maximumWidth",0,1e9);
             if(!v["text"].isString()) throw std::runtime_error("text");
             n.text=v["text"].toString(); n.family=v["family"].toString();
             if(v.contains("styles") && (!v["styles"].isArray() || !decodeTextStyles(v["styles"].toArray().toVariantList(),int(n.text.size()),n.styles)))

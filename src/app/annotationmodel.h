@@ -47,8 +47,8 @@ public:
     void endInk();
     Q_INVOKABLE void cancelGesture();
     Q_INVOKABLE void removeInk();
-    bool gestureActive() const { return gesture_ != Gesture::None; }
-    Q_INVOKABLE QString create(int page,double x,double y);
+    Q_INVOKABLE bool gestureActive() const { return gesture_ != Gesture::None; }
+    Q_INVOKABLE QString create(int page,double x,double y,double maximumWidth=0);
     Q_INVOKABLE void select(const QString& id);
     Q_INVOKABLE void finishEditing();
     Q_INVOKABLE void setText(const QString& id,const QString& text,double height,const QVariantList& styles = {});
@@ -60,6 +60,7 @@ public:
     Q_INVOKABLE void redo();
     Q_INVOKABLE void cycleMark(const QString& id);
     Q_INVOKABLE bool selectNext(const QString& id);
+    Q_INVOKABLE double textWidthLimit(const QString& id) const;
 signals:
     void contentChanged();
     void selectionChanged();

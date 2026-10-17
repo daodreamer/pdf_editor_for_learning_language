@@ -1,5 +1,6 @@
 #include "pdfworker.h"
 #include "inkpath.h"
+#include "answerlines.h"
 #include "exporttext.h"
 #include "scancleanup.h"
 #include <QCoreApplication>
@@ -326,6 +327,10 @@ void PdfWorker::execute(const PdfRequest& r) {
             frame.errorCode.clear();
             frame.preview = preview;
             frame.limited = width < wanted;
+            if(!preview || r.previewOnly) {
+                frame.answerLines=AnswerLines::detect(frame.image,frame.geometry.units);
+                frame.answerLinesReady=true;
+            }
             qInfo("pdf_frame session=%llu revision=%llu page=%d preview=%d width=%d height=%d bytes=%lld worker_ms=%.3f",
                 r.session, r.revision, r.page, preview, width, height, qint64(frame.image.sizeInBytes()), timer.nsecsElapsed() / 1e6);
             emit frameReady(std::move(frame));
