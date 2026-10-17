@@ -8,6 +8,18 @@
 #include <QStyleHints>
 #include <QLineF>
 
+namespace {
+bool overlayBlocksInk(QQuickItem* item,QPointF position) {
+    if(!item->isVisible() || !item->isEnabled()) return false;
+    const bool contains=item->contains(item->mapFromScene(position));
+    if(item->property("blocksInkInput").toBool() && contains) return true;
+    if(item->clip() && !contains) return false;
+    // An empty Controls Overlay may be above the panel: search visible siblings too.
+    for(auto* child:item->childItems()) if(overlayBlocksInk(child,position)) return true;
+    return false;
+}
+}
+
 InkInput::InkInput(QQuickItem* parent):QQuickItem(parent) {
     setAcceptedMouseButtons(Qt::LeftButton); setKeepMouseGrab(true);
     setCursor(QCursor(Qt::CrossCursor));
@@ -102,7 +114,7 @@ bool InkInput::eventFilter(QObject* watched,QEvent* event) {
     if(event->type()==QEvent::MouseButtonPress || event->type()==QEvent::MouseButtonDblClick || event->type()==QEvent::MouseMove || event->type()==QEvent::MouseButtonRelease) {
         auto* mouse=static_cast<QMouseEvent*>(event);
         const auto p=mapFromScene(mouse->position());
-        if((event->type()==QEvent::MouseButtonPress || event->type()==QEvent::MouseButtonDblClick) && mouse->button()==Qt::RightButton && contains(p)) {
+        if((event->type()==QEvent::MouseButtonPress || event->type()==QEvent::MouseButtonDblClick) && mouse->button()==Qt::RightButton && contains(p) && !overlayBlocksInk(filteredWindow_->contentItem(),mouse->position())) {
             rightErasing_=begin(p,true);
             if(rightErasing_) { event->accept(); return true; }
         } else if(rightErasing_) {
@@ -118,7 +130,7 @@ bool InkInput::eventFilter(QObject* watched,QEvent* event) {
     if(event->type()==QEvent::TabletPress || event->type()==QEvent::TabletMove || event->type()==QEvent::TabletRelease) {
         auto* tablet=static_cast<QTabletEvent*>(event);
         const auto p=mapFromScene(tablet->position());
-        if(event->type()==QEvent::TabletPress && contains(p)) { begin(p); tablet_=true; }
+        if(event->type()==QEvent::TabletPress && contains(p) && !overlayBlocksInk(filteredWindow_->contentItem(),tablet->position())) { begin(p); tablet_=true; }
         else if(!tablet_) return false;
         else extend(p);
         if(event->type()==QEvent::TabletRelease) { if(shell_) shell_->annotations()->endInk(); tablet_=false; page_=-1; }

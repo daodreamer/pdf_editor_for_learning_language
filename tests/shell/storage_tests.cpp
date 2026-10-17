@@ -207,7 +207,8 @@ private slots:
             shell.goToPage(page+1); QTRY_VERIFY(shell.annotations()->geometry(page).valid);
             const auto id=shell.annotations()->create(page,.15,.3); QVERIFY(!id.isEmpty());
             shell.annotations()->setText(id,QStringLiteral("Bonjour 中文练习 e\u0301\n第二行 answer"),70); shell.finishTextEditing();
-            QVERIFY(shell.annotations()->beginInk(page,{.15,.6},Qt::red,5)); shell.annotations()->appendInk({.6,.65}); shell.annotations()->endInk();
+            QVERIFY(shell.annotations()->beginInk(page,{.15,.6},Qt::red,5));
+            shell.annotations()->appendInk({.35,.74}); shell.annotations()->appendInk({.6,.65}); shell.annotations()->endInk();
             QVERIFY(shell.annotations()->beginInk(page,{.7,.7},Qt::blue,8)); shell.annotations()->endInk();
         }
         exportSnapshot={shell.annotations()->snapshot(),shell.annotations()->inkSnapshot(),0};

@@ -2,6 +2,8 @@
 #include <QTemporaryDir>
 #include "shellstate.h"
 #include "inkinput.h"
+#include "inkpath.h"
+#include "inkitem.h"
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQuickWindow>
@@ -48,6 +50,95 @@ class InkTests : public QObject {
     std::unique_ptr<QTemporaryDir> caseWorkspace;
 private slots:
     void init() { caseWorkspace=std::make_unique<QTemporaryDir>(); qputenv("LANGLERN_WORKSPACE_DIR",caseWorkspace->path().toUtf8()); }
+
+    void smoothCurveAndHitTesting() {
+        const QList<QPointF> points{{100,100},{200,300},{300,100}};
+        const auto path=InkPath::path(points);
+        QCOMPARE(path.pointAtPercent(0),points.first());
+        QCOMPARE(path.pointAtPercent(1),points.last());
+        const auto left=InkPath::segment(points,0),middle=InkPath::segment(points,1);
+        QCOMPARE(left.b,middle.a);
+        QCOMPARE(left.tangent(1),middle.tangent(0));
+        QCOMPARE(middle.at(.5),QPointF(200,250));
+        for(int i=0;i<=100;++i) {
+            const auto p=path.pointAtPercent(i/100.0);
+            QVERIFY(p.x()>=100 && p.x()<=300 && p.y()>=100 && p.y()<=300);
+        }
+        // Hit the visible curve, 50 PDF points away from the old polyline corner.
+        AnnotationModel m; m.setGeometry(0,geometry());
+        const auto g=geometry();
+        QVERIFY(m.beginInk(0,g.pdfToDisplay.map(points[0]),Qt::red,1));
+        m.appendInk(g.pdfToDisplay.map(points[1])); m.appendInk(g.pdfToDisplay.map(points[2])); m.endInk();
+        const auto original=m.inkSnapshot();
+        QVERIFY(m.beginErase(0,g.pdfToDisplay.map(QPointF(200,300)),0)); m.endInk();
+        QCOMPARE(m.inkSnapshot(),original);
+        QVERIFY(m.beginErase(0,g.pdfToDisplay.map(QPointF(200,250)),0)); m.endInk();
+        QVERIFY(m.inkSnapshot().isEmpty()); m.undo(); QCOMPARE(m.inkSnapshot(),original);
+    }
+
+    void penControlsAndIncrementalCurvePixels() {
+        ShellState s; QQmlApplicationEngine engine; QStringList warnings;
+        connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError>& errors){ for(const auto& e:errors) warnings.append(e.toString()); });
+        engine.setInitialProperties({{"shell",QVariant::fromValue(&s)}}); engine.loadFromModule("Langlern.Shell","Main");
+        auto* w=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(w);
+        w->show(); QVERIFY(QTest::qWaitForWindowExposed(w));
+        s.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/scan.pdf"));
+        QTRY_VERIFY(s.storageReady()); QTRY_VERIFY(s.annotations()->geometry(0).valid); QTRY_VERIFY(!s.busy());
+        s.setZoom(.6); QTRY_VERIFY(!s.busy()); QTest::qWait(200);
+        auto* settings=find(w->contentItem(),"penSettingsButton"); QVERIFY(settings); QVERIFY(settings->isVisible());
+        auto* panel=find(w->contentItem(),"penSettingsPanel"); QVERIFY(panel);
+        QTest::mouseClick(w,Qt::LeftButton,Qt::NoModifier,settings->mapToScene(QPointF(settings->width()/2,settings->height()/2)).toPoint());
+        QTRY_VERIFY(panel->isVisible());
+        const auto background=panel->mapToScene(QPointF(6,100)).toPoint();
+        QTest::mousePress(w,Qt::LeftButton,Qt::NoModifier,background);
+        QTest::mouseMove(w,background+QPoint(12,0),20);
+        QTest::mouseRelease(w,Qt::LeftButton,Qt::NoModifier,background+QPoint(12,0));
+        QVERIFY(s.annotations()->inkSnapshot().isEmpty()); QVERIFY(!s.annotations()->gestureActive());
+        QTest::mousePress(w,Qt::RightButton,Qt::NoModifier,background);
+        QVERIFY(!s.annotations()->gestureActive());
+        QTest::mouseRelease(w,Qt::RightButton,Qt::NoModifier,background);
+        auto* red=find(w->contentItem(),"penColor1"); QVERIFY(red);
+        QTest::mouseClick(w,Qt::LeftButton,Qt::NoModifier,red->mapToScene(QPointF(14,14)).toPoint());
+        auto* slider=find(w->contentItem(),"penWidthSlider"); QVERIFY(slider);
+        slider->setProperty("value",.5); QVERIFY(QMetaObject::invokeMethod(slider,"moved"));
+        auto* input=qobject_cast<InkInput*>(find(w->contentItem(),"inkInput")); QVERIFY(input);
+        QCOMPARE(input->inkColor(),QColor("#ce3446")); QCOMPARE(input->inkWidth(),.5);
+        // Settings also apply to automatic freehand input and survive a mode switch.
+        QTest::keyClick(w,Qt::Key_P); QCOMPARE(input->inkWidth(),.5);
+        QTest::keyClick(w,Qt::Key_P); QTRY_VERIFY(!panel->isVisible());
+        const auto jobs=s.model().renderJobs;
+        InkItem* item=nullptr;
+        auto locate=[&](auto&& self,QQuickItem* parent)->void {
+            if(auto* ink=qobject_cast<InkItem*>(parent); ink && ink->page()==0) item=ink;
+            for(auto* child:parent->childItems()) self(self,child);
+        };
+        locate(locate,w->contentItem()); QVERIFY(item);
+        const QList<double> widths{.5,2,8,16};
+        for(int line=0;line<4;++line) {
+            const double y=.23+line*.065;
+            QVERIFY(s.annotations()->beginInk(0,{.16,y},QColor("#235fbd"),widths[line]));
+            // Render across exact chunk boundaries, then compare to a full rebuild.
+            for(int i=1;i<=260;++i) {
+                s.annotations()->appendInk({.16+.60*i/260,y+.023*std::sin(i*.065)});
+                if(i==128 || i==129 || i==256 || i==257) { w->update(); QTest::qWait(20); }
+            }
+            s.annotations()->endInk();
+        }
+        QVERIFY(s.annotations()->beginInk(0,{.2,.52},QColor("#ce3446"),12));
+        s.annotations()->appendInk({.45,.52}); s.annotations()->appendInk({.2,.52}); s.annotations()->endInk();
+        QTest::qWait(80); const auto incremental=w->grabWindow();
+        item->setPage(-1); QTest::qWait(40); item->setPage(0); QTest::qWait(80);
+        const auto rebuilt=w->grabWindow();
+        QCOMPARE(incremental,rebuilt); QCOMPARE(s.model().renderJobs,jobs);
+        QVERIFY2(warnings.isEmpty(),qPrintable(warnings.join('\n')));
+        const auto output=qEnvironmentVariable("LANGLERN_SCREENSHOT_DIR");
+        if(!output.isEmpty()) {
+            QFile f(QDir(output).filePath("smooth-ink.png")); QVERIFY(f.open(QIODevice::WriteOnly|QIODevice::NewOnly)); QVERIFY(rebuilt.save(&f,"PNG"));
+            QTest::mouseClick(w,Qt::LeftButton,Qt::NoModifier,settings->mapToScene(QPointF(settings->width()/2,settings->height()/2)).toPoint());
+            QTest::qWait(60); QFile controls(QDir(output).filePath("pen-settings.png")); QVERIFY(controls.open(QIODevice::WriteOnly|QIODevice::NewOnly)); QVERIFY(w->grabWindow().save(&controls,"PNG"));
+        }
+        w->close(); QTRY_VERIFY(s.shutdownComplete());
+    }
 
     void gesturesAndSweptErase() {
         AnnotationModel m; m.setGeometry(0,geometry());

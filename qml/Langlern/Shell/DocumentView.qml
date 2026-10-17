@@ -33,7 +33,7 @@ ColumnLayout {
         readonly property var colors: ["#235fbd", "#ce3446", "#188450", "#242424"]
         model: colors
     }
-    SpinBox { id: inkSize; objectName: "inkSize"; visible: false; from: 1; to: 16; value: 2 }
+    Item { id: inkSize; objectName: "inkSize"; property real value: 2 }
     Flickable {
         id: viewport
         objectName: "pdfViewport"

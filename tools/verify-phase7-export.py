@@ -21,8 +21,10 @@ assert len(source) == len(exported) == len(sparse) == 8
 report = {"engine": f"MuPDF {fitz.VersionBind}", "source_sha256": source_hash, "pages": []}
 for index, page in enumerate(exported):
     text = unicodedata.normalize("NFC", page.get_text())
-    assert "Bonjour 中文练习 é" in text, (index, text)
-    assert "第二行 answer" in text, (index, text)
+    # Font/style runs may be split into separate extracted lines by MuPDF.
+    compact = "".join(text.split())
+    assert "Bonjour中文练习é" in compact, (index, text)
+    assert "第二行answer" in compact, (index, text)
     assert "EDIT AFTER EXPORT" not in text
     fonts = page.get_fonts(full=True)
     embedded = [f for f in fonts if f[2] == "Type0" and "Noto" in f[3]]

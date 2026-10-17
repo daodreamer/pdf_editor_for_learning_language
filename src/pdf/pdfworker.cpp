@@ -1,4 +1,5 @@
 #include "pdfworker.h"
+#include "inkpath.h"
 #include "exporttext.h"
 #include "scancleanup.h"
 #include <QCoreApplication>
@@ -393,7 +394,7 @@ void PdfWorker::exportPdf(quint64 session,QString source,QString target,QByteArr
                 for(const auto& i:ink) if(i.page==index && !i.points.isEmpty()) {
                     QPen pen(i.color,i.width,Qt::SolidLine,Qt::RoundCap,Qt::RoundJoin); painter.setPen(pen); painter.setBrush(Qt::NoBrush);
                     if(i.points.size()==1) { painter.setPen(Qt::NoPen); painter.setBrush(i.color); painter.drawEllipse(local.map(i.points.first()),i.width/2,i.width/2); }
-                    else { QPainterPath path(local.map(i.points.first())); for(qsizetype j=1;j<i.points.size();++j) path.lineTo(local.map(i.points[j])); painter.drawPath(path); }
+                    else painter.drawPath(InkPath::path(i.points,local));
                 }
                 require(painter.end(),"矢量 PDF 写入失败。");
             }

@@ -1,5 +1,6 @@
 #include "annotationmodel.h"
 #include "textstyles.h"
+#include "inkpath.h"
 #include <QUuid>
 #include <QLineF>
 #include <QSet>
@@ -257,8 +258,16 @@ double segmentDistance(QPointF a,QPointF b,QPointF c,QPointF d) {
     return std::min({pointDistance(a,c,d),pointDistance(b,c,d),pointDistance(c,a,b),pointDistance(d,a,b)});
 }
 bool hits(const InkStroke& stroke,QPointF from,QPointF to,double radius) {
-    for(qsizetype i=0;i<stroke.points.size();++i)
-        if(segmentDistance(from,to,stroke.points[i],stroke.points[std::max(qsizetype(0),i-1)])<=radius+stroke.width/2) return true;
+    for(qsizetype i=0;i<stroke.points.size();++i) {
+        const auto c=InkPath::segment(stroke.points,i);
+        const int steps=c.steps(.05);
+        auto a=c.a;
+        for(int j=1;j<=steps;++j) {
+            const auto b=c.at(double(j)/steps);
+            if(segmentDistance(from,to,a,b)<=radius+stroke.width/2+.05) return true;
+            a=b;
+        }
+    }
     return false;
 }
 qsizetype inkBytes(const QList<InkStroke>& strokes) {

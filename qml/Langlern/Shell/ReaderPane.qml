@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
+import QtQuick.Dialogs
 
 Item {
     id: pane
@@ -101,8 +102,16 @@ Item {
             }
             Rectangle {
                 anchors.top: parent.top; anchors.topMargin: 12; anchors.horizontalCenter: parent.horizontalCenter
-                width: Math.min(parent.width - 28, hint.implicitWidth + 32); height: 32; radius: 16; color: pane.theme.card; border.color: pane.theme.line
+                width: Math.min(parent.width - ((pane.tool === 0 || pane.tool === 1) ? 270 : 28), hint.implicitWidth + 32); height: 32; radius: 16; color: pane.theme.card; border.color: pane.theme.line
                 Label { id: hint; anchors.fill: parent; anchors.leftMargin: 16; anchors.rightMargin: 16; text: pane.hints[pane.tool]; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter; color: pane.theme.muted; font.pixelSize: 12 }
+            }
+            DesignButton {
+                objectName: "penSettingsButton"
+                visible: pane.tool === 0 || pane.tool === 1
+                anchors.right: parent.right; anchors.rightMargin: 12; anchors.top: parent.top; anchors.topMargin: 12
+                theme: pane.theme; text: qsTr("画笔 · %1 pt").arg(document.inkWidth.toFixed(1)); selected: pane.penOptions
+                onClicked: pane.penOptions = !pane.penOptions
+                Accessible.name: qsTr("画笔颜色与粗细设置")
             }
             AudioStrip {
                 visible: pane.audioVisible
@@ -118,26 +127,44 @@ Item {
                 theme: pane.theme; current: pane.tool; onPicked: function(index) { pane.pick(index) }
             }
             Rectangle {
-                visible: pane.penOptions && pane.tool === 1
-                anchors.top: parent.top; anchors.topMargin: 50; anchors.horizontalCenter: parent.horizontalCenter
-                width: penRow.implicitWidth + 24; height: 52; radius: 12; color: pane.theme.card; border.color: pane.theme.line
-                RowLayout {
-                    id: penRow; anchors.centerIn: parent; spacing: 10
+                objectName: "penSettingsPanel"
+                readonly property bool blocksInkInput: true
+                visible: pane.penOptions && (pane.tool === 0 || pane.tool === 1)
+                anchors.top: parent.top; anchors.topMargin: 50; anchors.right: parent.right; anchors.rightMargin: 12
+                width: Math.min(330, parent.width - 24); height: 134; radius: 12; color: pane.theme.card; border.color: pane.theme.line
+                MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons; onWheel: function(wheel) { wheel.accepted = true } }
+                ColumnLayout {
+                    anchors.fill: parent; anchors.margins: 12; spacing: 8
+                    RowLayout {
+                    Layout.fillWidth: true; spacing: 8
                     Repeater {
-                        model: ["#235fbd", "#ce3446", "#188450", "#242424"]
+                        model: ["#235fbd", "#ce3446", "#188450", "#242424", "#a855f7", "#e88c21"]
                         ToolButton {
                             id: colorButton
                             required property string modelData
                             implicitWidth: 28; implicitHeight: 28
-                            background: Rectangle { radius: 14; color: colorButton.modelData; border.width: document.inkColor === colorButton.modelData ? 3 : 0; border.color: pane.theme.accent }
+                            objectName: "penColor" + index
+                            required property int index
+                            background: Rectangle { radius: 14; color: colorButton.modelData; border.width: Qt.colorEqual(document.inkColor, colorButton.modelData) ? 3 : 1; border.color: Qt.colorEqual(document.inkColor, colorButton.modelData) ? pane.theme.accent : pane.theme.line }
+                            contentItem: Label { text: Qt.colorEqual(document.inkColor, colorButton.modelData) ? "✓" : ""; color: "white"; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                             onClicked: document.inkColor = modelData
                             Accessible.name: qsTr("笔色 %1").arg(modelData)
                         }
                     }
-                    Slider { Layout.preferredWidth: 100; from: 1; to: 16; stepSize: 1; value: document.inkWidth; onMoved: document.inkWidth = value; Accessible.name: qsTr("笔宽") }
-                    Label { text: document.inkWidth.toFixed(0); color: pane.theme.muted }
+                    ToolButton { objectName: "customPenColor"; text: qsTr("自选"); onClicked: { penColorDialog.selectedColor = document.inkColor; penColorDialog.open() } Accessible.name: qsTr("自选画笔颜色") }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Label { text: qsTr("粗细"); color: pane.theme.muted }
+                        Slider { objectName: "penWidthSlider"; Layout.fillWidth: true; from: 0.5; to: 16; stepSize: 0.5; value: document.inkWidth; onMoved: document.inkWidth = value; Accessible.name: qsTr("画笔粗细，单位 PDF 点") }
+                        Label { text: qsTr("%1 pt").arg(document.inkWidth.toFixed(1)); color: pane.theme.text; Layout.preferredWidth: 48 }
+                    }
+                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 22; radius: 6; color: pane.theme.fill
+                        Rectangle { anchors.centerIn: parent; width: parent.width - 32; height: document.inkWidth; radius: height / 2; color: document.inkColor }
+                    }
                 }
             }
+            ColorDialog { id: penColorDialog; title: qsTr("选择画笔颜色"); onAccepted: document.inkColor = selectedColor }
         }
         Rectangle {
             visible: pane.workspace.layout === 2 && pane.width > 900
