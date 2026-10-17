@@ -48,7 +48,7 @@ public:
     Q_INVOKABLE void cancelGesture();
     Q_INVOKABLE void removeInk();
     Q_INVOKABLE bool gestureActive() const { return gesture_ != Gesture::None; }
-    Q_INVOKABLE QString create(int page,double x,double y,double maximumWidth=0);
+    Q_INVOKABLE QString create(int page,double x,double y,double maximumWidth=0,double fieldHeight=24);
     Q_INVOKABLE void select(const QString& id);
     Q_INVOKABLE void finishEditing();
     Q_INVOKABLE void setText(const QString& id,const QString& text,double height,const QVariantList& styles = {});

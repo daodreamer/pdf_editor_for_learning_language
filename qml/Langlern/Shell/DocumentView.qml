@@ -267,7 +267,11 @@ ColumnLayout {
             MouseArea {
                 anchors.fill: parent
                 cursorShape: Qt.IBeamCursor
-                onClicked: view.shell.createAnswerAt(view.answerHint.x + view.answerHint.width / 2, view.answerHint.y + view.answerHint.height / 2)
+                // Hover feedback may disappear on press; focus the existing editor immediately.
+                onPressed: function(mouse) {
+                    const p = mapToItem(viewport.contentItem, mouse.x, mouse.y)
+                    view.shell.createAnswerAt(p.x, p.y)
+                }
                 Accessible.role: Accessible.Button
                 Accessible.name: qsTr("点击填写横线答案")
             }

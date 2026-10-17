@@ -18,6 +18,7 @@
 #include <QTest>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QtQml/QQmlExtensionPlugin>
 Q_IMPORT_QML_PLUGIN(LanglernShellPlugin)
 
@@ -44,6 +45,74 @@ private slots:
         QCOMPARE(areas.size(),2); QVERIFY(areas.first().contains(QPointF(.3,.36)));
         QVERIFY(AnswerLines::detect({}, {600,800}).isEmpty());
         QVERIFY(AnswerLines::detect(image, {NAN,800}).isEmpty());
+        QImage patterns(600,800,QImage::Format_RGB32); patterns.fill(Qt::white);
+        QPainter pen(&patterns); pen.setPen(QPen(Qt::black,1));
+        for(int x=100;x<340;x+=10) pen.drawLine(x,100,x+5,100);
+        for(int x=100;x<280;x+=4) pen.drawPoint(x,200);
+        for(int x=100;x<124;x+=9) pen.drawLine(x,250,x+5,250);
+        for(int x:{100,104,108}) pen.drawPoint(x,300); // Printed ellipsis is not a field.
+        for(int x=100;x<340;x+=10) pen.drawLine(x,500,x+5,500);
+        pen.drawLine(100,500,100,550); pen.drawLine(335,500,335,550); pen.end();
+        const auto dashed=AnswerLines::detect(patterns,{600,800});
+        QCOMPARE(dashed.size(),3);
+    }
+    void realTextbookDashedFields() {
+        const auto path=qEnvironmentVariable("LANGLERN_REAL_PDF",QStringLiteral("C:/Users/jiong/Desktop/法语/你好法语3学生用书第二版.pdf"));
+        if(!QFileInfo::exists(path)) QSKIP("The configured real textbook is unavailable on this runner; real-PDF acceptance was not performed.");
+        ShellState shell; QQmlApplicationEngine engine;
+        engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}}); engine.loadFromModule("Langlern.Shell","Main");
+        auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(window);
+        window->show(); QVERIFY(QTest::qWaitForWindowExposed(window));
+        shell.selectFile(QUrl::fromLocalFile(path)); QTRY_VERIFY_WITH_TIMEOUT(shell.storageReady(),30000);
+        QTRY_COMPARE(shell.pageCount(),153); shell.goToPage(34); shell.setZoom(.65);
+        QTRY_VERIFY_WITH_TIMEOUT(!shell.busy(),30000);
+        QTRY_VERIFY_WITH_TIMEOUT(shell.model().ready(33,shell.model().targetWidth(33,window->devicePixelRatio())),30000);
+        auto settled=[&] { for(int page:shell.model().priority()) if(!shell.model().ready(page,shell.model().targetWidth(page,window->devicePixelRatio()))) return false; return true; };
+        QTRY_VERIFY_WITH_TIMEOUT(settled(),30000);
+        QTRY_VERIFY_WITH_TIMEOUT(shell.model().nextUnknown()<0,30000);
+        qInfo()<<"real_textbook"<<QFileInfo(path).size()<<"page"<<34<<"candidates"<<shell.model().answerLines(33).size();
+        QCOMPARE(shell.model().answerLines(33).size(),8);
+        const auto output=qEnvironmentVariable("LANGLERN_REAL_ARTIFACT_DIR");
+        if(!output.isEmpty()) {
+            auto overlay=shell.model().image(33).copy(); QVERIFY(overlay.save(output+"/pdfium-page-34.png"));
+            QPainter p(&overlay); p.setPen(QPen(Qt::red,1));
+            for(const auto& r:shell.model().answerLines(33)) p.drawRect(QRectF(r.x()*overlay.width(),r.y()*overlay.height(),r.width()*overlay.width(),r.height()*overlay.height()));
+            p.end(); QVERIFY(overlay.save(output+"/candidate-overlay.png"));
+        }
+        const QList<QPointF> targets{{.67,.14},{.843,.14},{.637,.157},{.824,.157},{.768,.175},{.777,.193},{.721,.229},{.871,.229}};
+        QList<QRectF> areas;
+        for(const auto& p:targets) {
+            const auto area=shell.answerBlankAt(shell.pageLeft(33)+p.x()*shell.pageWidth(),shell.pageTop(33)+p.y()*shell.pageHeight(33));
+            qInfo()<<"real_target"<<p<<area; QVERIFY2(!area.isEmpty(),qPrintable(QStringLiteral("Missing real dotted field at %1,%2").arg(p.x()).arg(p.y())));
+            areas.append(area);
+        }
+        auto* viewport=find(window->contentItem(),"pdfViewport"); QVERIFY(viewport);
+        QTRY_VERIFY(std::abs(viewport->property("contentY").toDouble()-shell.scrollOffset())<.5);
+        auto scene=[&](QPointF p) { return viewport->mapToScene(p-QPointF(viewport->property("contentX").toDouble(),viewport->property("contentY").toDouble())).toPoint(); };
+        QTest::mouseMove(window,scene(areas.first().center()),30);
+        auto* hint=find(window->contentItem(),"answerLineHint"); QVERIFY(hint); QTRY_VERIFY(hint->isVisible());
+        if(!output.isEmpty()) QVERIFY(window->grabWindow().save(output+"/real-hover.png"));
+        const auto click=hint->mapToScene(QPointF(hint->width()/2,hint->height()/2)).toPoint();
+        qInfo()<<"real_click"<<scene(areas.first().center())<<click<<shell.annotations()->snapshot().size();
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,click);
+        qInfo()<<"real_after_click"<<shell.annotations()->snapshot().size()<<shell.annotations()->selectedId();
+        QTRY_COMPARE(shell.annotations()->snapshot().size(),1);
+        auto* editor=find(window->contentItem(),"annotationEditor"); QVERIFY(editor); QTRY_VERIFY(editor->hasActiveFocus());
+        QGuiApplication::clipboard()->setText(QStringLiteral("Marie Dupont avec une longue réponse")); QTest::keyClick(window,Qt::Key_V,Qt::ControlModifier);
+        QTRY_VERIFY(shell.annotations()->snapshot().first().text.startsWith("Marie"));
+        const auto expanded=shell.annotations()->snapshot().first();
+        editor->setProperty("cursorPosition",5); QTest::keyClick(window,Qt::Key_End,Qt::ControlModifier|Qt::ShiftModifier); QTest::keyClick(window,Qt::Key_Backspace);
+        QTRY_COMPARE(shell.annotations()->snapshot().first().text,QStringLiteral("Marie"));
+        QTRY_VERIFY(shell.annotations()->snapshot().first().height<expanded.height);
+        QTest::keyClick(window,Qt::Key_Return,Qt::ControlModifier);
+        QVERIFY(!shell.answerBlankAt(areas[2].center().x(),areas[2].center().y()).isEmpty());
+        if(!output.isEmpty()) QVERIFY(window->grabWindow().save(output+"/real-answer.png"));
+        const auto note=shell.annotations()->snapshot().first();
+        shell.saveNow(); QTRY_VERIFY(shell.storageStatus().contains(QStringLiteral("已保存")));
+        shell.clearSelection(); QTRY_COMPARE(shell.pageCount(),0); shell.selectFile(QUrl::fromLocalFile(path));
+        QTRY_VERIFY_WITH_TIMEOUT(shell.storageReady(),30000); QTRY_COMPARE(shell.annotations()->snapshot().size(),1);
+        QCOMPARE(shell.annotations()->snapshot().first(),note);
+        window->close(); QTRY_VERIFY(shell.shutdownComplete());
     }
     void hoverRuleReusesEditorAndShrinksAfterDeletion() {
         ShellState shell; QQmlApplicationEngine engine; QStringList warnings;

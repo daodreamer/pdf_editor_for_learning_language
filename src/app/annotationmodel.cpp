@@ -78,8 +78,8 @@ void AnnotationModel::record(TextAnnotation before,TextAnnotation after) {
     if(before==after) return;
     record(Command{std::move(before),std::move(after),{}, {}});
 }
-QString AnnotationModel::create(int page,double x,double y,double maximumWidth) {
-    if(!geometry_.contains(page) || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(maximumWidth) || maximumWidth<0 || x<0 || y<0 || x>=1 || y>=1) return {};
+QString AnnotationModel::create(int page,double x,double y,double maximumWidth,double fieldHeight) {
+    if(!geometry_.contains(page) || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(maximumWidth) || !std::isfinite(fieldHeight) || fieldHeight<=0 || maximumWidth<0 || x<0 || y<0 || x>=1 || y>=1) return {};
     cancelGesture(); clearInkSelection(); finishEditing();
     // Leave room for a usable editor at the right/bottom edge.
     const auto g=geometry_[page];
@@ -89,6 +89,10 @@ QString AnnotationModel::create(int page,double x,double y,double maximumWidth) 
     n.order=nextTextOrder_++;
     n.id=QUuid::createUuid().toString(QUuid::WithoutBraces); n.page=page;
     n.anchor=g.displayToPdf.map(QPointF(x,y)); n.right=g.right(); n.down=g.down();
+    if(fieldHeight<24) {
+        n.fontSize=std::clamp(double(qRound(fieldHeight*.62)),8.0,14.0);
+        n.minimumHeight=n.height=fieldHeight;
+    }
     QFont font(n.family); font.setPixelSize(qRound(n.fontSize));
     n.width=std::min(std::ceil(QFontMetricsF(font).horizontalAdvance(QStringLiteral("this")))+2,(1-x)*g.units.width());
     n.widthLocked=false;
@@ -138,7 +142,7 @@ void AnnotationModel::setEditorText(const QString& id,const QString& text,double
             if(n.maximumWidth==0) n.maximumWidth=n.width;
             n.widthLocked=false; changedRoles.append(WidthLocked);
         }
-        n.minimumHeight=24;
+        n.minimumHeight=n.fontSize<14?14:24;
     }
     QFont font(n.family); font.setPixelSize(qRound(n.fontSize));
     QTextDocument layout; layout.setDocumentMargin(0); layout.setDefaultFont(font);

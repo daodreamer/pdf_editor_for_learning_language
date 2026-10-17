@@ -394,7 +394,7 @@ QString ShellState::createAnswerAt(double x,double y) {
     finishTextEditing(); textSelection_.clear(); focusPage(page);
     const auto g=annotations_.geometry(page);
     return annotations_.create(page,(area.x()-model_.left(page))/model_.pageWidth(),
-        (area.y()-model_.top(page))/model_.height(page),area.width()/model_.pageWidth()*g.units.width());
+        (area.y()-model_.top(page))/model_.height(page),area.width()/model_.pageWidth()*g.units.width(),area.height()/model_.height(page)*g.units.height());
 }
 QString ShellState::createTextBox(double x,double y) {
     if(shuttingDown_ || !storageReady_ || transitioning_ || !pageCount_ || !std::isfinite(x) || !std::isfinite(y)) return {};
