@@ -16,6 +16,7 @@ Item {
     signal exportRequested()
     signal settingsRequested()
     signal openRequested()
+    signal optimizeRequested()
     property int tool: 0
     property bool penOptions: false
     readonly property int spreadFirst: Math.floor((shell.currentPage - 1) / 2) * 2 + 1
@@ -70,7 +71,7 @@ Item {
             DesignButton { theme: pane.theme; text: "⚑"; selected: { const pages = pane.workspace.bookmarks; return pages.includes(pane.shell.currentPage) } onClicked: pane.workspace.toggleBookmark(pane.shell.currentPage); Accessible.name: qsTr("切换书签") }
             DesignButton { theme: pane.theme; text: qsTr("生词本 %1").arg(pane.workspace.words.length); visible: pane.width > 700; onClicked: pane.wordsRequested() }
             DesignButton { theme: pane.theme; text: "♪"; selected: pane.audioVisible; onClicked: pane.audioVisible = !pane.audioVisible; Accessible.name: qsTr("本地音频") }
-            DesignButton { theme: pane.theme; text: "···"; onClicked: more.open(); Accessible.name: qsTr("文档菜单") }
+            DesignButton { id: moreButton; objectName: "documentMenuButton"; theme: pane.theme; text: "···"; selected: more.visible; onClicked: more.visible ? more.close() : more.open(); Accessible.name: qsTr("文档菜单") }
         }
         StudyTools {
             id: topTools; objectName: "editingTools"
@@ -202,17 +203,60 @@ Item {
         }
     }
     }
+    component DocumentMenuItem: MenuItem {
+        id: entry
+        property string symbol: ""
+        property string keyHint: ""
+        readonly property color ink: !enabled ? pane.theme.faint : highlighted ? "white" : pane.theme.text
+        implicitHeight: 34
+        implicitWidth: 252
+        leftPadding: 10; rightPadding: 10
+        font.pixelSize: 13
+        hoverEnabled: true
+        indicator: null
+        arrow: null
+        background: Rectangle { radius: 7; color: entry.highlighted && entry.enabled ? pane.theme.accent : "transparent" }
+        contentItem: RowLayout {
+            spacing: 10
+            LineIcon { symbol: entry.checkable && entry.checked ? "mark" : entry.symbol; ink: entry.ink; Layout.preferredWidth: 20; Layout.preferredHeight: 20 }
+            Text { text: entry.text; font: entry.font; color: entry.ink; Layout.fillWidth: true; elide: Text.ElideRight }
+            Text { text: entry.keyHint; font.pixelSize: 12; color: entry.highlighted && entry.enabled ? "#dfffffff" : pane.theme.muted; visible: text.length > 0 }
+        }
+    }
+    component DocumentMenuSeparator: MenuSeparator {
+        topPadding: 5; bottomPadding: 5; leftPadding: 10; rightPadding: 10
+        contentItem: Rectangle { implicitHeight: 1; color: pane.theme.line }
+    }
     Menu {
         id: more
-        MenuItem { text: qsTr("打开 PDF…"); onTriggered: pane.openRequested() }
-        MenuItem { text: qsTr("保存"); enabled: pane.shell.storageReady; onTriggered: pane.shell.saveNow() }
-        MenuItem { objectName: "exportButton"; text: qsTr("导出新 PDF…"); enabled: pane.shell.storageReady && !pane.shell.exporting; onTriggered: pane.exportRequested() }
-        MenuSeparator {}
-        MenuItem { text: qsTr("横向双页布局"); checkable: true; checked: pane.shell.doublePage; onTriggered: pane.shell.doublePage = !pane.shell.doublePage }
-        MenuItem { text: qsTr("离线识别当前页…"); enabled: !pane.services.busy; onTriggered: ocr.open() }
-        MenuItem { text: qsTr("停止朗读"); onTriggered: pane.services.stopSpeaking() }
-        MenuItem { text: qsTr("外观与布局"); onTriggered: pane.settingsRequested() }
-        MenuItem { text: qsTr("关闭文档"); onTriggered: pane.shell.clearSelection() }
+        objectName: "documentMenu"
+        parent: moreButton
+        popupType: Popup.Item
+        x: moreButton.width - width
+        y: moreButton.height + 8
+        width: 264
+        padding: 6
+        margins: 8
+        overlap: 0
+        dim: false
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+        background: Item {
+            Rectangle { anchors.fill: parent; anchors.topMargin: 4; anchors.bottomMargin: -4; radius: 13; color: pane.theme.dark ? "#40000000" : "#14000000" }
+            Rectangle { anchors.fill: parent; anchors.margins: -1; anchors.topMargin: 2; anchors.bottomMargin: -2; radius: 13; color: pane.theme.dark ? "#20000000" : "#08000000" }
+            Rectangle { anchors.fill: parent; radius: 12; color: pane.theme.dark ? "#303032" : "#fcfcfd"; border.color: pane.theme.dark ? "#30ffffff" : "#18000000" }
+        }
+        DocumentMenuItem { symbol: "open"; text: qsTr("打开 PDF…"); keyHint: Qt.platform.os === "osx" ? "⌘O" : "Ctrl+O"; onTriggered: pane.openRequested() }
+        DocumentMenuItem { symbol: "save"; text: qsTr("保存"); keyHint: Qt.platform.os === "osx" ? "⌘S" : "Ctrl+S"; enabled: pane.shell.storageReady; onTriggered: pane.shell.saveNow() }
+        DocumentMenuItem { symbol: "export"; objectName: "exportButton"; text: qsTr("导出新 PDF…"); enabled: pane.shell.storageReady && !pane.shell.exporting; onTriggered: pane.exportRequested() }
+        DocumentMenuSeparator {}
+        DocumentMenuItem { symbol: "auto"; objectName: "optimizeScanAction"; text: qsTr("扫描优化…"); enabled: pane.shell.storageReady && !pane.shell.scanning && !pane.shell.exporting; onTriggered: pane.optimizeRequested() }
+        DocumentMenuItem { symbol: "read"; text: qsTr("离线识别当前页…"); enabled: !pane.services.busy; onTriggered: ocr.open() }
+        DocumentMenuItem { symbol: "audio"; text: qsTr("停止朗读"); onTriggered: pane.services.stopSpeaking() }
+        DocumentMenuSeparator {}
+        DocumentMenuItem { symbol: "library"; objectName: "menuDoublePage"; text: qsTr("横向双页布局"); checkable: true; checked: pane.shell.doublePage; onTriggered: pane.shell.doublePage = !pane.shell.doublePage }
+        DocumentMenuItem { symbol: "theme"; text: qsTr("外观与布局"); onTriggered: pane.settingsRequested() }
+        DocumentMenuSeparator {}
+        DocumentMenuItem { symbol: "close"; text: qsTr("关闭文档"); keyHint: Qt.platform.os === "osx" ? "⌘W" : "Ctrl+W"; onTriggered: pane.shell.clearSelection() }
     }
     Popup {
         id: ocr

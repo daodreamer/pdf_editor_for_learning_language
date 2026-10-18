@@ -5,6 +5,7 @@ import QtQuick.Layouts
 
 ColumnLayout {
     id: page
+    objectName: "libraryPage"
     required property Theme theme
     required property WorkspaceState workspace
     property bool recentOnly: false
@@ -81,7 +82,7 @@ ColumnLayout {
                     anchors.fill: parent; anchors.margins: 22; spacing: 16
                     DesignButton { theme: page.theme; text: "＋"; selected: true; onClicked: page.importRequested() }
                     ColumnLayout {
-                        Label { text: qsTr("拖入扫描 PDF，或点击选择文件"); font.pixelSize: 14; color: page.theme.text }
+                        Label { text: qsTr("拖入 PDF，或点击选择文件"); font.pixelSize: 14; color: page.theme.text }
                         Label { text: qsTr("本地阅读、填写答案与手写标记"); color: page.theme.muted; font.pixelSize: 12 }
                     }
                     Item { Layout.fillWidth: true }

@@ -6,6 +6,10 @@
 #include <QTemporaryDir>
 #include <QFile>
 #include <QDir>
+#include <QCryptographicHash>
+#include <QMimeData>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 #include <QPainter>
 #include <QDataStream>
 #include <QJsonDocument>
@@ -130,6 +134,105 @@ private slots:
         QCOMPARE(shell.pageCount(),1);QVERIFY(!shell.pageImage().isNull());QVERIFY(QFileInfo(target.toLocalFile()).size()>1000);
         QCOMPARE(shell.pageImage().width(),original.width());
         shell.beginShutdown();QTRY_VERIFY(shell.shutdownComplete());
+    }
+    void originalPdfOpensBeforeOptionalOptimization_data() {
+        QTest::addColumn<QString>("path");
+        QTest::newRow("scan") << QStringLiteral(LANGLERN_FIXTURES)+"/scan.pdf";
+        QTest::newRow("real-textbook") << qEnvironmentVariable("LANGLERN_REAL_PDF",QStringLiteral("C:/Users/jiong/Desktop/法语/你好法语3学生用书第二版.pdf"));
+    }
+    void originalPdfOpensBeforeOptionalOptimization() {
+        QFETCH(QString,path);
+        if(!QFileInfo::exists(path)) QSKIP("Configured PDF unavailable; real textbook acceptance was not performed.");
+        QFile input(path);QVERIFY(input.open(QIODevice::ReadOnly));
+        QCryptographicHash before(QCryptographicHash::Sha256);QVERIFY(before.addData(&input));input.close();
+        const auto url=QUrl::fromLocalFile(path);
+        ShellState shell;QQmlApplicationEngine engine;
+        engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}});engine.loadFromModule("Langlern.Shell","Main");
+        auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));QVERIFY(window);
+        window->show();QVERIFY(QTest::qWaitForWindowExposed(window));
+        auto* frame=window->findChild<QQuickItem*>("workspaceFrame");QVERIFY(frame);
+        auto* library=window->findChild<QQuickItem*>("libraryPage");QVERIFY(library);
+        auto* services=window->findChild<OfflineServices*>();QVERIFY(services);
+        QSignalSpy choose(frame,SIGNAL(openRequested()));
+        QVERIFY(QMetaObject::invokeMethod(library,"importRequested"));QCOMPARE(choose.size(),1);
+        QCOMPARE(frame->property("screen").toString(),QStringLiteral("library"));
+        shell.selectFile(url);
+        QTRY_VERIFY_WITH_TIMEOUT(shell.storageReady(),30000);QTRY_VERIFY_WITH_TIMEOUT(!shell.busy(),30000);
+        QTRY_COMPARE(frame->property("screen").toString(),QStringLiteral("reader"));
+        QCOMPARE(shell.selectedUrl(),url);QVERIFY(!shell.pageImage().isNull());QVERIFY(!shell.scanning());
+        QVERIFY(!window->findChild<QQuickItem*>("importPage"));QVERIFY(services->preview().isNull());
+        auto* optimize=window->findChild<QObject*>("optimizeScanAction");QVERIFY(optimize);
+        QVERIFY(QMetaObject::invokeMethod(optimize,"triggered"));
+        QTRY_COMPARE(frame->property("screen").toString(),QStringLiteral("import"));
+        auto* page=window->findChild<QQuickItem*>("importPage");QVERIFY(page);
+        QTRY_VERIFY_WITH_TIMEOUT(!services->preview().isNull(),10000);
+        QCOMPARE(shell.selectedUrl(),url);QVERIFY(!shell.scanning());
+        QVERIFY(QMetaObject::invokeMethod(page,"cancelRequested"));
+        QTRY_COMPARE(frame->property("screen").toString(),QStringLiteral("reader"));
+        shell.clearSelection();QTRY_VERIFY(shell.selectedName().isEmpty());
+        QMimeData mime;mime.setUrls({url});
+        const auto position=QPoint(window->width()/2,window->height()/2);
+        QDragEnterEvent enter(position,Qt::CopyAction,&mime,Qt::LeftButton,Qt::NoModifier);
+        QCoreApplication::sendEvent(window,&enter);QVERIFY(enter.isAccepted());
+        QDropEvent drop(position,Qt::CopyAction,&mime,Qt::LeftButton,Qt::NoModifier);
+        QCoreApplication::sendEvent(window,&drop);QVERIFY(drop.isAccepted());
+        QTRY_VERIFY_WITH_TIMEOUT(shell.storageReady(),30000);
+        QTRY_COMPARE(frame->property("screen").toString(),QStringLiteral("reader"));
+        QCOMPARE(shell.selectedUrl(),url);QVERIFY(!shell.scanning());QVERIFY(!window->findChild<QQuickItem*>("importPage"));
+        QVERIFY(input.open(QIODevice::ReadOnly));QCryptographicHash after(QCryptographicHash::Sha256);QVERIFY(after.addData(&input));
+        QCOMPARE(after.result(),before.result());
+        window->close();QTRY_VERIFY(shell.shutdownComplete());
+    }
+    void documentMenuAnchorsToButton_data() { originalPdfOpensBeforeOptionalOptimization_data(); }
+    void documentMenuAnchorsToButton() {
+        QFETCH(QString,path);
+        if(!QFileInfo::exists(path)) QSKIP("Configured PDF unavailable; real textbook acceptance was not performed.");
+        ShellState shell;QQmlApplicationEngine engine;QStringList warnings;
+        connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError>& errors){for(const auto& e:errors)warnings.append(e.toString());});
+        engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}});engine.loadFromModule("Langlern.Shell","Main");
+        auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));QVERIFY(window);
+        window->show();QVERIFY(QTest::qWaitForWindowExposed(window));
+        shell.selectFile(QUrl::fromLocalFile(path));QTRY_VERIFY_WITH_TIMEOUT(shell.storageReady(),30000);
+        auto* button=window->findChild<QQuickItem*>("documentMenuButton");QVERIFY(button);
+        auto* menu=window->findChild<QObject*>("documentMenu");QVERIFY(menu);
+        const auto click=[&](QQuickItem* item) { QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,item->mapToScene(QPointF(item->width()/2,item->height()/2)).toPoint()); };
+        const QList<QSize> sizes{{1440,900},{900,700},{700,580},{1440,900}};
+        for(int i=0;i<sizes.size();++i) {
+            if(i==3) { shell.cycleTheme();shell.cycleTheme();QVERIFY(shell.dark()); }
+            window->resize(sizes[i]);QTest::qWait(150);
+            click(button);QTRY_VERIFY(menu->property("opened").toBool());
+            auto* content=menu->property("contentItem").value<QQuickItem*>();QVERIFY(content);
+            const auto rect=content->mapRectToScene(content->boundingRect()).adjusted(-6,-6,6,6);
+            const auto anchor=button->mapRectToScene(button->boundingRect());
+            QVERIFY2(qAbs(rect.right()-anchor.right())<=2,qPrintable(QString("menu right %1 != button right %2").arg(rect.right()).arg(anchor.right())));
+            QVERIFY2(qAbs(rect.top()-anchor.bottom()-8)<=2,qPrintable(QString("menu top %1 != button bottom %2 + 8").arg(rect.top()).arg(anchor.bottom())));
+            QVERIFY(rect.left()>=7);QVERIFY(rect.right()<=window->width()-7);QVERIFY(rect.bottom()<=window->height()-7);
+            if(i==1) {
+                auto* exportItem=window->findChild<QQuickItem*>("exportButton");QVERIFY(exportItem);
+                QTest::mouseMove(window,exportItem->mapToScene(QPointF(exportItem->width()/2,exportItem->height()/2)).toPoint());
+                QTRY_VERIFY(exportItem->property("highlighted").toBool());
+            }
+            const auto output=qEnvironmentVariable("LANGLERN_MENU_ARTIFACT_DIR");
+            if(!output.isEmpty()) {
+                QTest::qWait(100);
+                const auto shot=window->grabWindow();
+                const auto crop=rect.united(anchor).adjusted(-12,-12,12,12).intersected(QRectF(0,0,window->width(),window->height()));
+                const auto pixels=QRectF(crop.topLeft()*window->devicePixelRatio(),crop.size()*window->devicePixelRatio()).toAlignedRect();
+                QVERIFY(shot.copy(pixels).save(QDir(output).filePath(QString("menu-%1-%2.png").arg(QString::fromLatin1(QTest::currentDataTag())).arg(i))));
+            }
+            QTest::keyClick(window,Qt::Key_Down);QTRY_VERIFY(menu->property("currentIndex").toInt()>=0);
+            QTest::keyClick(window,Qt::Key_Escape);QTRY_VERIFY(!menu->property("visible").toBool());
+        }
+        click(button);QTRY_VERIFY(menu->property("opened").toBool());
+        auto* doublePage=window->findChild<QQuickItem*>("menuDoublePage");QVERIFY(doublePage);
+        const bool previous=shell.doublePage();click(doublePage);QTRY_COMPARE(shell.doublePage(),!previous);
+        QTRY_VERIFY(!menu->property("visible").toBool());
+        click(button);QTRY_VERIFY(menu->property("opened").toBool());
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,QPoint(200,26));QTRY_VERIFY(!menu->property("visible").toBool());
+        click(button);QTRY_VERIFY(menu->property("opened").toBool());
+        click(button);QTRY_VERIFY(!menu->property("visible").toBool());
+        QVERIFY2(warnings.isEmpty(),qPrintable(warnings.join('\n')));
+        window->close();QTRY_VERIFY(shell.shutdownComplete());
     }
     void cleanupPixelChangesAreReal() {
         QImage source(500,700,QImage::Format_RGB32);source.fill(QColor(200,200,200));

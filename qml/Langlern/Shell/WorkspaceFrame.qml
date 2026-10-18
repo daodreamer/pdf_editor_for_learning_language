@@ -19,11 +19,9 @@ Rectangle {
     property int resumePage: 1
     property bool recentOnly: false
     property bool readerLoaded: shell.pageCount > 0
-    property bool pendingImport: false
     property bool initialZoomSet: false
     color: theme.surface
     function openBook(book: var): void {
-        pendingImport = false
         resumePage = book.page || 1
         if (String(shell.selectedUrl) === book.url && shell.pageCount > 0) {
             screen = "reader"
@@ -40,8 +38,7 @@ Rectangle {
                 frame.observed = String(frame.shell.selectedUrl)
                 frame.services.invalidate()
                 frame.workspace.document = frame.observed
-                frame.screen = frame.pendingImport ? "import" : "reader"
-                frame.pendingImport = false
+                frame.screen = "reader"
                 if (!frame.initialZoomSet) { frame.initialZoomSet = true; frame.shell.setZoom(0.5) }
                 if (frame.resumePage > 1) frame.shell.goToPage(frame.resumePage)
                 frame.resumePage = 1
@@ -59,8 +56,6 @@ Rectangle {
         onEntered: function(drag) { drag.accepted = drag.hasUrls && drag.urls.length > 0 && !frame.shell.scanning }
         onDropped: function(drop) {
             if (drop.hasUrls && drop.urls.length > 0 && !frame.shell.scanning) {
-                frame.pendingImport = true
-                frame.screen = "import"
                 frame.shell.selectFile(drop.urls[0])
                 drop.acceptProposedAction()
             }
@@ -99,7 +94,7 @@ Rectangle {
                 visible: frame.screen === "library"
                 theme: frame.theme; workspace: frame.workspace; recentOnly: frame.recentOnly
                 onOpenBook: function(book) { frame.openBook(book) }
-                onImportRequested: frame.screen = "import"
+                onImportRequested: frame.openRequested()
                 onReviewRequested: frame.screen = "words"
             }
             Loader {
@@ -118,6 +113,7 @@ Rectangle {
                 function onExportRequested(): void { frame.exportRequested() }
                 function onSettingsRequested(): void { settings.open() }
                 function onOpenRequested(): void { frame.openRequested() }
+                function onOptimizeRequested(): void { frame.shell.finishTextEditing(); frame.screen = "import" }
             }
             Loader {
                 id: wordsLoader
@@ -132,8 +128,8 @@ Rectangle {
             }
             Connections {
                 target: importLoader.item; ignoreUnknownSignals: true
-                function onChooseRequested(): void { frame.pendingImport = true; frame.openRequested() }
-                function onCancelRequested(): void { frame.screen = "library" }
+                function onChooseRequested(): void { frame.openRequested() }
+                function onCancelRequested(): void { frame.screen = frame.shell.pageCount > 0 ? "reader" : "library" }
                 function onReadRequested(): void { frame.screen = "reader" }
             }
         }

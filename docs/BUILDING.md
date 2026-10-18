@@ -1,5 +1,19 @@
 # 构建与复现
 
+## 阅读器文档菜单回归（2026-10-18）
+
+“···”菜单以按钮为 Popup 父项，在按钮下方 8 个逻辑像素处右对齐展开，使用 8 像素窗口边距。明确使用 Qt 6.8 的 `Popup.Item`，保持自定义样式一致；菜单沿用 Qt Quick Controls Menu/MenuItem 的键盘和选项触发机制。圆角面板、轻阴影、分组线、线性图标、蓝色高亮与快捷键提示适配浅深色。
+
+本机 Windows x64 / Qt 6.8.3 / Release 构建与 qmllint 成功（Qt 头文件 C4702 警告仍存在）。完整 `design_tests.exe` 17 项通过、0 失败、0 跳过（25.638 s）；新增 `documentMenuAnchorsToButton` 使用合成扫描样本和指定真实法语教材，实际点击按钮，在 1440×900、900×700、700×580 窗口和深色模式检查菜单与按钮的右边缘及上下间距、窗口边界、鼠标高亮、键盘导航与 Esc、双页选项触发、点击外部关闭、再次点击按钮收起，未出现 QML warning。额外设置 `QT_SCALE_FACTOR=2` 后，同一菜单回归 4 项通过（含初始化/清理，11.140 s），这是缩放因子验证，非物理跨屏验证。实际窗口裁剪图已检查浅色、深色与高亮效果。
+
+日志与截图保存在 `benchmarks/results/2026-10-18-document-menu/`，真实教材与截图不提交。macOS、sanitizer、长压力和性能 A/B 本轮未执行。
+
+## 默认原版阅读回归（2026-10-18）
+
+打开/拖入 PDF 直接阅读原版，扫描优化入口位于阅读器“··· → 扫描优化…”。本机 Windows x64 / Qt 6.8.3 / Release 执行 `./tools/build-windows.ps1 -Test -Lint` 成功，CTest 8/8 组通过（71.36 s），qmllint 通过。构建仍有 Qt 头文件内的 MSVC C4702 警告。测试中的可选大型文件及长压力用例因未配置 `LANGLERN_LARGE_PDF` 等变量跳过；macOS 和 sanitizer 未执行。
+
+新增 `design_tests.exe originalPdfOpensBeforeOptionalOptimization`，分别使用合成扫描样本和指定的真实法语教材（291516513 bytes）验证：资料库直接发起选文件、打开后进入阅读器且无优化页/优化预览、显式菜单进入优化预览、取消返回阅读、原生拖入直接阅读、源文件 SHA-256 前后一致。练习数据按用例隔离到临时目录。完整转换另存与取消由已有扫描优化用例回归；未对整本真实教材执行转换或性能 A/B。日志与样本摘要保存在 `benchmarks/results/2026-10-18-original-pdf-default/`，教材及提取图像未提交。
+
 ## 阶段 8 Windows 交付
 
 ```powershell

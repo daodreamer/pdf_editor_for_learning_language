@@ -34,9 +34,9 @@ ColumnLayout {
         Layout.fillWidth: true; Layout.preferredHeight: 56; color: page.theme.bar
         RowLayout {
             anchors.fill: parent; anchors.leftMargin: 24; anchors.rightMargin: 24
-            Label { text: qsTr("导入练习册"); font.pixelSize: 20; font.bold: true; color: page.theme.text; Layout.fillWidth: true }
+            Label { text: qsTr("扫描优化"); font.pixelSize: 20; font.bold: true; color: page.theme.text; Layout.fillWidth: true }
             DesignButton { theme: page.theme; text: qsTr("取消"); onClicked: page.cancelRequested() }
-            DesignButton { objectName: "openButton"; theme: page.theme; text: page.shell.pageCount > 0 ? qsTr("打开原始 PDF") : qsTr("选择 PDF"); primary: true; enabled: !page.shell.scanning; onClicked: page.shell.pageCount > 0 ? page.readRequested() : page.chooseRequested() }
+            DesignButton { objectName: "openButton"; theme: page.theme; text: page.shell.pageCount > 0 ? qsTr("返回阅读") : qsTr("选择 PDF"); primary: true; enabled: !page.shell.scanning; onClicked: page.shell.pageCount > 0 ? page.readRequested() : page.chooseRequested() }
         }
     }
     RowLayout {
@@ -63,6 +63,7 @@ ColumnLayout {
             ColumnLayout {
                 anchors.fill: parent; anchors.margins: 24; spacing: 18
                 Label { text: qsTr("扫描优化"); font.pixelSize: 16; font.bold: true; color: page.theme.text }
+                Label { text: qsTr("仅在拍摄或扫描的 PDF 需要去阴影、拉直或增强时使用。普通打开直接阅读原版，优化需手动另存为新 PDF。"); color: page.theme.muted; wrapMode: Text.Wrap; Layout.fillWidth: true; font.pixelSize: 12 }
                 DesignSwitch { theme: page.theme; text: qsTr("去除阴影"); checked: page.deshadow; onToggled: page.deshadow = checked }
                 DesignSwitch { theme: page.theme; text: qsTr("自动拉直（±3°）"); checked: page.straighten; onToggled: page.straighten = checked }
                 DesignSwitch { theme: page.theme; text: qsTr("增强清晰度"); checked: page.clarity; onToggled: page.clarity = checked }
