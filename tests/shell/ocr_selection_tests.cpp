@@ -61,7 +61,7 @@ class OcrSelectionTests : public QObject {
     Q_OBJECT
     std::unique_ptr<QTemporaryDir> workspace_;
 private slots:
-    void init() {workspace_=std::make_unique<QTemporaryDir>();qputenv("LANGLERN_WORKSPACE_DIR",workspace_->path().toUtf8());}
+    void init() {workspace_=std::make_unique<QTemporaryDir>();setTestEnvironment("LANGLERN_WORKSPACE_DIR",workspace_->path());}
     void characterSelectionCacheAndMissingModel() {
         Worker worker(workspace_->filePath("ocr-cache"));QSignalSpy ready(worker.worker,&OcrWorker::finished);
         QImage image(1500,550,QImage::Format_ARGB32);image.fill(Qt::white);
@@ -84,18 +84,19 @@ private slots:
         QCOMPARE(content(qvariant_cast<TextSnapshot>(ready.last()[3])),content(text));
         const auto models=workspace_->filePath(QStringLiteral("中文模型目录"));QVERIFY(QDir().mkpath(models));
         QVERIFY(QFile::copy(QCoreApplication::applicationDirPath()+"/tessdata/fra.traineddata",models+"/fra.traineddata"));
-        const auto previous=qgetenv("LANGLERN_TESSDATA");qputenv("LANGLERN_TESSDATA",workspace_->path().toUtf8());
+        {
+        TestEnvironmentRestore restoreModels("LANGLERN_TESSDATA");
+        QVERIFY(setTestEnvironment("LANGLERN_TESSDATA",workspace_->path()));
         worker.worker->submit({1,3,0,"test-identity","fra",image});
         QTRY_COMPARE_WITH_TIMEOUT(ready.size(),3,30000);
-        if(previous.isNull())qunsetenv("LANGLERN_TESSDATA");else qputenv("LANGLERN_TESSDATA",previous);
         QVERIFY(qvariant_cast<TextSnapshot>(ready.last()[3])->error.contains(QStringLiteral("缺少")));
-        qputenv("LANGLERN_TESSDATA",models.toLocal8Bit());
+        QVERIFY(setTestEnvironment("LANGLERN_TESSDATA",models));
         QCOMPARE(qEnvironmentVariable("LANGLERN_TESSDATA"),models);
         worker.worker->submit({1,4,0,"unicode-models","fra",image});
         QTRY_COMPARE_WITH_TIMEOUT(ready.size(),4,30000);
-        if(previous.isNull())qunsetenv("LANGLERN_TESSDATA");else qputenv("LANGLERN_TESSDATA",previous);
         const auto unicode=qvariant_cast<TextSnapshot>(ready.last()[3]);QVERIFY2(unicode->error.isEmpty(),qPrintable(unicode->error));
         QVERIFY(content(unicode).contains("Bonjour"));
+        }
         worker.worker->submit({1,5,0,"old-identity","fra",image});worker.worker->invalidate(6);
         worker.worker->submit({2,7,0,"new-identity","eng",image});
         QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty() && ready.last()[0].toULongLong()==2,30000);

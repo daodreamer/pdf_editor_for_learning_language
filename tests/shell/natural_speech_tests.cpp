@@ -59,7 +59,7 @@ private slots:
 #endif
         QVERIFY2(PocketSpeech::installed(),"Run tools/build-windows.ps1 to build and install the actual Estelle voice pack");
     }
-    void init(){workspace_=std::make_unique<QTemporaryDir>();qputenv("LANGLERN_WORKSPACE_DIR",workspace_->path().toUtf8());}
+    void init(){workspace_=std::make_unique<QTemporaryDir>();setTestEnvironment("LANGLERN_WORKSPACE_DIR",workspace_->path());}
     void nativePcmUnicodeAndIntegrity() {
         Run run;
         run.future=std::async(std::launch::async,[&]{

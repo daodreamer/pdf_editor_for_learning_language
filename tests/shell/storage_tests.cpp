@@ -124,7 +124,7 @@ private slots:
         QVERIFY(reader.waitForStarted()); QVERIFY(reader.waitForFinished(15000)); QCOMPARE(reader.exitCode(),0);
     }
     void emptyEditingDeletionIsSaved() {
-        QTemporaryDir dir; qputenv("LANGLERN_WORKSPACE_DIR",dir.path().toUtf8());
+        QTemporaryDir dir; setTestEnvironment("LANGLERN_WORKSPACE_DIR",dir.path());
         {
             ShellState shell; shell.selectFile(QUrl::fromLocalFile(fixture)); QTRY_VERIFY(shell.storageReady()); QTRY_VERIFY(shell.annotations()->geometry(0).valid);
             const auto id=shell.annotations()->create(0,.2,.3); shell.annotations()->setText(id,"a",24); shell.annotations()->setText(id,"",24);
@@ -137,7 +137,7 @@ private slots:
     void largeDocumentStorage() {
         const auto path=qEnvironmentVariable("LANGLERN_LARGE_PDF");
         if(path.isEmpty()) QSKIP("Set LANGLERN_LARGE_PDF for the retained large-file run");
-        QTemporaryDir root,output; qputenv("LANGLERN_WORKSPACE_DIR",root.path().toUtf8());
+        QTemporaryDir root,output; setTestEnvironment("LANGLERN_WORKSPACE_DIR",root.path());
         ShellState shell; shell.updateViewport(0,700,1000,1);
         QElapsedTimer clock; clock.start(); double firstImage=-1; int ticks=0;
         QTimer heartbeat; heartbeat.setInterval(1); connect(&heartbeat,&QTimer::timeout,this,[&] { ++ticks; }); heartbeat.start();
@@ -159,7 +159,7 @@ private slots:
         shell.beginShutdown(); QTRY_VERIFY_WITH_TIMEOUT(shell.shutdownComplete(),30000);
     }
     void autosaveReopenMoveChangeAndCloseFailure() {
-        QTemporaryDir root,source; qputenv("LANGLERN_WORKSPACE_DIR",root.path().toUtf8());
+        QTemporaryDir root,source; setTestEnvironment("LANGLERN_WORKSPACE_DIR",root.path());
         const auto path=source.filePath("教材.pdf"); QVERIFY(QFile::copy(fixture,path));
         QList<TextAnnotation> expected; QList<InkStroke> expectedInk;
         {
@@ -198,7 +198,7 @@ private slots:
         }
     }
     void exportAndSnapshotIsolation() {
-        QTemporaryDir root,output; qputenv("LANGLERN_WORKSPACE_DIR",root.path().toUtf8());
+        QTemporaryDir root,output; setTestEnvironment("LANGLERN_WORKSPACE_DIR",root.path());
         const auto artifactRoot=qEnvironmentVariable("LANGLERN_PHASE7_ARTIFACT_DIR");
         const auto target=(artifactRoot.isEmpty()?output.path():artifactRoot)+"/annotated.pdf";
         QVERIFY(!QFileInfo::exists(target));
@@ -284,7 +284,7 @@ int main(int argc,char** argv) {
     }
     if(argc==4 && (QByteArray(argv[1])=="--crash-session" || QByteArray(argv[1])=="--read-session")) {
         const bool writing=QByteArray(argv[1])=="--crash-session";
-        const auto root=QString::fromLocal8Bit(argv[2]); qputenv("LANGLERN_WORKSPACE_DIR",root.toUtf8());
+        const auto root=QString::fromLocal8Bit(argv[2]); setTestEnvironment("LANGLERN_WORKSPACE_DIR",root);
         ShellState shell; shell.selectFile(QUrl::fromLocalFile(QString::fromLocal8Bit(argv[3])));
         QTimer timer; timer.setInterval(20); bool created=false;
         QObject::connect(&timer,&QTimer::timeout,&app,[&] {
@@ -301,7 +301,7 @@ int main(int argc,char** argv) {
         });
         timer.start(); QTimer::singleShot(12000,&app,[&] { app.exit(6); }); return app.exec();
     }
-    QTemporaryDir workspace; qputenv("LANGLERN_WORKSPACE_DIR",workspace.path().toUtf8());
+    QTemporaryDir workspace; setTestEnvironment("LANGLERN_WORKSPACE_DIR",workspace.path());
     qRegisterMetaType<AnnotationSnapshot>(); StorageTests tests; return QTest::qExec(&tests,argc,argv);
 }
 #include "storage_tests.moc"

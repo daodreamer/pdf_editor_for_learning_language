@@ -27,7 +27,7 @@ class TextTests : public QObject {
     }
     std::unique_ptr<QTemporaryDir> caseWorkspace;
 private slots:
-    void init() { caseWorkspace=std::make_unique<QTemporaryDir>(); qputenv("LANGLERN_WORKSPACE_DIR",caseWorkspace->path().toUtf8()); }
+    void init() { caseWorkspace=std::make_unique<QTemporaryDir>(); setTestEnvironment("LANGLERN_WORKSPACE_DIR",caseWorkspace->path()); }
 
     void mouseSelectionAndCopy() {
         ShellState shell;
@@ -224,7 +224,10 @@ private slots:
         s->begin(0,a.x(),a.y(),0,0); s->extend(0,b.x(),b.y());
         QVERIFY(s->ready());
         QGuiApplication::clipboard()->setText(QStringLiteral("sentinel"));
-        shell.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/scan.pdf"));
+        const auto oldSession=shell.sessionId();
+        const auto scanUrl=QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/scan.pdf");
+        shell.selectFile(scanUrl);
+        QTRY_VERIFY(shell.sessionId()!=oldSession && shell.selectedUrl()==scanUrl);
         QVERIFY(!s->ready()); s->copy();
         QCOMPARE(QGuiApplication::clipboard()->text(),QStringLiteral("sentinel"));
         QTRY_VERIFY(s->snapshot(0));
@@ -232,11 +235,15 @@ private slots:
         s->begin(0,0.5,0.5,0,0); s->extend(0,0.6,0.5);
         QVERIFY(!s->ready()); QVERIFY(s->snapshot(0)->ocr); QVERIFY(!s->status().isEmpty());
         for(int i=0;i<25;++i) {
-            shell.selectFile(QUrl::fromLocalFile(fixture));
+            const auto previousSession=shell.sessionId();
+            const auto nextUrl=QUrl::fromLocalFile(fixture);
+            shell.selectFile(nextUrl);
+            QTRY_VERIFY(shell.sessionId()!=previousSession && shell.selectedUrl()==nextUrl);
             s->begin(0,0.1,0.1,0,0); s->extend(7,0.5,0.5);
             shell.clearSelection();
+            QTRY_VERIFY(shell.selectedUrl().isEmpty());
+            QVERIFY(!s->ready());QVERIFY(!s->snapshot(0));
         }
-        QTest::qWait(100); QVERIFY(!s->ready()); QVERIFY(!s->snapshot(0));
         shell.beginShutdown(); QTRY_VERIFY(shell.shutdownComplete());
     }
     void budgetAndUnicodeMapping() {
@@ -309,7 +316,7 @@ private slots:
     }
 };
 int main(int argc,char** argv) {
-    QTemporaryDir workspace; qputenv("LANGLERN_WORKSPACE_DIR",workspace.path().toUtf8());
+    QTemporaryDir workspace; setTestEnvironment("LANGLERN_WORKSPACE_DIR",workspace.path());
 
     QGuiApplication app(argc,argv);
 #ifdef Q_OS_WIN

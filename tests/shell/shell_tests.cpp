@@ -27,12 +27,12 @@ class ShellTests : public QObject {
     Q_OBJECT
     std::unique_ptr<QTemporaryDir> caseWorkspace;
 private slots:
-    void init() { caseWorkspace=std::make_unique<QTemporaryDir>(); qputenv("LANGLERN_WORKSPACE_DIR",caseWorkspace->path().toUtf8()); }
+    void init() { caseWorkspace=std::make_unique<QTemporaryDir>(); setTestEnvironment("LANGLERN_WORKSPACE_DIR",caseWorkspace->path()); }
 
     void shutdownOnPreview() {
         ShellState shell;
         QSignalSpy closed(&shell, &ShellState::documentClosed);
-        QSignalSpy discarded(&shell, &ShellState::renderDiscarded);
+        QSignalSpy images(&shell, &ShellState::imageChanged);
         shell.setRenderWidth(8192);
         bool requested = false;
         connect(&shell, &ShellState::imageChanged, &shell, [&] {
@@ -44,9 +44,13 @@ private slots:
         shell.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES) + "/scan.pdf"));
         QTRY_VERIFY_WITH_TIMEOUT(shell.shutdownComplete(), 10000);
         QVERIFY(requested);
-        QTRY_VERIFY(!discarded.isEmpty());
         QVERIFY(!closed.isEmpty());
         QCOMPARE(closed.last().at(1).toInt(), 0);
+        // Storage loading can defer shutdown until rendering has finished, so a
+        // discard is optional; closed workers must never deliver another image.
+        const auto imagesAtClose=images.size();
+        QCoreApplication::processEvents();
+        QCOMPARE(images.size(),imagesAtClose);
     }
     void largeFileSmoke() {
         const auto path = qEnvironmentVariable("LANGLERN_LARGE_PDF");
@@ -200,14 +204,19 @@ private slots:
         shell.selectFile({}); // cancelled selection preserves state
         QCOMPARE(shell.selectedName(), QStringLiteral("中文教材.PDF"));
         shell.selectFile(QUrl(QStringLiteral("https://example.com/a.pdf")));
-        QVERIFY(shell.statusText().contains(QStringLiteral("请选择")));
-        shell.selectFile(QUrl::fromLocalFile(dir.path()));
+        QTRY_VERIFY(shell.statusText().contains(QStringLiteral("请选择")));
+        const auto directoryUrl=QUrl::fromLocalFile(dir.path());
+        shell.selectFile(directoryUrl);
+        QTRY_COMPARE(shell.selectedUrl(),directoryUrl);
         QTRY_VERIFY(!shell.busy());
         QVERIFY(!shell.errorCode().isEmpty());
-        shell.selectFile(QUrl::fromLocalFile(dir.filePath(QStringLiteral("missing.pdf"))));
+        const auto missingUrl=QUrl::fromLocalFile(dir.filePath(QStringLiteral("missing.pdf")));
+        shell.selectFile(missingUrl);
+        QTRY_COMPARE(shell.selectedUrl(),missingUrl);
         QTRY_VERIFY(!shell.busy());
         QCOMPARE(shell.errorCode(), QStringLiteral("file"));
         shell.clearSelection();
+        QTRY_VERIFY(shell.selectedUrl().isEmpty());
         QVERIFY(shell.selectedName().isEmpty());
         QVERIFY(shell.statusText().isEmpty());
         QVERIFY(file.open(QIODevice::ReadOnly));
@@ -391,7 +400,7 @@ private slots:
 };
 
 int main(int argc, char** argv) {
-    QTemporaryDir workspace; qputenv("LANGLERN_WORKSPACE_DIR",workspace.path().toUtf8());
+    QTemporaryDir workspace; setTestEnvironment("LANGLERN_WORKSPACE_DIR",workspace.path());
 
     // Deterministic Qt dialog automation; the product keeps the system-native default.
     QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);

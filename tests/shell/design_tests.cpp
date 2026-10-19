@@ -28,7 +28,7 @@ class DesignTests : public QObject {
     Q_OBJECT
     std::unique_ptr<QTemporaryDir> root_;
 private slots:
-    void init() { root_=std::make_unique<QTemporaryDir>();qputenv("LANGLERN_WORKSPACE_DIR",root_->path().toUtf8()); }
+    void init() { root_=std::make_unique<QTemporaryDir>();setTestEnvironment("LANGLERN_WORKSPACE_DIR",root_->path()); }
     void libraryRecoveryAndReview() {
         const auto url=QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/text.pdf");
         {

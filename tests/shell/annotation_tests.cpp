@@ -32,7 +32,7 @@ class AnnotationTests : public QObject {
     }
     std::unique_ptr<QTemporaryDir> caseWorkspace;
 private slots:
-    void init() { caseWorkspace=std::make_unique<QTemporaryDir>(); qputenv("LANGLERN_WORKSPACE_DIR",caseWorkspace->path().toUtf8()); }
+    void init() { caseWorkspace=std::make_unique<QTemporaryDir>(); setTestEnvironment("LANGLERN_WORKSPACE_DIR",caseWorkspace->path()); }
 
     void answerRuleDetection() {
         QImage image(600,800,QImage::Format_RGB32); image.fill(QColor(245,245,245));
@@ -648,7 +648,7 @@ private slots:
     }
 };
 int main(int argc,char** argv) {
-    QTemporaryDir workspace; qputenv("LANGLERN_WORKSPACE_DIR",workspace.path().toUtf8());
+    QTemporaryDir workspace; setTestEnvironment("LANGLERN_WORKSPACE_DIR",workspace.path());
 
     QGuiApplication app(argc,argv); configureTestApplication(app);
     AnnotationTests tests; return QTest::qExec(&tests,argc,argv);
