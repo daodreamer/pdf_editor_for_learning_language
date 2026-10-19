@@ -14,6 +14,8 @@ struct ReadingConfig {
     static constexpr int textCharacters = 65536;
     static constexpr int selectionPages = 128;
     static constexpr int textDeviceSize = 1 << 24;
+    static constexpr int ocrWidth = 2400;
+    static constexpr qint64 ocrImageBytes = 32 * 1024 * 1024;
     static constexpr double margin = 20;
     static constexpr double gap = 16;
 };

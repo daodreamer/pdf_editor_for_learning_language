@@ -17,6 +17,7 @@ ApplicationWindow {
     title: shell.selectedName.length > 0 ? qsTr("%1 — LinguaPDF").arg(shell.selectedName) : "LinguaPDF"
     color: shellTheme.canvas
     onClosing: function(close) {
+        offline.stopSpeaking()
         workspace.updateProgress(window.shell.selectedUrl, window.shell.pageCount, window.shell.currentPage)
         if (!window.shell.shutdownComplete) {
             close.accepted = false
@@ -40,6 +41,16 @@ ApplicationWindow {
     Theme { id: shellTheme; dark: window.shell.dark; paper: workspace.paper }
     WorkspaceState { id: workspace }
     OfflineServices { id: offline }
+    Connections {
+        target: window.shell
+        property var previousSession: window.shell.sessionId
+        function onSelectionChanged(): void {
+            if (previousSession !== window.shell.sessionId) {
+                previousSession = window.shell.sessionId
+                offline.invalidate()
+            }
+        }
+    }
 
     Action {
         id: openAction

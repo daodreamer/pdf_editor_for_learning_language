@@ -1,4 +1,5 @@
 #include "offlineservices.h"
+#include "pocketspeech.h"
 #include "scancleanup.h"
 #include <QCoreApplication>
 #include <QDir>
@@ -59,9 +60,31 @@ OfflineServices::OfflineServices(QObject* parent):QObject(parent),native_(std::m
     speechWorker_=new QObject;speechWorker_->moveToThread(&speechThread_);
     connect(&speechThread_,&QThread::finished,speechWorker_,&QObject::deleteLater);
     speechThread_.setObjectName("Offline speech");speechThread_.start();
-    QMetaObject::invokeMethod(speechWorker_,[]{
+    QMetaObject::invokeMethod(speechWorker_,[this]{
 #ifdef Q_OS_WIN
         CoInitializeEx(nullptr,COINIT_MULTITHREADED);
+        QVariantList voices;
+        if(PocketSpeech::installed())voices.append(QVariantMap{{"label",QStringLiteral("Estelle · 自然法语（离线）")},{"id",QStringLiteral("pocket:fr:estelle")},{"locale",QStringLiteral("fr-FR")}});
+        Microsoft::WRL::ComPtr<ISpObjectTokenCategory> category;
+        Microsoft::WRL::ComPtr<IEnumSpObjectTokens> tokens;
+        if(SUCCEEDED(CoCreateInstance(CLSID_SpObjectTokenCategory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&category)))
+            && SUCCEEDED(category->SetId(SPCAT_VOICES,FALSE)) && SUCCEEDED(category->EnumTokens(nullptr,nullptr,&tokens))) {
+            Microsoft::WRL::ComPtr<ISpObjectToken> token;
+            while(tokens->Next(1,&token,nullptr)==S_OK) {
+                wchar_t *name=nullptr,*id=nullptr,*language=nullptr;
+                Microsoft::WRL::ComPtr<ISpDataKey> attributes;
+                token->GetStringValue(nullptr,&name);token->GetId(&id);
+                QString locale;
+                if(SUCCEEDED(token->OpenKey(L"Attributes",&attributes)) && SUCCEEDED(attributes->GetStringValue(L"Language",&language))) {
+                    wchar_t tag[LOCALE_NAME_MAX_LENGTH]{};
+                    const auto first=QString::fromWCharArray(language).split(';').first();
+                    if(LCIDToLocaleName(first.toUInt(nullptr,16),tag,LOCALE_NAME_MAX_LENGTH,0))locale=QString::fromWCharArray(tag);
+                }
+                if(name && id)voices.append(QVariantMap{{"label",QString::fromWCharArray(name)},{"id",QString::fromWCharArray(id)},{"locale",locale}});
+                CoTaskMemFree(name);CoTaskMemFree(id);CoTaskMemFree(language);token.Reset();
+            }
+        }
+        QMetaObject::invokeMethod(this,[this,voices]{speechVoices_=voices;emit speechChanged();},Qt::QueuedConnection);
 #endif
     },Qt::QueuedConnection);
     QMetaObject::invokeMethod(worker_,[this] {
@@ -76,12 +99,18 @@ OfflineServices::OfflineServices(QObject* parent):QObject(parent),native_(std::m
         QMetaObject::invokeMethod(this,[this,langs]{languages_=langs;emit changed();},Qt::QueuedConnection);
     },Qt::QueuedConnection);
     audioTimer_.setInterval(300);connect(&audioTimer_,&QTimer::timeout,this,&OfflineServices::pollAudio);
+    speechIdleTimer_.setSingleShot(true);speechIdleTimer_.setInterval(180000);
+    connect(&speechIdleTimer_,&QTimer::timeout,this,[this]{
+        const auto revision=speechRevision_.load();
+        QMetaObject::invokeMethod(speechWorker_,[this,revision]{if(revision==speechRevision_)pocket_.reset();},Qt::QueuedConnection);
+    });
     if(qEnvironmentVariableIsSet("LANGLERN_STARTUP_DETAIL"))qInfo("offline_service_construct_ms=%.3f",initialization.nsecsElapsed()/1e6);
 }
 OfflineServices::~OfflineServices() {
     if(translator_)QCoreApplication::removeTranslator(translator_.get());
     ++ocrRevision_;++speechRevision_;++lookupRevision_;++previewRevision_;
-    QMetaObject::invokeMethod(speechWorker_,[]{
+    QMetaObject::invokeMethod(speechWorker_,[this]{
+        pocket_.reset();
 #ifdef Q_OS_WIN
         CoUninitialize();
 #endif
@@ -173,35 +202,73 @@ void OfflineServices::lookup(QString word) {
         QMetaObject::invokeMethod(this,[this,revision,meaning,phonetic,found] {if(revision!=lookupRevision_)return;meaning_=meaning;phonetic_=phonetic;lookupFound_=found;emit lookupChanged();},Qt::QueuedConnection);
     },Qt::QueuedConnection);
 }
-void OfflineServices::stopSpeaking() { ++speechRevision_; }
+void OfflineServices::stopSpeaking() { ++speechRevision_;speaking_=false;speechLoading_=false;speechPaused_.store(false);speechIdleTimer_.start();emit speechChanged(); }
+void OfflineServices::toggleSpeechPause() { if(speaking_){speechPaused_.store(!speechPaused_.load());emit speechChanged();} }
+void OfflineServices::setSpeechRate(double rate) { if(std::isfinite(rate)){speechRate_.store(std::clamp(rate,.5,2.0));emit speechChanged();} }
+void OfflineServices::setSpeechLocale(QString locale) { if(speechLocale_!=locale){stopSpeaking();speechLocale_=std::move(locale);speechVoice_.clear();emit speechChanged();} }
+void OfflineServices::setSpeechVoice(QString voice) { if(speechVoice_!=voice){stopSpeaking();speechVoice_=std::move(voice);emit speechChanged();} }
 void OfflineServices::speak(QString text,QString locale) {
-    const auto revision=++speechRevision_;text=text.left(4000);
-    QMetaObject::invokeMethod(speechWorker_,[this,text,locale,revision] {
+    if(text.trimmed().isEmpty())return;
+    if(text.size()>1024*1024){status_=tr("朗读选区过长，请分段选择。");emit changed();return;}
+    speechIdleTimer_.stop();
+    const auto revision=++speechRevision_;speaking_=true;speechLoading_=false;speechPaused_.store(false);
+    if(locale.isEmpty())locale=speechLocale_;
+    QString voiceId;
+    const auto target=QLocale(locale);
+    for(const auto& entry:speechVoices_) {
+        const auto v=entry.toMap();
+        const auto selectedVoice=locale==speechLocale_?speechVoice_:QString{};
+        if(!selectedVoice.isEmpty() && v["id"].toString()==selectedVoice){voiceId=selectedVoice;break;}
+        if(selectedVoice.isEmpty() && QLocale(v["locale"].toString()).name()==target.name()){voiceId=v["id"].toString();break;}
+    }
+    speechLoading_=voiceId=="pocket:fr:estelle";emit speechChanged();
+    QMetaObject::invokeMethod(speechWorker_,[this,text,locale,voiceId,revision] {
         if(revision!=speechRevision_)return;
         QString error;
 #ifdef Q_OS_WIN
+        if(voiceId=="pocket:fr:estelle") {
+            if(!pocket_)pocket_=std::make_unique<PocketSpeech>();
+            SpeechMetrics metrics;
+            const SpeechControl control{speechRevision_,revision,speechPaused_,speechRate_,[this,revision]{
+                QMetaObject::invokeMethod(this,[this,revision]{if(revision==speechRevision_){speechLoading_=false;emit speechChanged();}},Qt::QueuedConnection);
+            }};
+            error=pocket_->speak(text,control,metrics);
+            qInfo("speech_pocket request=%llu load_ms=%.3f first_pcm_ms=%.3f generation_ms=%.3f audio_s=%.3f played_samples=%llu queue_peak_bytes=%llu canceled=%d",
+                revision,metrics.loadMs,metrics.firstPcmMs,metrics.generationMs,metrics.audioSeconds,metrics.playedSamples,metrics.peakQueueBytes,metrics.canceled);
+            QMetaObject::invokeMethod(this,[this,error,revision]{
+                if(revision!=speechRevision_)return;
+                speaking_=false;speechLoading_=false;speechPaused_.store(false);speechIdleTimer_.start();emit speechChanged();
+                if(!error.isEmpty()){status_=tr("Estelle 朗读失败：%1").arg(error);emit changed();}
+            },Qt::QueuedConnection);
+            return;
+        }
         Microsoft::WRL::ComPtr<ISpVoice> voice;
         auto result=CoCreateInstance(CLSID_SpVoice,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&voice));
         if(SUCCEEDED(result)) {
-            const auto language=locale.isEmpty()?(text.contains(QRegularExpression("[\\x{4e00}-\\x{9fff}]"))?QStringLiteral("zh-CN"):QStringLiteral("en-US")):locale;
-            const auto filter=QStringLiteral("Language=%1").arg(QLocale(language).language()==QLocale::Chinese?"804":language=="en-GB"?"809":"409").toStdWString();
-            Microsoft::WRL::ComPtr<ISpObjectTokenCategory> category;Microsoft::WRL::ComPtr<IEnumSpObjectTokens> tokens;Microsoft::WRL::ComPtr<ISpObjectToken> token;
-            if(SUCCEEDED(CoCreateInstance(CLSID_SpObjectTokenCategory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&category)))
-                &&SUCCEEDED(category->SetId(SPCAT_VOICES,FALSE))&&SUCCEEDED(category->EnumTokens(filter.c_str(),nullptr,&tokens))
-                &&tokens->Next(1,&token,nullptr)==S_OK) voice->SetVoice(token.Get());
-            else if(!locale.isEmpty()) {error=tr("本机未安装 %1 离线语音包。").arg(locale);result=E_FAIL;}
+            Microsoft::WRL::ComPtr<ISpObjectToken> token;
+            if(!voiceId.isEmpty() && SUCCEEDED(CoCreateInstance(CLSID_SpObjectToken,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&token)))
+                && SUCCEEDED(token->SetId(nullptr,voiceId.toStdWString().c_str(),FALSE)))result=voice->SetVoice(token.Get());
+            else {error=tr("本机朗读引擎没有可用的 %1 离线声音，请在系统中安装对应声音。").arg(locale);result=E_FAIL;}
         }
-        if(SUCCEEDED(result)) {
-            result=voice->Speak(reinterpret_cast<const wchar_t*>(text.utf16()),SPF_ASYNC|SPF_IS_NOT_XML,nullptr);
-            while(SUCCEEDED(result) && voice->WaitUntilDone(50)==S_FALSE) {
-                if(revision!=speechRevision_) { voice->Speak(nullptr,SPF_PURGEBEFORESPEAK,nullptr);break; }
+        bool paused=false;
+        for(qsizetype start=0;SUCCEEDED(result) && start<text.size() && revision==speechRevision_;) {
+            qsizetype end=std::min(start+2000,text.size());
+            if(end<text.size() && text[end].isLowSurrogate())--end;
+            const auto chunk=text.mid(start,end-start);start=end;
+            voice->SetRate(long(std::round(10*std::log2(speechRate_.load()))));
+            result=voice->Speak(reinterpret_cast<const wchar_t*>(chunk.utf16()),SPF_ASYNC|SPF_IS_NOT_XML,nullptr);
+            while(SUCCEEDED(result) && voice->WaitUntilDone(30)==S_FALSE) {
+                if(revision!=speechRevision_) {voice->Speak(nullptr,SPF_PURGEBEFORESPEAK,nullptr);break;}
+                const bool pause=speechPaused_.load();
+                if(pause!=paused){if(pause)voice->Pause();else voice->Resume();paused=pause;}
+                voice->SetRate(long(std::round(10*std::log2(speechRate_.load()))));
             }
         }
         if(FAILED(result)&&error.isEmpty())error=tr("离线朗读不可用，请检查系统语音包。");
 #else
         error=tr("此平台尚未接入离线语音引擎。");
 #endif
-        if(!error.isEmpty()) QMetaObject::invokeMethod(this,[this,error]{status_=error;emit changed();},Qt::QueuedConnection);
+        QMetaObject::invokeMethod(this,[this,error,revision]{if(revision!=speechRevision_)return;speaking_=false;speechLoading_=false;speechPaused_.store(false);speechIdleTimer_.start();emit speechChanged();if(!error.isEmpty()){status_=error;emit changed();}},Qt::QueuedConnection);
     },Qt::QueuedConnection);
 }
 void OfflineServices::openAudio(QUrl file) {

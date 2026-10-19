@@ -1,3 +1,6 @@
 # Preserve exact bytes for fixture offsets and recorded license/skill checksums.
 * -text
 *.pdf binary
+
+# Preserve upstream notice bytes so the dependency lock hashes remain reproducible.
+third_party/notices/** -text -whitespace

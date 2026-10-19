@@ -31,8 +31,10 @@ ShellState::ShellState(QObject* parent) : QObject(parent) {
         if(error.isEmpty()&&!shuttingDown_)selectFile(QUrl::fromLocalFile(target));
     });
     connect(&thread_, &QThread::finished, this, [this] {
-        shutdownComplete_ = true;
-        emit shutdownChanged();
+        if(!ocrThread_.isRunning()) {shutdownComplete_ = true;emit shutdownChanged();}
+    });
+    connect(&ocrThread_,&QThread::finished,this,[this] {
+        if(shuttingDown_ && !thread_.isRunning()) {shutdownComplete_=true;emit shutdownChanged();}
     });
     scheduleTimer_.setSingleShot(true);
     scheduleTimer_.setInterval(ReadingConfig::viewportDelayMs);
@@ -42,6 +44,7 @@ ShellState::ShellState(QObject* parent) : QObject(parent) {
         emit layoutChanged();
     });
     connect(&textSelection_, &TextSelection::demandChanged, this, [this] {
+        updateOcrDemand();
         if (!inFlight_ && !scheduleTimer_.isActive()) scheduleTimer_.start();
     });
     connect(worker_, &PdfWorker::requestFinished, this, [this](quint64 revision) {
@@ -55,6 +58,8 @@ ShellState::ShellState(QObject* parent) : QObject(parent) {
 }
 
 ShellState::~ShellState() {
+    if(!shuttingDown_ && ocr_)ocr_->invalidate(++ocrRevision_);
+    ocrThread_.quit(); ocrThread_.wait();
     storageThread_.quit(); storageThread_.wait();
     if (thread_.isRunning()) {
         if (!shuttingDown_) worker_->shutdown();
@@ -82,6 +87,7 @@ void ShellState::selectFile(const QUrl& url) {
         exportStatus_.clear();
         storageStatus_=QStringLiteral("正在校验 PDF 并恢复练习…"); emit storageChanged();
         textSelection_.reset();
+        resetOcr();
         emit answerLinesChanged();
         path_ = file.absoluteFilePath();
         selectedName_ = file.fileName();
@@ -108,6 +114,7 @@ void ShellState::clearSelection() {
     QGuiApplication::inputMethod()->reset();
     restoring_=true; annotations_.reset(); restoring_=false;
     textSelection_.reset();
+    resetOcr();
     emit answerLinesChanged();
     path_.clear();
     selectedName_.clear();
@@ -162,15 +169,25 @@ void ShellState::schedule() {
     // Missing visible previews come first. Text then precedes resolution refinement and idle metadata.
     const int textPage = pageCount_ ? textSelection_.nextPage(model_.priority()) : -1;
     const bool textTask = textPage >= 0 && (candidate < 0 || !model_.visible(candidate) || !model_.image(candidate).isNull());
+    updateOcrDemand();
+    int ocrPage=-1;
+    if(ocrBusyPage_<0 && !ocrDemand_.isEmpty() && storageReady_) {
+        for(int p : model_.priority()) if(ocrDemand_.contains(p)) { ocrPage=p; break; }
+        if(ocrPage<0 && !textSelection_.selectedPages().isEmpty())
+            for(int p : textSelection_.selectedPages()) if(ocrDemand_.contains(p)) { ocrPage=p; break; }
+    }
+    const bool ocrTask=ocrPage>=0 && !textTask && (candidate<0 || !model_.visible(candidate) || !model_.image(candidate).isNull());
     PdfRequest r{session_,++revision_,path_,std::max(0,candidate),width};
     if (textTask) { r.page=textPage; r.textOnly=true; }
+    if (ocrTask) { r.page=ocrPage; r.width=ReadingConfig::ocrWidth; r.ocrOnly=true; }
     r.maxBytes = model_.pageBudget();
     r.skipPreview = viewportAttached_;
-    if (viewportAttached_ && candidate >= 0 && model_.image(candidate).isNull() && width > ReadingConfig::previewWidth) {
+    if(ocrTask) { r.skipPreview=true; r.maxBytes=ReadingConfig::ocrImageBytes; }
+    if (!textTask && !ocrTask && viewportAttached_ && candidate >= 0 && model_.image(candidate).isNull() && width > ReadingConfig::previewWidth) {
         r.width = ReadingConfig::previewWidth;
         r.previewOnly = true;
     }
-    if (textTask) {
+    if (textTask || ocrTask) {
         // No bitmap allocation, and no renderJobs increment for text extraction.
     } else if (candidate < 0) {
         while (metadataCursor_ < pageCount_ && model_.known(metadataCursor_)) ++metadataCursor_;
@@ -261,6 +278,40 @@ void ShellState::acceptFrame(const PdfFrame& frame) {
         annotations_.setGeometry(frame.page,frame.geometry);
         annotations_.setActivePages(model_.priority());
     }
+    if(frame.ocrOnly) {
+        if(!ocrDemand_.contains(frame.page))return;
+        if(!frame.error.isEmpty()) {
+            auto failure=std::make_shared<TextPage>();failure->ocr=true;failure->error=frame.error;
+            ocrDemand_.remove(frame.page);textSelection_.put(frame.page,failure);return;
+        }
+        if(!ocr_) {
+            const auto overrideRoot=qEnvironmentVariable("LANGLERN_WORKSPACE_DIR");
+            const auto root=overrideRoot.isEmpty()?QStandardPaths::writableLocation(QStandardPaths::CacheLocation):overrideRoot;
+            ocr_=new OcrWorker(root+"/ocr-v1");ocr_->moveToThread(&ocrThread_);
+            connect(&ocrThread_,&QThread::finished,ocr_,&QObject::deleteLater);
+            connect(ocr_,&OcrWorker::finished,this,[this](quint64 session,quint64 revision,int page,TextSnapshot text,bool cached,double ms){
+                if(shuttingDown_ || session!=session_ || revision!=ocrRevision_)return;
+                ocrBusyPage_=-1;
+                textSelection_.put(page,text);
+                const bool selectRegion=ocrRegionSelections_.contains(page) && ocrRegionSelections_.take(page)==textSelection_.interactionRevision();
+                if(selectRegion && model_.visible(page) && text->region!=QRectF(0,0,1,1) && text->error.isEmpty()) {
+                    QPointF first,last;bool found=false;
+                    for(const auto& c:text->characters)if(c.visible){if(!found){first=c.box.center();found=true;}last=c.box.center();}
+                    if(found) {textSelection_.begin(page,first.x(),first.y(),0,0);textSelection_.extend(page,last.x(),last.y());}
+                }
+                ocrStatus_=text->error.isEmpty()?(text->characters.isEmpty()?tr("当前页未识别到文字，请调整 OCR 语言。"):tr("第 %1 页离线识别完成").arg(page+1)):text->error;
+                qInfo("ocr_result session=%llu page=%d chars=%lld cached=%d elapsed_ms=%.3f",session,page,qint64(text->characters.size()),cached,ms);
+                emit ocrChanged();scheduleTimer_.start();
+            });
+            ocrThread_.setObjectName("Offline OCR");ocrThread_.start(QThread::LowPriority);
+        }
+        ocrDemand_.remove(frame.page);ocrBusyPage_=frame.page;
+        ocr_->invalidate(++ocrRevision_);
+        const auto pending=textSelection_.snapshot(frame.page);
+        OcrRequest request{session_,ocrRevision_,frame.page,identity_,ocrLanguage_,frame.image,pending?pending->region:QRectF(0,0,1,1)};
+        ocr_->submit(std::move(request));
+        return;
+    }
     if (frame.textOnly) {
         model_.setSizes(frame.page,{frame.points});
         if (frame.text) textSelection_.put(frame.page,frame.text);
@@ -268,6 +319,7 @@ void ShellState::acceptFrame(const PdfFrame& frame) {
             auto failure=std::make_shared<TextPage>(); failure->error=frame.error;
             textSelection_.put(frame.page,std::move(failure));
         }
+        updateOcrDemand();
         return;
     }
     if (frame.metadataStart >= 0) {
@@ -307,9 +359,11 @@ void ShellState::beginShutdown() {
     QGuiApplication::inputMethod()->reset();
     restoring_=true; annotations_.reset(); restoring_=false;
     textSelection_.reset();
+    resetOcr();
     busy_ = false;
     statusText_ = QStringLiteral("正在关闭文档…");
     emit selectionChanged();
+    ocrThread_.quit();
     worker_->shutdown();
 }
 
@@ -323,16 +377,64 @@ bool ShellState::beginTextSelection(double x,double y) {
         textSelection_.clear(); return false;
     }
     focusPage(page);
+    const auto previous=textSelection_.snapshot(page);
+    if(previous && previous->ocr && !previous->region.contains(QPointF((x-left)/width,(y-model_.top(page))/model_.height(page))))textSelection_.forgetPage(page);
+    ensureOcr(page);
     textSelection_.begin(page,(x-left)/width,(y-model_.top(page))/model_.height(page),3/width,3/model_.height(page));
     return textSelection_.canStart();
+}
+
+void ShellState::setOcrSelectionEnabled(bool enabled) {
+    if(ocrSelectionEnabled_==enabled)return;
+    ocrSelectionEnabled_=enabled;updateOcrDemand();emit ocrChanged();scheduleTimer_.start();
+}
+void ShellState::setOcrLanguage(QString language) {
+    if(language!="fra" && language!="eng" && language!="chi_sim" && language!="fra+eng")return;
+    if(ocrLanguage_==language)return;
+    resetOcr();ocrLanguage_=std::move(language);textSelection_.clearOcr();updateOcrDemand();emit ocrChanged();scheduleTimer_.start();
+}
+void ShellState::resetOcr() {
+    if(ocr_)ocr_->invalidate(++ocrRevision_);
+    ocrDemand_.clear();ocrRegionSelections_.clear();ocrBusyPage_=-1;ocrStatus_.clear();emit ocrChanged();
+}
+void ShellState::ensureOcr(int page,bool force,QRectF region) {
+    if(shuttingDown_ || page<0 || page>=pageCount_ || ocrBusyPage_==page || ocrDemand_.contains(page))return;
+    const auto text=textSelection_.snapshot(page);
+    if(!force && (!text || text->ocr || !text->error.isEmpty() || !text->characters.isEmpty()))return;
+    auto pending=std::make_shared<TextPage>();pending->ocr=true;pending->pending=true;
+    pending->region=region;
+    ocrDemand_.insert(page);textSelection_.put(page,pending);
+    ocrStatus_=tr("正在离线识别第 %1 页…").arg(page+1);emit ocrChanged();scheduleTimer_.start();
+}
+void ShellState::updateOcrDemand() {
+    const auto selected=textSelection_.selectedPages();
+    for(auto it=ocrDemand_.begin();it!=ocrDemand_.end();) {
+        if(!model_.visible(*it) && !selected.contains(*it)) {
+            // Leave a native empty page so a later visit can request OCR again.
+            textSelection_.put(*it,std::make_shared<TextPage>());it=ocrDemand_.erase(it);
+        } else ++it;
+    }
+    for(int p:selected)ensureOcr(p);
+    if(ocrSelectionEnabled_)for(int p:model_.priority())if(model_.visible(p))ensureOcr(p);
+}
+void ShellState::recognizeCurrentPage() { ensureOcr(page_,true); }
+void ShellState::recognizeRegion(double x1,double y1,double x2,double y2) {
+    if(shuttingDown_ || !std::isfinite(x1+y1+x2+y2))return;
+    const int page=model_.pageAtPosition(x1,y1);if(page<0)return;
+    const QRectF bounds(model_.left(page),model_.top(page),model_.pageWidth(),model_.height(page));
+    const auto selected=QRectF(QPointF(x1,y1),QPointF(x2,y2)).normalized().intersected(bounds);
+    if(selected.width()<4 || selected.height()<4)return;
+    const QRectF region((selected.x()-bounds.x())/bounds.width(),(selected.y()-bounds.y())/bounds.height(),selected.width()/bounds.width(),selected.height()/bounds.height());
+    if(ocrBusyPage_>=0 && ocr_)ocr_->invalidate(++ocrRevision_);
+    ocrBusyPage_=-1;ocrDemand_.clear();textSelection_.clearOcr();
+    focusPage(page);ensureOcr(page,true,region);
+    ocrRegionSelections_.insert(page,textSelection_.interactionRevision());
 }
 bool ShellState::interactiveContentAt(double x,double y) const {
     if(!containsPage(x,y))return true;
     const int page=model_.pageAtPosition(x,y);
     if(page<0)return false;const double width=model_.pageWidth(),height=model_.height(page);
     const QPointF p((x-model_.left(page))/width,(y-model_.top(page))/height);
-    const auto text=textSelection_.snapshot(page);if(!text)return true;
-    for(const auto& c:text->characters)if(c.visible&&c.box.adjusted(-3/width,-3/height,3/width,3/height).contains(p))return true;
     const auto g=annotations_.geometry(page);if(!g.valid)return true;
     for(const auto& n:annotations_.snapshot())if(n.page==page){const auto anchor=g.pdfToDisplay.map(n.anchor);
         if(QRectF(anchor,QSizeF(n.width/g.units.width(),n.height/g.units.height())).adjusted(-10/width,-18/height,10/width,10/height).contains(p))return true;}

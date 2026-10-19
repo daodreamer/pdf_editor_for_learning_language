@@ -1,5 +1,16 @@
 # 依赖与许可审查
 
+## 2026-10-19 Pocket TTS / Estelle
+
+独立项目 C++20 适配器使用 ONNX Runtime 1.23.2 CPU（MIT 及二进制 ThirdPartyNotices）、SentencePiece 0.2.1（Apache-2.0 及嵌入 protobuf-lite/abseil 通知）、SoundTouch 2.3.3（LGPL-2.1-or-later，单独可替换 DLL、源码 tar 随包）。项目适配器自身使用 MIT，不复制未单独授权的第三方导出脚本。法语 6 层模型为 Kyutai 权重的 Vincweb ONNX/INT8 转换，固定提交 `84541283b060685dbc7f9f9d8066f4b00235820c`，CC BY 4.0；Estelle 官方录音为 CC0，预计算状态源与转换方法在模型 manifest/model card 中记录。所有来源和散列见 pocket.lock.json；JSON 词表的本地格式转换保留编号、分数和 byte fallback，并注明改动。
+
+不再运行或分发旧社区 PocketTTS.cpp/dr_libs 核心、旧法语模型、参考 WAV 编码器或 1.6B/PyTorch 环境。notices/pocket 中先期旧核心通知只作为历史审查材料保留，不表示当前链接这些代码。运行包带固定模型及语音，不使用账号、云 API 或按次付费。SoundTouch 构建只将版本资源的 MFC 头替换为 Windows SDK 头，修改和复现脚本随 source.zip；允许许可证范围内替换 DLL、调试与重新链接。实际许可证据、维护成本和未验证项见 [NATURAL_SPEECH.md](../docs/NATURAL_SPEECH.md)，不宣称整个发行包已完成合规审批。
+
+
+## 2026-10-19 免费离线 OCR 增量
+
+采用固定源码构建的 Tesseract 5.5.1、Leptonica 1.85.0、libpng 1.6.58 和 zlib 1.3.2；均静态链接，不新增发行 DLL。法语、英语、简中 tessdata_fast 模型随程序提供。源码/模型 URL 与 SHA-256、固定模型提交和通知文件散列见 `ocr.lock.json`；实际构建配置、取舍、维护成本和验收见 [OCR_SELECTION.md](../docs/OCR_SELECTION.md)。用途为本地文字识别和内部像素处理，没有账号、按次收费或云 API。更新时必须重新验证字符边界、真实教材、多语言和打包；保留 `notices/ocr/` 全部许可证及相应通知。Windows 打包脚本包含模型与通知；公开发行仍须与既有 Qt/PDFium/词库及最终静态构建内容共同复核，不能将本增量宽松授权解释成整个发行包合规确认。
+
 ## 阶段 8 Windows 候选包增量
 
 新增轻量线性图标为本项目原创 PathSvg 路径，采用 MIT；由既有 Qt Declarative 的 Quick Shapes 渲染，没有复制 Lucide 资源或增加 QtSvg 依赖。实际供应商 SPDX 的 Shapes 插件提供 LGPL-3.0-only 选项。保持 C++20 / Qt 6.8.3 / PDFium 157.0.8100.0 与 Noto 字体锁定版本。

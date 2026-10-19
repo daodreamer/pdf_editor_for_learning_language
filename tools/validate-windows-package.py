@@ -66,11 +66,11 @@ if not qt_modules or any(not Path(s).is_relative_to(runtime) for s in qt_modules
 records.append({'test':'product_startup','exit':process.returncode,'qt_modules':sorted(qt_modules)})
 root=Path(__file__).resolve().parents[1]
 shutil.copy2(root/'.deps/Qt/6.8.3/msvc2022_64/bin/Qt6Test.dll',runtime)
-for name in ['shell_tests','reading_tests','text_tests','annotation_tests','ink_tests','storage_tests','design_tests']:
+for name in ['shell_tests','reading_tests','text_tests','annotation_tests','ink_tests','storage_tests','design_tests','ocr_selection_tests','natural_speech_tests']:
     shutil.copy2(build/(name+'.exe'),runtime)
     result=subprocess.run([str(runtime/(name+'.exe')),'-o',str(out/(name+'.log'))+',txt'],cwd=out,env=env,timeout=180)
     records.append({'test':name,'exit':result.returncode})
     if result.returncode: raise RuntimeError(name+' failed; see retained logs')
 (out/'summary.json').write_text(json.dumps({'hashes_verified':len(manifest['files']),
     'path':env['PATH'],'scope':'SDK-free PATH on development host; not a clean VM', 'tests':records},indent=2),encoding='utf-8')
-print('PASS: manifest, product startup/module provenance and 7 isolated runtime suites')
+print('PASS: manifest, product startup/module provenance and 9 isolated runtime suites')

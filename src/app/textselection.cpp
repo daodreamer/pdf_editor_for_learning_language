@@ -13,12 +13,14 @@ qint64 TextSelection::bytes() const {
 }
 void TextSelection::reset() { pages_.clear(); clear(); }
 void TextSelection::clear() {
+    ++interactionRevision_;
     anchorPage_=endPage_=anchorIndex_=endIndex_=-1;
     extended_=complete_=false;
+    wordPending_=false;
     text_.clear(); status_.clear(); notify();
 }
 void TextSelection::put(int page, TextSnapshot snapshot) {
-    if (bytes()+snapshot->bytes() > ReadingConfig::textBytes) {
+    if (bytes()-(pages_.contains(page)?pages_[page]->bytes():0)+snapshot->bytes() > ReadingConfig::textBytes) {
         clear();
         auto failure=std::make_shared<TextPage>();
         failure->error=QStringLiteral("文字选择超过 16 MiB 预算，请缩小选区。");
@@ -30,6 +32,19 @@ void TextSelection::put(int page, TextSnapshot snapshot) {
     }
     pages_.insert(page,std::move(snapshot));
     rebuild();
+    if(wordPending_ && page==anchorPage_ && !pages_[page]->pending)expandWord();
+}
+QList<int> TextSelection::selectedPages() const {
+    QList<int> result;
+    if(anchorPage_<0 || endPage_<0)return result;
+    for(int p=std::min(anchorPage_,endPage_);p<=std::max(anchorPage_,endPage_);++p)result.append(p);
+    return result;
+}
+void TextSelection::clearOcr() {
+    for(auto it=pages_.begin();it!=pages_.end();) {
+        if(it.value()->ocr)it=pages_.erase(it);else ++it;
+    }
+    clear();
 }
 int TextSelection::nextPage(const QList<int>& active) {
     const int first=std::min(anchorPage_,endPage_), last=std::max(anchorPage_,endPage_);
@@ -44,7 +59,7 @@ int TextSelection::nextPage(const QList<int>& active) {
 int TextSelection::hit(int page, QPointF point, bool nearest) const {
     const auto data=pages_.value(page);
     if (!data) return -1;
-    double best=std::numeric_limits<double>::max(); int index=-1;
+    double best=std::numeric_limits<double>::max(),bestCenter=best; int index=-1;
     for (int i=0; i<data->characters.size(); ++i) {
         const auto& c=data->characters[i];
         if (!c.visible || c.unicode==0 || c.unicode==U'\r' || c.unicode==U'\n') continue;
@@ -52,7 +67,9 @@ int TextSelection::hit(int page, QPointF point, bool nearest) const {
         const double dx=std::max({c.box.left()-point.x(),0.0,point.x()-c.box.right()});
         const double dy=std::max({c.box.top()-point.y(),0.0,point.y()-c.box.bottom()});
         const double distance=dx*dx+dy*dy;
-        if (distance<best) { best=distance; index=i; }
+        const auto delta=point-c.box.center();
+        const double centerDistance=delta.x()*delta.x()+delta.y()*delta.y();
+        if (distance<best || (distance==best && centerDistance<bestCenter)) { best=distance;bestCenter=centerDistance;index=i; }
     }
     return index;
 }
@@ -69,6 +86,8 @@ void TextSelection::extend(int page,double x,double y) {
         clear(); status_=QStringLiteral("一次最多选择 128 页，请分段复制。"); notify(); return;
     }
     endPage_=page; end_=QPointF(x,y); extended_=true;
+    wordPending_=false;
+    ++interactionRevision_;
     rebuild(); emit demandChanged();
 }
 QPair<int,int> TextSelection::range(int page) const {
@@ -97,8 +116,9 @@ void TextSelection::rebuild() {
         status_=QStringLiteral("正在读取文字层…"); notify(); return;
     }
     if (!pages_[anchorPage_]->error.isEmpty()) { status_=pages_[anchorPage_]->error; notify(); return; }
+    if (pages_[anchorPage_]->pending || pages_[endPage_]->pending) { status_=QStringLiteral("正在离线识别选区文字…"); notify(); return; }
     if (anchorIndex_<0) {
-        status_=pages_[anchorPage_]->characters.isEmpty() ? QStringLiteral("此页没有可选择的原生文字（未提供 OCR）。") : QStringLiteral("请从原生文字上开始拖选。");
+        status_=pages_[anchorPage_]->characters.isEmpty() ? QStringLiteral("此页未识别到文字，可调整 OCR 语言后重试。") : QStringLiteral("请从文字上开始拖选。");
         notify(); return;
     }
     if (!extended_) { notify(); return; }
@@ -107,12 +127,13 @@ void TextSelection::rebuild() {
         const auto data=pages_.value(p);
         if (!data) { text_.clear(); status_=QStringLiteral("正在读取跨页选区…"); notify(); return; }
         if (!data->error.isEmpty()) { text_.clear(); status_=data->error; notify(); return; }
+        if (data->pending) { text_.clear(); status_=QStringLiteral("正在离线识别跨页选区…"); notify(); return; }
         if (p>first) text_+=u'\n';
         const auto [start,finish]=range(p);
         for (int i=start; i>=0 && i<=finish && i<data->characters.size(); ++i) {
             const auto& c=data->characters[i];
             // PDFium inserts CR/LF with degenerate bounds; preserve them within the selected stream.
-            if (c.unicode && (c.visible || c.unicode==U'\r' || c.unicode==U'\n') && c.unicode<=0x10ffff)
+            if (c.unicode && (c.visible || c.unicode==U' ' || c.unicode==U'\r' || c.unicode==U'\n') && c.unicode<=0x10ffff)
                 text_+=c.unicode<=0xffff ? QString(QChar(ushort(c.unicode))) : QString::fromUcs4(&c.unicode,1);
         }
     }
@@ -124,7 +145,10 @@ void TextSelection::copy() {
     if (ready()) QGuiApplication::clipboard()->setText(text_);
 }
 void TextSelection::expandWord() {
-    const auto data=pages_.value(anchorPage_);if(!data || anchorIndex_<0 || anchorIndex_>=data->characters.size())return;
+    const auto data=pages_.value(anchorPage_);
+    if(anchorPage_>=0 && (!data || data->pending)) {wordPending_=true;return;}
+    wordPending_=false;
+    if(!data || anchorIndex_<0 || anchorIndex_>=data->characters.size())return;
     const auto wordCharacter=[](const TextCharacter& c) {
         return c.visible && (QChar::isLetterOrNumber(c.unicode) || c.unicode==U'\'' || c.unicode==U'’');
     };
@@ -140,7 +164,7 @@ QString TextSelection::context() const {
     int first=anchorIndex_,last=anchorIndex_;
     while(first>0&&anchorIndex_-first<1000&&!boundary(data->characters[first-1].unicode))--first;
     while(last+1<data->characters.size()&&last-anchorIndex_<1000&&!boundary(data->characters[last+1].unicode))++last;
-    QString result;for(int i=first;i<=last;++i){const auto& c=data->characters[i];if(c.visible&&c.unicode&&c.unicode<=0x10ffff)result+=QString::fromUcs4(&c.unicode,1);}
+    QString result;for(int i=first;i<=last;++i){const auto& c=data->characters[i];if((c.visible||c.unicode==U' ')&&c.unicode&&c.unicode<=0x10ffff)result+=QString::fromUcs4(&c.unicode,1);}
     return result;
 }
 QVariantList TextSelection::rectangles(int page) const {

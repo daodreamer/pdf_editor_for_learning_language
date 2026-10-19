@@ -10,6 +10,7 @@ ColumnLayout {
     required property OfflineServices services
     property int inputMode: 0 // 0 automatic, 1 original text selection, 2 answer input, 3 pen, 4 eraser, 5 move ink
     function switchMode(mode: int): void {
+        regionSelection = false
         shell.annotations.cancelGesture()
         shell.finishTextEditing()
         shell.textSelection.clear()
@@ -26,11 +27,22 @@ ColumnLayout {
     property real inkWidth: inkSize.value
     property bool marking: false
     property bool reading: false
+    property bool regionSelection: false
+    function startRegionRecognition(): void {
+        shell.finishTextEditing()
+        shell.annotations.cancelGesture()
+        shell.textSelection.clear()
+        regionSelection = true
+        inputMode = 1
+        selectionMouse.forceActiveFocus()
+    }
+    onInputModeChanged: shell.ocrSelectionEnabled = inputMode === 1 && !regionSelection
+    onRegionSelectionChanged: shell.ocrSelectionEnabled = inputMode === 1 && !regionSelection
     property rect answerHint: Qt.rect(0, 0, 0, 0)
     readonly property bool answerHintsEnabled: !marking && !reading && (inputMode === 0 || inputMode === 2) && shell.storageReady
     onAnswerHintsEnabledChanged: updateAnswerHint()
     function updateAnswerHint(): void {
-        if (!answerHintsEnabled || !answerHover.hovered || viewport.moving || shell.annotations.gestureActive()) { answerHint = Qt.rect(0, 0, 0, 0); return }
+        if (!answerHintsEnabled || !answerHover.hovered || viewport.moving || shell.annotations.gestureActive() || inkInput.selectingText) { answerHint = Qt.rect(0, 0, 0, 0); return }
         const p = viewport.contentItem.mapFromItem(answerHover.parent, answerHover.point.position.x, answerHover.point.position.y)
         answerHint = shell.answerBlankAt(p.x, p.y)
     }
@@ -150,6 +162,8 @@ ColumnLayout {
             property bool dragging: false
             property bool selecting: false
             property point origin
+            property point regionStart
+            property point regionEnd
             function extend(): void {
                 const p = mapToItem(viewport.contentItem, mouseX, mouseY)
                 view.shell.extendTextSelection(p.x, p.y)
@@ -160,8 +174,13 @@ ColumnLayout {
                 dragging = false
                 origin = Qt.point(mouse.x, mouse.y)
                 const p = mapToItem(viewport.contentItem, mouse.x, mouse.y)
+                if (view.regionSelection) {
+                    regionStart = p; regionEnd = p
+                    selecting = false; preventStealing = true
+                    return
+                }
                 view.shell.finishTextEditing()
-                selecting = view.inputMode !== 2 && view.shell.beginTextSelection(p.x, p.y)
+                selecting = view.inputMode === 1 && view.shell.beginTextSelection(p.x, p.y)
                 // Keep the press until the drag threshold; Flickable can steal blank drags.
                 preventStealing = selecting
                 if (!selecting) mouse.accepted = false
@@ -169,35 +188,55 @@ ColumnLayout {
             onPositionChanged: function(mouse) {
                 if (!pressed) return
                 if (Math.abs(mouse.x - origin.x) + Math.abs(mouse.y - origin.y) > 3) dragging = true
+                if (view.regionSelection) { regionEnd = mapToItem(viewport.contentItem, mouse.x, mouse.y); return }
                 if (dragging && selecting) extend()
             }
             onReleased: {
+                if (view.regionSelection) {
+                    regionEnd = mapToItem(viewport.contentItem, mouseX, mouseY)
+                    view.shell.recognizeRegion(regionStart.x, regionStart.y, regionEnd.x, regionEnd.y)
+                    selectionActions.anchorPoint = mapToItem(selectionActions.parent, mouseX, mouseY)
+                    view.regionSelection = false
+                    dragging = false
+                    return
+                }
                 if (dragging && selecting) extend()
                 if (selecting && !dragging) view.shell.textSelection.expandWord()
-                if (selecting && view.shell.textSelection.ready && (view.reading || !dragging)) view.wordRequested(view.shell.textSelection.text, view.shell.textSelection.context)
+                if (selecting) selectionActions.anchorPoint = mapToItem(selectionActions.parent, mouseX, mouseY)
                 dragging = false
             }
-            onCanceled: dragging = false
-            Keys.onEscapePressed: view.shell.textSelection.clear()
+            onCanceled: { dragging = false; selecting = false; view.regionSelection = false }
+            Keys.onEscapePressed: { selecting = false; view.regionSelection = false; view.shell.textSelection.clear() }
             Shortcut {
                 sequences: [StandardKey.Copy]
-                enabled: selectionMouse.activeFocus && view.shell.textSelection.ready
+                enabled: (selectionMouse.activeFocus || inkInput.activeFocus) && view.shell.textSelection.ready
                 onActivated: view.shell.textSelection.copy()
             }
             Timer {
                 interval: 16
                 repeat: true
-                running: selectionMouse.pressed && selectionMouse.dragging && selectionMouse.selecting
+                running: (selectionMouse.pressed && selectionMouse.dragging && selectionMouse.selecting) || inkInput.selectingText
                 onTriggered: {
-                    const y = selectionMouse.mouseY
+                    const y = inkInput.selectingText ? inkInput.selectionPosition.y : selectionMouse.mouseY
                     const speed = y < 36 ? -18 : y > viewport.height - 36 ? 18 : 0
                     if (speed !== 0) {
                         viewport.contentY = Math.max(0, Math.min(viewport.contentHeight - viewport.height, viewport.contentY + speed))
                         viewport.report()
-                        selectionMouse.extend()
+                        if (inkInput.selectingText) {
+                            const p = inkInput.selectionPosition
+                            view.shell.extendTextSelection(p.x + viewport.contentX, p.y + viewport.contentY)
+                        } else selectionMouse.extend()
                     }
                 }
             }
+        }
+        Rectangle {
+            visible: view.regionSelection && selectionMouse.pressed
+            x: Math.min(selectionMouse.regionStart.x, selectionMouse.regionEnd.x)
+            y: Math.min(selectionMouse.regionStart.y, selectionMouse.regionEnd.y)
+            width: Math.abs(selectionMouse.regionEnd.x - selectionMouse.regionStart.x)
+            height: Math.abs(selectionMouse.regionEnd.y - selectionMouse.regionStart.y)
+            color: "#20007aff"; border.color: "#007aff"
         }
         TapHandler {
             acceptedButtons: Qt.LeftButton
@@ -213,6 +252,7 @@ ColumnLayout {
             delegate: TextNote {
                 onEditingFinished: selectionMouse.forceActiveFocus()
                 shell: view.shell
+                services: view.services
                 enabled: view.inputMode < 3 && view.shell.storageReady
                 marking: view.marking
                 pageWidth: view.shell.displayPageWidth
@@ -240,6 +280,15 @@ ColumnLayout {
             passivePage: view.services.document === String(view.shell.selectedUrl) ? view.services.page - 1 : -1
             passiveRects: view.services.words.map(word => Qt.rect(word.x, word.y, word.w, word.h))
             onGestureStarting: viewport.cancelFlick()
+            onTextGestureChanged: view.updateAnswerHint()
+            onTextSelectionFinished: function(position) { selectionActions.anchorPoint = mapToItem(selectionActions.parent, position.x, position.y) }
+            onOriginalWordClicked: function(position) {
+                if (view.inputMode !== 0) return
+                if (view.shell.beginTextSelection(position.x + viewport.contentX, position.y + viewport.contentY)) {
+                    view.shell.textSelection.expandWord()
+                    if (view.shell.textSelection.ready) view.wordRequested(view.shell.textSelection.text, view.shell.textSelection.context)
+                }
+            }
             contentX: viewport.contentX
             contentY: viewport.contentY
             inkColor: view.inkColor
@@ -286,5 +335,14 @@ ColumnLayout {
             enabled: (selectionMouse.activeFocus || inkInput.activeFocus) && view.shell.annotations.canRedo
             onActivated: view.shell.annotations.redo()
         }
+    }
+    SelectionActions {
+        id: selectionActions
+        theme: view.theme
+        services: view.services
+        selection: view.shell.textSelection
+        active: view.visible && view.Window.window.active && !inkInput.selectingText && !selectionMouse.pressed
+            && (selectionMouse.activeFocus || inkInput.activeFocus) && !viewport.moving
+        onLookupRequested: view.wordRequested(view.shell.textSelection.text, view.shell.textSelection.context)
     }
 }

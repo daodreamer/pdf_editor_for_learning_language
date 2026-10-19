@@ -189,6 +189,7 @@ void PdfWorker::execute(const PdfRequest& r) {
     result.revision = r.revision;
     result.page = r.page;
     result.textOnly = r.textOnly;
+    result.ocrOnly = r.ocrOnly;
     QElapsedTimer timer;
     timer.start();
     try {
@@ -327,7 +328,7 @@ void PdfWorker::execute(const PdfRequest& r) {
             frame.errorCode.clear();
             frame.preview = preview;
             frame.limited = width < wanted;
-            if(!preview || r.previewOnly) {
+            if(!r.ocrOnly && (!preview || r.previewOnly)) {
                 frame.answerLines=AnswerLines::detect(frame.image,frame.geometry.units);
                 frame.answerLinesReady=true;
             }

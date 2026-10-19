@@ -1,0 +1,5 @@
+qt_add_library(langlern_ocr STATIC ocrworker.h ocrworker.cpp)
+target_include_directories(langlern_ocr PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(langlern_ocr SYSTEM PRIVATE ${Tesseract_INCLUDE_DIRS})
+target_link_libraries(langlern_ocr PUBLIC langlern_pdf PRIVATE Tesseract::libtesseract)
+langlern_warnings(langlern_ocr)

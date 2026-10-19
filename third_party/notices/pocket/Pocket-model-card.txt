@@ -1,0 +1,61 @@
+---
+license: cc-by-4.0
+language:
+- fr
+base_model:
+- kyutai/pocket-tts
+pipeline_tag: text-to-speech
+library_name: onnxruntime
+tags:
+- tts
+- onnx
+- onnxruntime-web
+- pocket-tts
+---
+
+# Pocket TTS French — ONNX int8
+
+An ONNX export of [Kyutai](https://kyutai.org/)'s [Pocket TTS](https://github.com/kyutai-labs/pocket-tts) French model
+(`languages/french`, 6 layers), quantized to int8, made to run in the browser with
+[ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/). It is used by Volume Board to read the
+assistant's replies aloud on the device.
+
+This is a format conversion of Kyutai's weights, not a new model. The weights come from
+`hf://kyutai/pocket-tts-without-voice-cloning/languages/french/model.safetensors@1e08e6a23401048648a9fdcfde2f89348215c2a7`.
+
+## Files
+
+| File | Role |
+| --- | --- |
+| `flow_lm_main_int8.onnx` | the flow LM backbone, one streaming step: conditioning and end-of-speech logit |
+| `flow_lm_flow_int8.onnx` | the flow head (one LSD step) |
+| `mimi_decoder_int8.onnx` | the Mimi decoder, latents to 24 kHz audio, streaming |
+| `text_embeddings.f16` | the text lookup table, 4001 × 1024 float16 |
+| `tokenizer.json` | Kyutai's tokenizer (Unigram with byte fallback) |
+| `voices/estelle.f16` | a predefined voice, as the flow LM's key/value cache, float16 |
+| `manifest.json` | shapes, state layout and generation parameters |
+| `export/` | the scripts that produced these files |
+
+The attention keeps a growing key/value cache (`cache_i`: `[2, 1, T, 16, 64]`, `offset_i`: `[1]`) instead of
+a fixed-capacity one, so a voice state loads as is and the graph needs no in-place write. Generation follows
+`pocket_tts`: prefill the voice state, then the text embeddings, then feed each latent back (NaN for the first
+step) until the end-of-speech logit crosses -4.0, with noise of temperature 0.3.
+
+## Speed
+
+Measured in Chromium, ONNX Runtime Web on WASM with a single thread: about 16 ms per frame of 80 ms of audio,
+a real-time factor of 0.38 including Mimi decoding. WebGPU was slower for this step-by-step model.
+
+## Voice
+
+**Estelle** — precomputed state of Kyutai's predefined voice, from `kyutai/tts-voices/unmute-prod-website/developpeuse-3.wav`, released by Kyutai under **CC0**.
+
+## License and attribution
+
+The model weights are Kyutai's, released under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/):
+this export is an adaptation (ONNX conversion and int8 quantization) under the same license. Credit:
+*Pocket TTS by Kyutai*.
+
+Kyutai's terms of use apply: no voice impersonation or cloning without consent, no deceptive content, no
+presenting generated speech as a genuine recording of a real person. See the
+[Pocket TTS model card](https://huggingface.co/kyutai/pocket-tts).

@@ -1,0 +1,111 @@
+{
+  "engine": "Langlern native ONNX CPU adapter; no server or Python runtime",
+  "upstream_reference_commit": "9aa7a7f0e52a4cd81bcf8a0fc7c981cdc6d11e53",
+  "model_commit": "84541283b060685dbc7f9f9d8066f4b00235820c",
+  "sources": [
+    {
+      "name": "onnxruntime",
+      "url": "https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-win-x64-1.23.2.zip",
+      "sha256": "0b38df9af21834e41e73d602d90db5cb06dbd1ca618948b8f1d66d607ac9f3cd"
+    },
+    {
+      "name": "sentencepiece",
+      "url": "https://codeload.github.com/google/sentencepiece/tar.gz/refs/tags/v0.2.1",
+      "sha256": "c1a59e9259c9653ad0ade653dadff074cd31f0a6ff2a11316f67bee4189a8f1b"
+    },
+    {
+      "name": "soundtouch",
+      "url": "https://www.surina.net/soundtouch/soundtouch-2.3.3.tar.gz",
+      "sha256": "43b23dfac2f64a3aff55d64be096ffc7b73842c3f5665caff44975633a975a99"
+    }
+  ],
+  "files": [
+    {
+      "repo": "Vincweb/pocket-tts-french-onnx",
+      "commit": "84541283b060685dbc7f9f9d8066f4b00235820c",
+      "path": "manifest.json",
+      "url": "https://huggingface.co/Vincweb/pocket-tts-french-onnx/resolve/84541283b060685dbc7f9f9d8066f4b00235820c/manifest.json?download=true",
+      "file": "models/manifest.json",
+      "sha256": "feeefe94c2accd81f4f4d87901dc0fe2d318bab5c073ff4fd38bed1b6aa584d8",
+      "bytes": 5318
+    },
+    {
+      "repo": "Vincweb/pocket-tts-french-onnx",
+      "commit": "84541283b060685dbc7f9f9d8066f4b00235820c",
+      "path": "tokenizer.json",
+      "url": "https://huggingface.co/Vincweb/pocket-tts-french-onnx/resolve/84541283b060685dbc7f9f9d8066f4b00235820c/tokenizer.json?download=true",
+      "file": "models/tokenizer.json",
+      "sha256": "6211acffe9cb95172f71f0051f18e26ea305b2b32ea00b331ee976551c70887f",
+      "bytes": 246403
+    },
+    {
+      "repo": "Vincweb/pocket-tts-french-onnx",
+      "commit": "84541283b060685dbc7f9f9d8066f4b00235820c",
+      "path": "flow_lm_main_int8.onnx",
+      "url": "https://huggingface.co/Vincweb/pocket-tts-french-onnx/resolve/84541283b060685dbc7f9f9d8066f4b00235820c/flow_lm_main_int8.onnx?download=true",
+      "file": "models/flow_lm_main_int8.onnx",
+      "sha256": "fbdafb5f3f004565114aca628ebf96c4c5c6e861d953f293351c2c585fbc211f",
+      "bytes": 76063417
+    },
+    {
+      "repo": "Vincweb/pocket-tts-french-onnx",
+      "commit": "84541283b060685dbc7f9f9d8066f4b00235820c",
+      "path": "flow_lm_flow_int8.onnx",
+      "url": "https://huggingface.co/Vincweb/pocket-tts-french-onnx/resolve/84541283b060685dbc7f9f9d8066f4b00235820c/flow_lm_flow_int8.onnx?download=true",
+      "file": "models/flow_lm_flow_int8.onnx",
+      "sha256": "edee960ed0d3783bc31c9d3ae182884562193d78bbc3ab28fefa23bd2949e0e4",
+      "bytes": 9966003
+    },
+    {
+      "repo": "Vincweb/pocket-tts-french-onnx",
+      "commit": "84541283b060685dbc7f9f9d8066f4b00235820c",
+      "path": "mimi_decoder_int8.onnx",
+      "url": "https://huggingface.co/Vincweb/pocket-tts-french-onnx/resolve/84541283b060685dbc7f9f9d8066f4b00235820c/mimi_decoder_int8.onnx?download=true",
+      "file": "models/mimi_decoder_int8.onnx",
+      "sha256": "b7fd081d6ee991521553a32ffc19981bc40a68042c3219cd1b6845c983c84e21",
+      "bytes": 22688110
+    },
+    {
+      "repo": "Vincweb/pocket-tts-french-onnx",
+      "commit": "84541283b060685dbc7f9f9d8066f4b00235820c",
+      "path": "text_embeddings.f16",
+      "url": "https://huggingface.co/Vincweb/pocket-tts-french-onnx/resolve/84541283b060685dbc7f9f9d8066f4b00235820c/text_embeddings.f16?download=true",
+      "file": "models/text_embeddings.f16",
+      "sha256": "00cbfe5ea0e0a93689e07917750cc99193af02800e35190333dbbcef50a6d2af",
+      "bytes": 8194048
+    },
+    {
+      "repo": "Vincweb/pocket-tts-french-onnx",
+      "commit": "84541283b060685dbc7f9f9d8066f4b00235820c",
+      "path": "voices/estelle.f16",
+      "url": "https://huggingface.co/Vincweb/pocket-tts-french-onnx/resolve/84541283b060685dbc7f9f9d8066f4b00235820c/voices/estelle.f16?download=true",
+      "file": "voices/estelle.f16",
+      "sha256": "24b8fed0f9b0b959960c05008b77c1df7d436bd269121dc235b1cc8bd48b26f1",
+      "bytes": 3784704
+    },
+    {
+      "file": "models/tokenizer.model",
+      "derived_from": "models/tokenizer.json",
+      "bytes": 68071,
+      "sha256": "bc953d2d1b1644832a97cdd8d50f134560b29bb01137fc6e6897a990aa9b9266"
+    }
+  ],
+  "notices": {
+    "CC-BY-4.0.txt": "9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411",
+    "CC0-1.0.html": "2b159013f05f4bf48c1b97c4afc6b6a9f2941d2557b08e0a72ceab49ae059bf5",
+    "dr_libs-LICENSE.txt": "dd1c647e6f767f8ff4b2dfae0fed314726600a01e0cf1ef556afddd5fa96ff15",
+    "Kyutai-MIT.txt": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+    "Kyutai-voices-readme.txt": "47c610f38e0e0bfb4b353a2afa84a5277b748b1b808d5f77fb8ef74fb836689b",
+    "ONNXRuntime-LICENSE.txt": "c250d6278f0b47a6439fb7592b08b58a55eb9f535aa49a1db63211c3f982b674",
+    "ONNXRuntime-ThirdPartyNotices.txt": "e00f828e0a33de591a355ae6606d2625f5758da7d2c844db7821c9dd3e3647b6",
+    "Pocket-model-card.txt": "1e1ff9ffe57fd91b9306817acfe7007f356750ffbd4b9e381fa13b4574c33374",
+    "PocketTTS-MIT.txt": "9021a2c09139b6420fb13f3a694fbd7d9bba24b8222c72b61d2605c9512250bc",
+    "SentencePiece-absl-LICENSE.txt": "d3e2f59e1d71176dfdb555ece6a41f7a5aa0f52ff21211010ace314f57695f6b",
+    "SentencePiece-LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "SentencePiece-protobuf-lite-LICENSE.txt": "6e5e117324afd944dcf67f36cf329843bc1a92229a8cd9bb573d7a83130fea7d",
+    "SoundTouch-LGPL.txt": "84c6d82dc7de80f5b73f231edfd3ddc5b53513908117452bfa37ea36bb4b7e0a"
+  },
+  "notice_sources": {
+    "CC0-1.0.html": "https://raw.githubusercontent.com/creativecommons/creativecommons.org/master/docroot/legalcode/zero_1.0.html"
+  }
+}

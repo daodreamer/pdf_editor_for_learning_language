@@ -1,5 +1,20 @@
 # 构建与复现
 
+## 2026-10-19 Pocket TTS / Estelle 构建
+
+`tools/build-windows.ps1 -Test -Lint` 先运行 `bootstrap-pocket.py`，获取锁定的 ONNX Runtime 1.23.2、SentencePiece 0.2.1、SoundTouch 2.3.3 及法语模型，首次开发构建需联网；应用运行无网络下载。模型/语音/通知的 URL、版本、字节数及 SHA-256 均在 `third_party/pocket.lock.json`。原生 DLL、模型及许可证复制至 `build/windows/voices/pocket-fr-estelle-v2`，窗口启动时不加载；首次点击朗读才进行校验和模型加载。
+
+不需要 Windows 法语 TTS 包、Python/PyTorch 或 CUDA 运行环境。保留整套 voices 子目录；`LANGLERN_POCKET_DIR` 可指定同样结构的语音目录。完整验收、CPU/内存/体积、维护与许可说明见 [NATURAL_SPEECH.md](NATURAL_SPEECH.md)。macOS 自然朗读尚未接入。
+
+
+## 2026-10-19 离线 OCR 构建
+
+Windows 使用 `tools/build-windows.ps1 -Test -Lint`，会在 MSVC 环境运行 `tools/bootstrap-ocr.py`。首次准备联网下载锁定源码与模型，验证 SHA-256 后按顺序编译 zlib → libpng → Leptonica → Tesseract，静态库和 CMake 配置位于 `.deps/ocr`；后续准备核对模型散列并复用构建签名。应用运行无网络依赖。Qt/PDFium 和原有编译器不变。
+
+法语、英语、简中模型复制到构建目录的 `tessdata/`，Windows 打包脚本同样复制到候选包。`LANGLERN_TESSDATA` 可指定已有模型目录；缺模型明确报错，不自动下载安装。完整行为、许可证和验证边界见 [OCR_SELECTION.md](OCR_SELECTION.md)。
+
+macOS 待验证：在原文后述 macOS 工具链环境设置 PATH 后，先运行 `.tools/venv/bin/python tools/bootstrap-ocr.py`，再配置应用。没有在 Apple Silicon 执行这些新增依赖/接口，不宣称双平台通过。
+
 ## 阅读器文档菜单回归（2026-10-18）
 
 “···”菜单以按钮为 Popup 父项，在按钮下方 8 个逻辑像素处右对齐展开，使用 8 像素窗口边距。明确使用 Qt 6.8 的 `Popup.Item`，保持自定义样式一致；菜单沿用 Qt Quick Controls Menu/MenuItem 的键盘和选项触发机制。圆角面板、轻阴影、分组线、线性图标、蓝色高亮与快捷键提示适配浅深色。

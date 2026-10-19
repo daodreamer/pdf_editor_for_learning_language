@@ -37,6 +37,7 @@ jobs:
           .tools/venv/bin/python -m pip install aqtinstall==3.3.0 cmake==3.31.6 ninja==1.11.1.3 fonttools==4.60.1 PyMuPDF==1.26.5
           .tools/venv/bin/python tools/bootstrap.py --platform mac
           .tools/venv/bin/python tools/bootstrap-dictionary.py
+          .tools/venv/bin/python tools/bootstrap-ocr.py
           export PATH="$PWD/.tools/venv/bin:$PATH"
           .deps/Qt/6.8.3/macos/bin/qt-cmake -S . -B build/macos -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DLANGLERN_BUILD_PHASE0=ON -DPDFium_DIR="$PWD/.deps/pdfium-mac"
           cmake --build build/macos --parallel 4

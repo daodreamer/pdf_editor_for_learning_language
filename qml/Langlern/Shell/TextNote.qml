@@ -6,6 +6,7 @@ Item {
     signal editingFinished()
     property bool marking: false
     required property ShellState shell
+    required property OfflineServices services
     required property string noteId
     required property real noteOrder
     z: 1 + noteOrder / (noteOrder + 1)
@@ -51,6 +52,7 @@ Item {
         editor: note.textEditor
         textBox: note
         formatter: formatting
+        services: note.services
         dark: note.shell.dark
         active: note.selected && !note.resizing && !note.moving && !note.marking && note.Window.window.active
         positionRevision: note.x + note.y + note.viewportX + note.viewportY + note.unitScale

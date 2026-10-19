@@ -38,6 +38,15 @@ def package(build, out, vs):
     provenance=json.loads((build/'product-build.json').read_text(encoding='utf-8'))
     if provenance['source_sha256']!=product_inputs() or provenance['exe_sha256']!=sha(build/'langlern.exe'):
         raise RuntimeError('Product/source changed since build; run build-windows.ps1 again')
+    ocr_lock=json.loads((ROOT/'third_party/ocr.lock.json').read_text(encoding='utf-8'))
+    for model in ocr_lock['models']:
+        name=model['language']+'.traineddata'
+        if sha(build/'tessdata'/name)!=model['sha256'] or provenance['ocr_models'].get(name)!=model['sha256']:
+            raise RuntimeError('OCR model differs from the pinned build: '+name)
+    voice_root=build/'voices/pocket-fr-estelle-v2'
+    voice_files={p.relative_to(voice_root).as_posix():sha(p) for p in sorted(voice_root.rglob('*')) if p.is_file()}
+    if not voice_files or voice_files!=provenance.get('pocket_files'):
+        raise RuntimeError('Estelle voice pack changed since build; rebuild first')
     configuration=provenance['configuration']
     flags=' '.join(value for key,value in configuration.items() if key!='CMAKE_BUILD_TYPE').lower()
     if configuration.get('CMAKE_BUILD_TYPE')!='Release' or 'sanitize' in flags:
@@ -57,6 +66,8 @@ def package(build, out, vs):
     shutil.copy2(build/'langlern.exe', out)
     shutil.copy2(build/'pdfium.dll', out)
     shutil.copytree(build/'fonts', out/'fonts')
+    shutil.copytree(build/'tessdata', out/'tessdata')
+    shutil.copytree(build/'voices/pocket-fr-estelle-v2', out/'voices/pocket-fr-estelle-v2')
     if (build/'dictionary').is_dir():
         shutil.copytree(build/'dictionary', out/'dictionary')
     command = [str(qt/'bin/windeployqt.exe'), '--release', '--qmldir', str(ROOT/'qml'),
@@ -92,6 +103,8 @@ def package(build, out, vs):
     shutil.copy2(ROOT/'third_party/qt-sbom-evidence.json', licenses)
     shutil.copy2(ROOT/'third_party/dependencies.lock.json', licenses)
     shutil.copy2(ROOT/'third_party/dictionary.lock.json', licenses)
+    shutil.copy2(ROOT/'third_party/ocr.lock.json', licenses)
+    shutil.copy2(ROOT/'third_party/pocket.lock.json', licenses)
     shutil.copy2(vs/'Licenses/1033/Redist.txt', licenses/'Microsoft-Redist.txt')
     sdk_notices=licenses/'windows-sdk';sdk_notices.mkdir(exist_ok=True)
     for name in ('sdk_license.rtf','sdk_third_party_notices.rtf'):
@@ -132,6 +145,9 @@ def package(build, out, vs):
         elif dll.name.lower()=='d3dcompiler_47.dll':
             record.update({'component':'Windows SDK D3D11 compiler','evidence':'windows-sdk/sdk_license.rtf',
                            'redist_sha256_matches':sha(dll)==sha(d3d_compiler)})
+        elif relative.startswith('voices/pocket-fr-estelle-v2/'):
+            record.update({'component':'Pocket TTS CPU / Estelle', 'evidence':'pocket/ notices and pocket.lock.json',
+                           'build_sha256_matches':provenance['pocket_files'].get(dll.relative_to(out/'voices/pocket-fr-estelle-v2').as_posix())==sha(dll)})
         elif (runtime/dll.name).is_file():
             record.update({'component':'MSVC CRT','evidence':'Microsoft-Redist.txt',
                            'redist_sha256_matches':sha(dll)==sha(runtime/dll.name)})

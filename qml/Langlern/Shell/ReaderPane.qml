@@ -30,9 +30,10 @@ Item {
     Shortcut { sequence: "C"; enabled: pane.visible && !pane.editingField; onActivated: pane.pick(3) }
     Shortcut { sequence: "R"; enabled: pane.visible && !pane.editingField; onActivated: pane.pick(4) }
     Shortcut { sequence: "E"; enabled: pane.visible && !pane.editingField; onActivated: pane.pick(5) }
-    ToolTip { id: feedback; parent: pane; text: pane.services.status; timeout: 6000 }
-    Connections { target: pane.services; function onChanged(): void { if (pane.services.status.length > 0) feedback.open() } }
-    readonly property var hints: [qsTr("点空白处打字 · 点原文查词 · 拖动即书写 · Alt 点答案批改"), qsTr("直接在页面书写 · Ctrl / Command + Z 撤销"), qsTr("点空白处输入答案 · Esc 完成编辑"), qsTr("点击文字答案：✓ → × → 清除 · 用打字工具补充订正"), qsTr("选择原文，查看释义并加入生词本"), qsTr("点击或划过笔迹擦除 · 文字答案可选中后删除")]
+    ToolTip { id: feedback; parent: pane; timeout: 6000 }
+    Connections { target: pane.services; function onChanged(): void { if (pane.services.status.length > 0) { feedback.text = pane.services.status; feedback.open() } } }
+    Connections { target: pane.shell; function onOcrChanged(): void { if (!pane.shell.ocrBusy && pane.shell.ocrStatus.length > 0) { feedback.text = pane.shell.ocrStatus; feedback.open() } } }
+    readonly property var hints: [qsTr("点空白处打字 · 按住拖动书写 · 双击后按住拖动选文"), qsTr("直接在页面书写 · Ctrl / Command + Z 撤销"), qsTr("点空白处输入答案 · Esc 完成编辑"), qsTr("点击文字答案：✓ → × → 清除 · 用打字工具补充订正"), qsTr("拖选文字以复制或朗读 · 扫描页自动离线识别"), qsTr("点击或划过笔迹擦除 · 文字答案可选中后删除")]
     function pick(index: int): void {
         penOptions = index === 1 && (tool !== 1 || !penOptions)
         tool = index
@@ -194,7 +195,7 @@ Item {
             DesignButton { theme: pane.theme; text: "↷"; implicitHeight: 28; enabled: pane.shell.annotations.canRedo; focusPolicy: Qt.NoFocus; onClicked: pane.shell.annotations.redo(); Accessible.name: qsTr("重做") }
             DesignButton { theme: pane.theme; text: qsTr("复制"); implicitHeight: 28; enabled: pane.shell.textSelection.ready; onClicked: pane.shell.textSelection.copy() }
             DesignButton { theme: pane.theme; text: qsTr("查词 / 摘录"); implicitHeight: 28; enabled: pane.shell.textSelection.ready; onClicked: { lookup.draft = pane.shell.textSelection.text; pane.services.lookup(lookup.draft); lookup.context = pane.shell.textSelection.context; lookup.open() } }
-            Label { objectName: "storageStatusLabel"; text: pane.shell.storageStatus; Layout.fillWidth: true; elide: Text.ElideRight; color: pane.theme.muted; font.pixelSize: 11; textFormat: Text.PlainText }
+            Label { objectName: "storageStatusLabel"; text: pane.shell.textSelection.status.length > 0 ? pane.shell.textSelection.status : pane.shell.ocrBusy ? pane.shell.ocrStatus : pane.shell.storageStatus; Layout.fillWidth: true; elide: Text.ElideRight; color: pane.theme.muted; font.pixelSize: 11; textFormat: Text.PlainText }
             Label { text: pane.shell.exportStatus; visible: text.length > 0 && pane.width > 1000; Layout.maximumWidth: 240; elide: Text.ElideRight; color: pane.theme.muted; font.pixelSize: 11; textFormat: Text.PlainText }
             DesignButton { objectName: "doublePageButton"; theme: pane.theme; text: qsTr("双页"); selected: pane.shell.doublePage; visible: pane.width > 750; implicitHeight: 28; onClicked: pane.shell.doublePage = !pane.shell.doublePage; Accessible.name: qsTr("横向双页布局") }
             DesignButton { theme: pane.theme; text: "−"; implicitHeight: 28; onClicked: pane.shell.setZoom(pane.shell.zoom / 1.2); Accessible.name: qsTr("缩小") }
@@ -250,7 +251,7 @@ Item {
         DocumentMenuItem { symbol: "export"; objectName: "exportButton"; text: qsTr("导出新 PDF…"); enabled: pane.shell.storageReady && !pane.shell.exporting; onTriggered: pane.exportRequested() }
         DocumentMenuSeparator {}
         DocumentMenuItem { symbol: "auto"; objectName: "optimizeScanAction"; text: qsTr("扫描优化…"); enabled: pane.shell.storageReady && !pane.shell.scanning && !pane.shell.exporting; onTriggered: pane.optimizeRequested() }
-        DocumentMenuItem { symbol: "read"; text: qsTr("离线识别当前页…"); enabled: !pane.services.busy; onTriggered: ocr.open() }
+        DocumentMenuItem { symbol: "read"; text: qsTr("OCR 与朗读设置…"); onTriggered: ocr.open() }
         DocumentMenuItem { symbol: "audio"; text: qsTr("停止朗读"); onTriggered: pane.services.stopSpeaking() }
         DocumentMenuSeparator {}
         DocumentMenuItem { symbol: "library"; objectName: "menuDoublePage"; text: qsTr("横向双页布局"); checkable: true; checked: pane.shell.doublePage; onTriggered: pane.shell.doublePage = !pane.shell.doublePage }
@@ -260,15 +261,63 @@ Item {
     }
     Popup {
         id: ocr
-        parent: Overlay.overlay; anchors.centerIn: parent; width: 420; padding: 22; modal: true
-        background: Rectangle { radius: 16; color: pane.theme.card; border.color: pane.theme.line }
-        contentItem: ColumnLayout {
+        objectName: "ocrSettingsPopup"
+        parent: Overlay.overlay; anchors.centerIn: parent; width: Math.min(420, parent ? parent.width - 32 : 420); padding: 22; modal: true
+        height: Math.min(ocrContent.implicitHeight + 44, parent ? parent.height - 32 : 640)
+        background: Rectangle { readonly property bool blocksInkInput: true; radius: 16; color: pane.theme.card; border.color: pane.theme.line }
+        contentItem: ScrollView {
+            id: ocrScroll
+            clip: true
+            contentWidth: availableWidth
+            ColumnLayout {
+            id: ocrContent
+            width: ocrScroll.availableWidth
             spacing: 14
             Label { text: qsTr("离线文字识别"); font.pixelSize: 20; font.bold: true; color: pane.theme.text }
-            Label { text: qsTr("识别当前显示页。使用本机已安装的系统语言包，结果可点读、查词与摘录。"); wrapMode: Text.Wrap; Layout.fillWidth: true; color: pane.theme.muted }
-            ComboBox { id: ocrLanguage; model: pane.services.languages; Layout.fillWidth: true; Accessible.name: qsTr("识别语言") }
-            Label { text: pane.services.status; Layout.fillWidth: true; wrapMode: Text.Wrap; color: pane.theme.muted; textFormat: Text.PlainText }
-            DesignButton { theme: pane.theme; text: pane.services.busy ? qsTr("正在识别…") : qsTr("识别当前页"); primary: true; enabled: !pane.services.busy && ocrLanguage.count > 0; onClicked: { pane.services.recognize(pane.shell.pageImage, String(pane.shell.selectedUrl), pane.shell.currentPage, ocrLanguage.currentText); ocr.close() } }
+            Label { text: qsTr("免费离线识别。扫描页按需处理；混合页面可以手动重新识别当前页。"); wrapMode: Text.Wrap; Layout.fillWidth: true; color: pane.theme.muted }
+            ComboBox {
+                id: ocrLanguage
+                objectName: "ocrLanguage"
+                model: [qsTr("法语"), qsTr("英语"), qsTr("简体中文"), qsTr("法语与英语")]
+                readonly property var codes: ["fra", "eng", "chi_sim", "fra+eng"]
+                currentIndex: codes.indexOf(pane.shell.ocrLanguage)
+                onActivated: pane.shell.ocrLanguage = codes[currentIndex]
+                Layout.fillWidth: true; Accessible.name: qsTr("识别语言")
+            }
+            Label { text: pane.shell.ocrStatus; Layout.fillWidth: true; wrapMode: Text.Wrap; color: pane.theme.muted; textFormat: Text.PlainText }
+            DesignButton { theme: pane.theme; text: qsTr("重新识别当前页"); primary: true; onClicked: { pane.shell.recognizeCurrentPage(); pane.pick(4); ocr.close() } }
+            DesignButton { theme: pane.theme; text: qsTr("框选区域识别"); onClicked: { document.startRegionRecognition(); pane.tool = 4; ocr.close() } }
+            Label { text: qsTr("朗读语言与声音"); color: pane.theme.text }
+            ComboBox {
+                model: [qsTr("法语"), qsTr("英语（美国）"), qsTr("英语（英国）"), qsTr("中文")]
+                readonly property var codes: ["fr-FR", "en-US", "en-GB", "zh-CN"]
+                currentIndex: codes.indexOf(pane.services.speechLocale)
+                onActivated: pane.services.speechLocale = codes[currentIndex]
+                Layout.fillWidth: true; Accessible.name: qsTr("朗读语言")
+            }
+            ComboBox {
+                model: pane.services.speechVoices.filter(voice => voice.locale === pane.services.speechLocale)
+                textRole: "label"; valueRole: "id"
+                onActivated: pane.services.speechVoice = currentValue
+                displayText: count > 0 ? currentText : qsTr("此语言暂无可用的离线声音")
+                enabled: count > 0; Layout.fillWidth: true; Accessible.name: qsTr("离线声音")
+            }
+            Label { text: qsTr("语速 %1×").arg(pane.services.speechRate.toFixed(1)); color: pane.theme.muted }
+            Slider { from: 0.5; to: 2; stepSize: 0.1; value: pane.services.speechRate; onMoved: pane.services.speechRate = value; Layout.fillWidth: true; Accessible.name: qsTr("朗读语速") }
+            }
+        }
+    }
+    Rectangle {
+        visible: pane.services.speaking
+        anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter; anchors.bottomMargin: 16
+        width: speechControls.implicitWidth + 20; height: 44; radius: 10
+        color: pane.theme.card; border.color: pane.theme.line
+        Row {
+            id: speechControls
+            anchors.centerIn: parent; spacing: 6
+            Label { text: pane.services.speechLoading ? qsTr("正在准备声音…") : qsTr("选文朗读"); height: 32; verticalAlignment: Text.AlignVCenter; color: pane.theme.text }
+            ToolButton { text: pane.services.speechPaused ? qsTr("继续") : qsTr("暂停"); focusPolicy: Qt.NoFocus; onClicked: pane.services.toggleSpeechPause() }
+            ToolButton { text: qsTr("停止"); focusPolicy: Qt.NoFocus; onClicked: pane.services.stopSpeaking() }
         }
     }
     Popup {
@@ -276,7 +325,7 @@ Item {
         property string draft: ""
         property string context: ""
         parent: Overlay.overlay; anchors.centerIn: parent; width: 360; modal: false; padding: 22
-        background: Rectangle { radius: 16; color: pane.theme.card; border.color: pane.theme.line }
+        background: Rectangle { readonly property bool blocksInkInput: true; radius: 16; color: pane.theme.card; border.color: pane.theme.line }
         contentItem: ColumnLayout {
             spacing: 12
             Label { text: lookup.draft; Layout.fillWidth: true; wrapMode: Text.Wrap; color: pane.theme.text; font.pixelSize: 24; font.bold: true; textFormat: Text.PlainText }

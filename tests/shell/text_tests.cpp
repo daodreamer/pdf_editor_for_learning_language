@@ -47,6 +47,7 @@ private slots:
         auto* viewport=window->findChild<QQuickItem*>(QStringLiteral("pdfViewport")); QVERIFY(viewport);
         QTRY_VERIFY(!shell.busy());
         QTest::qWait(250);
+        QTest::keyClick(window,Qt::Key_S,Qt::ControlModifier|Qt::ShiftModifier);
         const auto data=s->snapshot(0); const int h=hello(data); QVERIFY(h>=0);
         const auto screenPointF=[&](int page,QPointF p) {
             const double w=shell.model().pageWidth();
@@ -83,6 +84,10 @@ private slots:
             ++changedPixels;
             bool inside=false;
             for(const auto& r:expected) inside|=r.contains(QPointF(x,y));
+            if(auto* actions=window->findChild<QObject*>("pageSelectionActions")) {
+                if(auto* item=actions->property("contentItem").value<QQuickItem*>())
+                    inside|=QRectF(item->mapToScene(QPointF(-8,-8))*dpr,QSizeF((item->width()+16)*dpr,(item->height()+16)*dpr)).contains(QPointF(x,y));
+            }
             QVERIFY2(inside,"Selection changed a viewport pixel outside the projected glyph bounds (including logical/pixel rounding)");
         }
         QVERIFY(changedPixels>100);
@@ -225,7 +230,7 @@ private slots:
         QTRY_VERIFY(s->snapshot(0));
         QVERIFY(s->snapshot(0)->characters.isEmpty());
         s->begin(0,0.5,0.5,0,0); s->extend(0,0.6,0.5);
-        QVERIFY(!s->ready()); QVERIFY(s->status().contains(QStringLiteral("OCR")));
+        QVERIFY(!s->ready()); QVERIFY(s->snapshot(0)->ocr); QVERIFY(!s->status().isEmpty());
         for(int i=0;i<25;++i) {
             shell.selectFile(QUrl::fromLocalFile(fixture));
             s->begin(0,0.1,0.1,0,0); s->extend(7,0.5,0.5);

@@ -9,6 +9,7 @@
 #include <memory>
 #include <QtQml/qqmlregistration.h>
 class QTranslator;
+class PocketSpeech;
 
 class OfflineServices : public QObject {
     Q_OBJECT
@@ -31,6 +32,13 @@ class OfflineServices : public QObject {
     Q_PROPERTY(QImage preview READ preview NOTIFY previewChanged)
     Q_PROPERTY(double previewRatio READ previewRatio NOTIFY previewChanged)
     Q_PROPERTY(bool english READ english WRITE setEnglish NOTIFY languageChanged)
+    Q_PROPERTY(bool speaking READ speaking NOTIFY speechChanged)
+    Q_PROPERTY(bool speechLoading READ speechLoading NOTIFY speechChanged)
+    Q_PROPERTY(bool speechPaused READ speechPaused NOTIFY speechChanged)
+    Q_PROPERTY(double speechRate READ speechRate WRITE setSpeechRate NOTIFY speechChanged)
+    Q_PROPERTY(QString speechLocale READ speechLocale WRITE setSpeechLocale NOTIFY speechChanged)
+    Q_PROPERTY(QVariantList speechVoices READ speechVoices NOTIFY speechChanged)
+    Q_PROPERTY(QString speechVoice READ speechVoice WRITE setSpeechVoice NOTIFY speechChanged)
 public:
     explicit OfflineServices(QObject* parent=nullptr);
     ~OfflineServices() override;
@@ -53,6 +61,17 @@ public:
     double previewRatio() const { return preview_.isNull()?1.414:double(preview_.height())/preview_.width(); }
     bool english() const { return english_; }
     void setEnglish(bool value);
+    bool speaking() const { return speaking_; }
+    bool speechLoading() const { return speechLoading_; }
+    bool speechPaused() const { return speechPaused_.load(); }
+    double speechRate() const { return speechRate_.load(); }
+    QString speechLocale() const { return speechLocale_; }
+    QVariantList speechVoices() const { return speechVoices_; }
+    QString speechVoice() const { return speechVoice_; }
+    void setSpeechRate(double rate);
+    void setSpeechLocale(QString locale);
+    void setSpeechVoice(QString voice);
+    Q_INVOKABLE void toggleSpeechPause();
     Q_INVOKABLE void previewScan(QImage image,QVariantMap options);
     Q_INVOKABLE void recognize(QImage image, QString document, int page, QString language);
     Q_INVOKABLE void invalidate();
@@ -65,6 +84,7 @@ public:
     Q_INVOKABLE void setRate(double rate);
     Q_INVOKABLE void setLoop(double start, double end);
 signals:
+    void speechChanged();
     void changed();
     void lookupChanged();
     void audioChanged();
@@ -91,5 +111,12 @@ private:
     std::atomic<quint64> previewRevision_{0};
     std::atomic<bool> audioPollPending_{false};
     bool english_=false;
+    bool speaking_=false,speechLoading_=false;
+    std::unique_ptr<PocketSpeech> pocket_;
+    QTimer speechIdleTimer_;
+    std::atomic<bool> speechPaused_{false};
+    std::atomic<double> speechRate_{1.0};
+    QString speechLocale_=QStringLiteral("fr-FR"), speechVoice_;
+    QVariantList speechVoices_;
     std::unique_ptr<QTranslator> translator_;
 };

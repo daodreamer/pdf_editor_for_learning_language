@@ -7,6 +7,7 @@ Popup {
     required property TextEdit editor
     required property Item textBox
     required property AnnotationText formatter
+    required property OfflineServices services
     required property bool dark
     required property bool active
     property real positionRevision: 0
@@ -46,8 +47,8 @@ Popup {
     modal: false
     closePolicy: Popup.NoAutoClose
     padding: 8
-    width: Math.min(tools.implicitWidth + 16, parent ? parent.width - 16 : 380)
-    height: 48
+    width: Math.min(568, parent ? parent.width - 16 : 568)
+    height: tools.childrenRect.height + 16
     x: Math.max(8, Math.min((parent ? parent.width : 400) - width - 8, (selectionTop.x + selectionBottom.x) / 2 - width / 2))
     y: Math.max(8, Math.min((parent ? parent.height : 900) - height - 8,
         selectionTop.y - height - 12 >= 8 ? selectionTop.y - height - 12 : selectionBottom.y + 12))
@@ -60,12 +61,26 @@ Popup {
     }
     Connections { target: popover.formatter; function onChanged(): void { ++popover.formatRevision } }
     background: Item {
+        readonly property bool blocksInkInput: true
         Rectangle { anchors.fill: parent; anchors.topMargin: 3; anchors.bottomMargin: -3; radius: 16; color: popover.dark ? "#40000000" : "#18000000" }
         Rectangle { anchors.fill: parent; radius: 16; color: popover.dark ? "#f02c2c2e" : "#fcfafafa"; border.color: popover.dark ? "#35ffffff" : "#16000000" }
     }
-    contentItem: Row {
+    contentItem: Flow {
         id: tools
         spacing: 4
+        ToolButton {
+            objectName: "copyEditorSelection"
+            width: 54; height: 32; text: qsTr("复制"); focusPolicy: Qt.NoFocus
+            onClicked: popover.editor.copy()
+            Accessible.name: qsTr("复制文本框选中文字")
+        }
+        ToolButton {
+            objectName: "speakEditorSelection"
+            width: 54; height: 32; text: qsTr("朗读"); focusPolicy: Qt.NoFocus
+            onClicked: popover.services.speak(popover.editor.selectedText)
+            Accessible.name: qsTr("朗读文本框选中文字")
+        }
+        Item { width: 1; height: 32; Rectangle { anchors.centerIn: parent; width: 1; height: 22; color: popover.dark ? "#35ffffff" : "#1c000000" } }
         ToolButton {
             id: boldButton
             objectName: "formatBold"
@@ -86,7 +101,7 @@ Popup {
             onClicked: popover.apply("italic", !popover.current.italic)
             Accessible.name: qsTr("倾斜选中文字")
         }
-        Rectangle { width: 1; height: 22; y: 5; color: popover.dark ? "#35ffffff" : "#1c000000" }
+        Item { width: 1; height: 32; Rectangle { anchors.centerIn: parent; width: 1; height: 22; color: popover.dark ? "#35ffffff" : "#1c000000" } }
         ToolButton {
             id: smallerButton
             objectName: "formatSmaller"
@@ -106,7 +121,7 @@ Popup {
             background: Rectangle { radius: 9; color: largerButton.hovered ? popover.tint : "transparent" }
             Accessible.name: qsTr("增大字号")
         }
-        Rectangle { width: 1; height: 22; y: 5; color: popover.dark ? "#35ffffff" : "#1c000000" }
+        Item { width: 1; height: 32; Rectangle { anchors.centerIn: parent; width: 1; height: 22; color: popover.dark ? "#35ffffff" : "#1c000000" } }
         Repeater {
             model: ["#1e468c", "#1d1d1f", "#e5484d", "#e69819", "#30a46c", "#8e4ec6"]
             delegate: ToolButton {

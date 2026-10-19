@@ -23,6 +23,7 @@ struct PdfRequest {
     bool skipPreview = false;
     bool previewOnly = false;
     bool textOnly = false;
+    bool ocrOnly = false;
 };
 struct PdfFrame {
     quint64 session = 0;
@@ -40,6 +41,7 @@ struct PdfFrame {
     QList<QSizeF> sizes;
     TextSnapshot text;
     bool textOnly = false;
+    bool ocrOnly = false;
     QList<QRectF> answerLines;
     bool answerLinesReady = false;
 };

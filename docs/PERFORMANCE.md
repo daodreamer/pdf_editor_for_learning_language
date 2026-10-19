@@ -1,5 +1,10 @@
 # 性能工程与验收方案
 
+2026-10-19 Pocket TTS / Estelle：新版模型三轮真实 CPU/教材按钮测量已记录在 [NATURAL_SPEECH.md](NATURAL_SPEECH.md)，可用 `benchmarks/run-speech.py` 重复；首请求 PCM 约 1.22–1.28 s、已加载模型约 29–39 ms，含 Qt/PDF/OCR 的进程峰值约 432–435 MiB RSS。PCM 交付不是声卡呈现或交互帧率，OS 缓存为热态，启动与打包验证另行记录。
+
+
+OCR 增量使用 `benchmarks/run-ocr.py --run benchmarks/results/<新目录> --repeat 3`：三个独立 Release 进程，固定真实教材第 34 页、2400 像素目标宽（32 MiB 输入预算）。分别记录 PDF 底图生成、OCR worker（含初始化/缓存 IO）和触发至结果交付时间；10 ms UI Timer 最大间隔仅是事件循环响应代理，不是帧时间/屏幕呈现。20 ms 进程采样分别记录 RSS/private bytes；峰值覆盖整个真实教材测试进程，不能解释为 OCR 增量内存，也不等于 GPU 显存。重复任务另测结果缓存命中；缩放不得重新识别。实际结果和局限见 [OCR_SELECTION.md](OCR_SELECTION.md)。
+
 固定真实教材的虚线增量验收见 [DASHED_LINES.md](DASHED_LINES.md)：同一 PDF 第 34 页修改前 0 个填写栏、修改后 8 个；这是功能 A/B，不是帧率或硬件延迟比较。后续本机回归必须包含 AGENTS.md 指定的真实 PDF。
 
 2026-10-17 横线填写增量：[ANSWER_FIELDS.md](ANSWER_FIELDS.md) 记录有界后台检测、候选随 CPU 缓存计费、高 DPI/输入/保存导出验证及三轮笔迹 A/B。P95 接近，P99 有上升，不宣称提帧或降低硬件延迟；没有替代长期/大文件验收。

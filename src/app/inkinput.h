@@ -2,6 +2,7 @@
 #include "shellstate.h"
 #include <QQuickItem>
 #include <QPointer>
+#include <QElapsedTimer>
 
 class InkInput : public QQuickItem {
     Q_OBJECT
@@ -15,6 +16,8 @@ class InkInput : public QQuickItem {
     Q_PROPERTY(double contentY READ contentY WRITE setContentY)
     Q_PROPERTY(QVariantList passiveRects MEMBER passiveRects_)
     Q_PROPERTY(int passivePage MEMBER passivePage_)
+    Q_PROPERTY(bool selectingText READ selectingText NOTIFY textGestureChanged)
+    Q_PROPERTY(QPointF selectionPosition READ selectionPosition NOTIFY textGestureChanged)
 public:
     explicit InkInput(QQuickItem* parent=nullptr);
     ShellState* shell() const { return shell_; }
@@ -29,9 +32,14 @@ public:
     void setInkWidth(double width);
     double contentX() const { return contentX_; }
     double contentY() const { return contentY_; }
-    void setContentX(double value) { if(contentX_!=value) { cancel(); contentX_=value; } }
-    void setContentY(double value) { if(contentY_!=value) { cancel(); contentY_=value; } }
+    void setContentX(double value) { if(contentX_!=value) { if(!selectingText_)cancel(); contentX_=value; } }
+    void setContentY(double value) { if(contentY_!=value) { if(!selectingText_)cancel(); contentY_=value; } }
+    bool selectingText() const { return selectingText_; }
+    QPointF selectionPosition() const { return textPointer_; }
 signals:
+    void textGestureChanged();
+    void textSelectionFinished(QPointF position);
+    void originalWordClicked(QPointF position);
     void gestureStarting();
     void shellChanged();
     void modeChanged();
@@ -58,6 +66,13 @@ private:
     bool rightErasing_=false;
     bool drawingEnabled_=true;
     bool autoPending_=false;
+    bool selectingText_=false;
+    bool textDragging_=false, autoTextHit_=false;
+    QPointF textPointer_;
+    QPointF textOrigin_, autoWordPoint_;
+    QTimer autoWordTimer_;
+    QString autoNote_;
+    QElapsedTimer autoNoteAge_;
     QPointF autoOrigin_;
     QVariantList passiveRects_;
     int passivePage_=-1;

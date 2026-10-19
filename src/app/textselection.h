@@ -19,7 +19,12 @@ public:
     QString text() const { return text_; }
     QString status() const { return status_; }
     bool ready() const { return !text_.isEmpty() && complete_; }
-    bool canStart() const { return anchorIndex_>=0 || (anchorPage_>=0 && !pages_.contains(anchorPage_)); }
+    bool canStart() const { return anchorIndex_>=0 || (anchorPage_>=0 && (!pages_.contains(anchorPage_) || pages_[anchorPage_]->pending)); }
+    int anchorPage() const { return anchorPage_; }
+    quint64 interactionRevision() const { return interactionRevision_; }
+    QList<int> selectedPages() const;
+    void clearOcr();
+    void forgetPage(int page) { pages_.remove(page); }
     int version() const { return version_; }
     QString context() const;
     qint64 bytes() const;
@@ -45,6 +50,8 @@ private:
     int anchorPage_=-1, endPage_=-1, anchorIndex_=-1, endIndex_=-1;
     QPointF anchor_, end_, tolerance_;
     bool extended_=false, complete_=false;
+    bool wordPending_=false;
     int version_=0;
+    quint64 interactionRevision_=0;
     QString text_, status_;
 };

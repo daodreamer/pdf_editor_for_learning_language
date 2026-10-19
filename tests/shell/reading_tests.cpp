@@ -71,6 +71,7 @@ private slots:
         const auto point=[&](int page,double x,double y){return viewport->mapToScene(QPointF(s.pageLeft(page)+x*s.pageWidth()-viewport->property("contentX").toDouble(),s.pageTop(page)+y*s.pageHeight(page)-viewport->property("contentY").toDouble())).toPoint();};
         const auto data=s.textSelection()->snapshot(1);int hello=-1;for(int i=0;i<data->characters.size();++i)if(data->characters[i].unicode==U'H'&&data->characters[i].visible){hello=i;break;}QVERIFY(hello>=0);
         const auto first=data->characters[hello].box.center(),last=data->characters[hello+10].box.center();
+        QTest::keyClick(window,Qt::Key_S,Qt::ControlModifier|Qt::ShiftModifier);
         QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,point(1,first.x(),first.y()));QTest::mouseMove(window,point(1,last.x(),last.y()),30);QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,point(1,last.x(),last.y()));
         QTRY_COMPARE(s.textSelection()->text(),QStringLiteral("Hello World"));QCOMPARE(s.currentPage(),2);
         QTest::keyClick(window,Qt::Key_T,Qt::ControlModifier|Qt::ShiftModifier);QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,point(1,.2,.5));

@@ -8,9 +8,11 @@
 #include "textselection.h"
 #include "annotationmodel.h"
 #include "storageworker.h"
+#include "ocrworker.h"
 #include <functional>
 #include <QTimer>
 #include <QCache>
+#include <QPointer>
 #include <QtQml/qqmlregistration.h>
 
 class ShellState : public QObject {
@@ -45,9 +47,21 @@ class ShellState : public QObject {
     Q_PROPERTY(bool transitioning READ transitioning NOTIFY storageChanged)
     Q_PROPERTY(bool exporting READ exporting NOTIFY storageChanged)
     Q_PROPERTY(bool scanning READ scanning NOTIFY storageChanged)
+    Q_PROPERTY(bool ocrSelectionEnabled READ ocrSelectionEnabled WRITE setOcrSelectionEnabled NOTIFY ocrChanged)
+    Q_PROPERTY(QString ocrLanguage READ ocrLanguage WRITE setOcrLanguage NOTIFY ocrChanged)
+    Q_PROPERTY(QString ocrStatus READ ocrStatus NOTIFY ocrChanged)
+    Q_PROPERTY(bool ocrBusy READ ocrBusy NOTIFY ocrChanged)
 public:
     explicit ShellState(QObject* parent = nullptr);
     ~ShellState() override;
+    bool ocrSelectionEnabled() const { return ocrSelectionEnabled_; }
+    void setOcrSelectionEnabled(bool enabled);
+    QString ocrLanguage() const { return ocrLanguage_; }
+    void setOcrLanguage(QString language);
+    QString ocrStatus() const { return ocrStatus_; }
+    bool ocrBusy() const { return ocrBusyPage_>=0 || !ocrDemand_.isEmpty(); }
+    Q_INVOKABLE void recognizeCurrentPage();
+    Q_INVOKABLE void recognizeRegion(double x1,double y1,double x2,double y2);
     QString selectedName() const { return selectedName_; }
     QUrl selectedUrl() const { return path_.isEmpty()?QUrl{}:QUrl::fromLocalFile(path_); }
     quint64 sessionId() const { return session_; }
@@ -114,6 +128,7 @@ public:
     Q_INVOKABLE void exportPdf(const QUrl& target);
     Q_INVOKABLE void acknowledgeProbe() { emit startupAcknowledged(); }
 signals:
+    void ocrChanged();
     void answerLinesChanged();
     void textCommitRequested();
     void storageChanged();
@@ -134,6 +149,17 @@ private:
     void syncAnnotations();
     void flushBefore(std::function<void()> action);
     void initializeStorage();
+    void ensureOcr(int page, bool force=false, QRectF region=QRectF(0,0,1,1));
+    void resetOcr();
+    void updateOcrDemand();
+    QThread ocrThread_;
+    QPointer<OcrWorker> ocr_;
+    quint64 ocrRevision_ = 0;
+    QSet<int> ocrDemand_;
+    QHash<int,quint64> ocrRegionSelections_;
+    int ocrBusyPage_ = -1;
+    bool ocrSelectionEnabled_ = false;
+    QString ocrLanguage_ = QStringLiteral("fra"), ocrStatus_;
     AnnotationSnapshot annotationSnapshot() const;
     QThread storageThread_;
     StorageWorker* storage_ = nullptr;
