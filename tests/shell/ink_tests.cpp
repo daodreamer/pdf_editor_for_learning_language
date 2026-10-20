@@ -81,7 +81,7 @@ private slots:
         connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError>& errors){ for(const auto& e:errors) warnings.append(e.toString()); });
         engine.setInitialProperties({{"shell",QVariant::fromValue(&s)}}); engine.loadFromModule("Langlern.Shell","Main");
         auto* w=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(w);
-        w->show(); QVERIFY(QTest::qWaitForWindowExposed(w));
+        w->show(); QVERIFY(QTest::qWaitForWindowExposed(w)); w->requestActivate(); QVERIFY(QTest::qWaitForWindowActive(w));
         s.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/scan.pdf"));
         QTRY_VERIFY(s.storageReady()); QTRY_VERIFY(s.annotations()->geometry(0).valid); QTRY_VERIFY(!s.busy());
         s.setZoom(.6); QTRY_VERIFY(!s.busy()); QTest::qWait(200);
@@ -104,7 +104,7 @@ private slots:
         auto* input=qobject_cast<InkInput*>(find(w->contentItem(),"inkInput")); QVERIFY(input);
         QCOMPARE(input->inkColor(),QColor("#ce3446")); QCOMPARE(input->inkWidth(),.5);
         // Settings also apply to automatic freehand input and survive a mode switch.
-        QTest::keyClick(w,Qt::Key_P); QCOMPARE(input->inkWidth(),.5);
+        QTest::keyClick(w,Qt::Key_P); QTRY_COMPARE(input->mode(),3); QCOMPARE(input->inkWidth(),.5);
         QTest::keyClick(w,Qt::Key_P); QTRY_VERIFY(!panel->isVisible());
         const auto jobs=s.model().renderJobs;
         InkItem* item=nullptr;
@@ -262,7 +262,7 @@ private slots:
         connect(&engine,&QQmlEngine::warnings,&engine,[&](const QList<QQmlError>& errors){for(const auto& e:errors) warnings.append(e.toString());});
         engine.setInitialProperties({{"shell",QVariant::fromValue(&s)}}); engine.loadFromModule("Langlern.Shell","Main");
         QVERIFY(!engine.rootObjects().isEmpty()); auto* w=qobject_cast<QQuickWindow*>(engine.rootObjects().first()); QVERIFY(w);
-        w->show(); QVERIFY(QTest::qWaitForWindowExposed(w));
+        w->show(); QVERIFY(QTest::qWaitForWindowExposed(w)); w->requestActivate(); QVERIFY(QTest::qWaitForWindowActive(w));
         s.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/scan.pdf"));
         QTRY_VERIFY(s.storageReady()); QTRY_VERIFY(s.annotations()->geometry(0).valid); QTRY_VERIFY(!s.busy()); s.setZoom(.6); QTRY_VERIFY(!s.busy()); QTest::qWait(300);
         auto* viewport=find(w->contentItem(),"pdfViewport"); QVERIFY(viewport);
@@ -399,7 +399,7 @@ private slots:
         ShellState s; QQmlApplicationEngine engine;
         engine.setInitialProperties({{"shell",QVariant::fromValue(&s)}}); engine.loadFromModule("Langlern.Shell","Main");
         auto* w=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(w);
-        w->show(); QVERIFY(QTest::qWaitForWindowExposed(w));
+        w->show(); QVERIFY(QTest::qWaitForWindowExposed(w)); w->requestActivate(); QVERIFY(QTest::qWaitForWindowActive(w));
         s.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/text.pdf"));
         QTRY_VERIFY(s.storageReady()); QTRY_VERIFY(s.annotations()->geometry(0).valid); s.setZoom(.6); QTRY_VERIFY(!s.busy()); QTest::qWait(300);
         auto* viewport=find(w->contentItem(),"pdfViewport"); QVERIFY(viewport);
@@ -438,11 +438,13 @@ private slots:
         ShellState s; QQmlApplicationEngine engine;
         engine.setInitialProperties({{"shell",QVariant::fromValue(&s)}}); engine.loadFromModule("Langlern.Shell","Main");
         auto* w=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(w);
-        w->show(); QVERIFY(QTest::qWaitForWindowExposed(w));
+        w->show(); QVERIFY(QTest::qWaitForWindowExposed(w)); w->requestActivate(); QVERIFY(QTest::qWaitForWindowActive(w));
         s.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/scan.pdf"));
         QTRY_VERIFY(s.annotations()->geometry(0).valid); QTRY_VERIFY(s.storageReady()); QTRY_VERIFY(!s.busy()); s.setZoom(.6); QTRY_VERIFY(!s.busy()); QTest::qWait(300);
         auto* viewport=find(w->contentItem(),"pdfViewport"); QVERIFY(viewport);
         QTest::keyClick(w,Qt::Key_P,Qt::ControlModifier|Qt::ShiftModifier);
+        auto* input=qobject_cast<InkInput*>(find(w->contentItem(),"inkInput")); QVERIFY(input);
+        QTRY_COMPARE(input->mode(),3);
         const auto jobs=s.model().renderJobs;
         QMutex mutex; QList<double> frames;
         auto previous=std::chrono::steady_clock::now();

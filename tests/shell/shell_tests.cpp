@@ -114,7 +114,10 @@ private slots:
         shell.setRenderWidth(800);
         QTRY_VERIFY(!shell.busy());
         for (const auto& name : {"scan.pdf", "password.pdf", "damaged.pdf"}) {
-            shell.selectFile(QUrl::fromLocalFile(fixtures + '/' + name));
+            const auto previousSession=shell.sessionId();
+            const auto nextUrl=QUrl::fromLocalFile(fixtures + '/' + name);
+            shell.selectFile(nextUrl);
+            QTRY_VERIFY(shell.sessionId()!=previousSession && shell.selectedUrl()==nextUrl);
             QTRY_VERIFY(!shell.busy());
             if (QString::fromLatin1(name) == "scan.pdf") {
                 QCOMPARE(shell.pageCount(), 1);
@@ -134,17 +137,23 @@ private slots:
         }
         // Replace on preview delivery: either the worker is rendering the target, or
         // its target is queued to the GUI. Both paths must reject obsolete results.
-        shell.selectFile(QUrl::fromLocalFile(unicode));
+        const auto beforeReplacement=shell.sessionId();
+        const auto originalUrl=QUrl::fromLocalFile(unicode);
+        const auto scanUrl=QUrl::fromLocalFile(fixtures + "/scan.pdf");
+        shell.selectFile(originalUrl);
+        QTRY_VERIFY(shell.sessionId()!=beforeReplacement && shell.selectedUrl()==originalUrl);
         QTRY_VERIFY(!shell.busy());
+        QTRY_VERIFY(shell.storageReady());
         bool replaced = false;
         const auto interception = connect(&shell, &ShellState::imageChanged, &shell, [&] {
             if (!replaced && !shell.pageImage().isNull() && shell.pageImage().width() == 480) {
                 replaced = true;
-                shell.selectFile(QUrl::fromLocalFile(fixtures + "/scan.pdf"));
+                shell.selectFile(scanUrl);
             }
         });
         shell.setRenderWidth(8100);
         QTRY_VERIFY(replaced);
+        QTRY_COMPARE(shell.selectedUrl(),scanUrl);
         QTRY_VERIFY(!shell.busy());
         QCOMPARE(shell.pageCount(), 1);
         QVERIFY(!shell.pageImage().isNull());
@@ -152,17 +161,21 @@ private slots:
         disconnect(interception);
         const auto beforeClose = closed.size();
         shell.clearSelection();
+        QTRY_VERIFY(shell.selectedUrl().isEmpty());
         QTRY_VERIFY(closed.size() > beforeClose);
         QTest::qWait(150);
         QVERIFY(shell.pageImage().isNull());
         QCOMPARE(shell.pageCount(), 0);
         shell.setRenderWidth(800);
         for (int i = 0; i < 50; ++i) {
-            shell.selectFile(QUrl::fromLocalFile(unicode));
+            const auto previousSession=shell.sessionId();
+            shell.selectFile(originalUrl);
+            QTRY_VERIFY(shell.sessionId()!=previousSession && shell.selectedUrl()==originalUrl);
             QTRY_VERIFY(!shell.busy());
             QCOMPARE(shell.pageCount(), 8);
             const auto count = closed.size();
             shell.clearSelection();
+            QTRY_VERIFY(shell.selectedUrl().isEmpty());
             QTRY_VERIFY(closed.size() > count);
             QCOMPARE(closed.last().at(1).toInt(), 0);
 #ifdef Q_OS_WIN
