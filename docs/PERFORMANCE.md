@@ -1,5 +1,7 @@
 # 性能工程与验收方案
 
+2026-10-20 长虚线修复的真实教材回归与单页分析 A/B 见 [LONG_DASHED_LINES.md](LONG_DASHED_LINES.md)。首轮同输入原/新各 3×20 次，中位数 10.584 / 11.367 ms；追加抽查又发现并修复浅色/粘连点漏段，最终数据在同文扩展记录。这里只测后台检测，不代表帧率或首屏指标。
+
 2026-10-19 Pocket TTS / Estelle：新版模型三轮真实 CPU/教材按钮测量已记录在 [NATURAL_SPEECH.md](NATURAL_SPEECH.md)，可用 `benchmarks/run-speech.py` 重复；首请求 PCM 约 1.22–1.28 s、已加载模型约 29–39 ms，含 Qt/PDF/OCR 的进程峰值约 432–435 MiB RSS。PCM 交付不是声卡呈现或交互帧率，OS 缓存为热态，启动与打包验证另行记录。
 
 

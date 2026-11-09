@@ -57,7 +57,7 @@ QSGNode* SelectionItem::updatePaintNode(QSGNode* old, UpdatePaintNodeData*) {
         vertices+=6;
     }
     auto material=std::make_unique<QSGFlatColorMaterial>();
-    material->setColor(QColor(40,125,240,90));
+    material->setColor(QColor(40,125,240,105)); // ~41% system-blue selection fill
     node->setGeometry(geometry.release()); node->setFlag(QSGNode::OwnsGeometry);
     node->setMaterial(material.release()); node->setFlag(QSGNode::OwnsMaterial);
     return node.release();

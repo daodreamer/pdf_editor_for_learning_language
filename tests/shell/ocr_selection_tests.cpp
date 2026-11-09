@@ -79,6 +79,26 @@ private slots:
         TextSelection waiting;auto pending=std::make_shared<TextPage>();pending->pending=true;pending->ocr=true;waiting.put(0,pending);
         waiting.begin(0,a.x(),a.y(),0,0);waiting.expandWord();QVERIFY(!waiting.ready());waiting.put(0,text);QCOMPARE(waiting.text(),QStringLiteral("Bonjour"));
         for(const auto& c:text->characters)if(c.visible)QVERIFY(QRectF(0,0,1,1).contains(c.box));
+        {
+            // Selecting all three OCR lines paints one continuous band per line,
+            // covering word spaces and every glyph, not scattered glyph outlines.
+            int firstVisible=-1,lastVisible=-1;
+            for(int i=0;i<text->characters.size();++i)if(text->characters[i].visible){if(firstVisible<0)firstVisible=i;lastVisible=i;}
+            TextSelection all;all.put(0,text);
+            const auto p=text->characters[firstVisible].box.center(),q=text->characters[lastVisible].box.center();
+            all.begin(0,p.x(),p.y(),0,0);all.extend(0,q.x(),q.y());QVERIFY(all.ready());
+            const auto bands=all.rectangles(0);
+            QCOMPARE(bands.size(),3);
+            for(int i=1;i<bands.size();++i)QVERIFY(bands[i].toRectF().top()>=bands[i-1].toRectF().center().y());
+            for(int i=firstVisible;i<=lastVisible;++i) {
+                const auto& c=text->characters[i];if(!c.visible)continue;
+                bool covered=false;for(const auto& band:bands)covered=covered||band.toRectF().contains(c.box);
+                QVERIFY2(covered,qPrintable(QStringLiteral("glyph %1 outside its selection band").arg(i)));
+            }
+            const auto space=text->characters[indexOf(text,"voici")-1];QCOMPARE(space.unicode,U' ');
+            const auto before=text->characters[indexOf(text,"voici")-2].box,after=text->characters[indexOf(text,"voici")].box;
+            QVERIFY(bands.first().toRectF().contains(QPointF((before.right()+after.left())/2,after.center().y())));
+        }
         worker.worker->submit({1,2,0,"test-identity","fra",image});
         QTRY_COMPARE_WITH_TIMEOUT(ready.size(),2,30000);QVERIFY(ready.last()[4].toBool());
         QCOMPARE(content(qvariant_cast<TextSnapshot>(ready.last()[3])),content(text));

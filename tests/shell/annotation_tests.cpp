@@ -5,6 +5,7 @@
 #include "answerlines.h"
 #include <QPainter>
 #include <QElapsedTimer>
+#include <QFontMetricsF>
 #include <QClipboard>
 #include <QLineF>
 #include <algorithm>
@@ -14,6 +15,7 @@
 #include <QQuickWindow>
 #include <QQuickItem>
 #include <QQuickStyle>
+#include <QThread>
 #include <QQmlApplicationEngine>
 #include <QTest>
 #include <QDir>
@@ -56,6 +58,187 @@ private slots:
         const auto dashed=AnswerLines::detect(patterns,{600,800});
         QCOMPARE(dashed.size(),3);
     }
+    void longDashedDetection_data() {
+        QTest::addColumn<int>("scale");
+        QTest::addColumn<int>("rise");
+        QTest::addColumn<int>("markWidth");
+        for(int scale:{1,2,4}) for(int rise:{-5,0,5}) for(int markWidth:{1,5})
+            QTest::newRow(qPrintable(QStringLiteral("scale%1-rise%2-mark%3").arg(scale).arg(rise).arg(markWidth)))<<scale<<rise<<markWidth;
+    }
+    void longDashedDetection() {
+        QFETCH(int,scale); QFETCH(int,rise); QFETCH(int,markWidth);
+        QImage image(600*scale,800*scale,QImage::Format_RGB32); image.fill(Qt::white);
+        QPainter painter(&image); painter.scale(scale,scale);
+        painter.setPen(QPen(Qt::black,1));
+        // A long scanned rule may cross several raster rows, with local jitter.
+        const int pitch=markWidth==1?4:9;
+        for(int x=30;x<=570;x+=pitch) {
+            const int y=100+qRound(rise*(x-30)/540.0)+(x%12==0?1:0);
+            painter.drawLine(x,y,x+markWidth-1,y);
+        }
+        for(int x=30;x<=190;x+=4) painter.drawPoint(x,200);
+        for(int x=230;x<=570;x+=4) painter.drawPoint(x,200);
+        for(int x=30;x<=570;x+=4) painter.drawPoint(x,218);
+        painter.end();
+        const auto areas=AnswerLines::detect(image,{600,800});
+        qInfo()<<"long_dashed"<<scale<<rise<<areas;
+        QCOMPARE(areas.size(),4);
+        auto at=[&](double x,double y) {
+            for(const auto& r:areas) if(r.contains(QPointF(x/600,y/800))) return r;
+            return QRectF();
+        };
+        const auto longLine=at(300,90);
+        QVERIFY(!longLine.isEmpty());
+        QVERIFY(longLine.left()*600<=32); QVERIFY(longLine.right()*600>=568);
+        const auto left=at(100,195),right=at(400,195),below=at(300,213);
+        QVERIFY(!left.isEmpty()); QVERIFY(!right.isEmpty()); QVERIFY(!below.isEmpty());
+        QVERIFY(left.right()*600<200); QVERIFY(right.left()*600>220);
+        QVERIFY(below.left()*600<=32); QVERIFY(below.right()*600>=568);
+        AnnotationModel model;
+        PageGeometry g; g.displayToPdf=QTransform(600,0,0,-800,0,800);
+        g.pdfToDisplay=g.displayToPdf.inverted(); g.units={600,800}; g.valid=true;
+        model.setGeometry(0,g);
+        const auto id=model.create(0,longLine.x(),longLine.y(),longLine.width()*600,longLine.height()*800);
+        QVERIFY(!id.isEmpty());
+        const QString answer=QStringLiteral("Une réponse longue qui doit tenir sur cette ligne. ").repeated(2);
+        model.setText(id,answer,14);
+        QCOMPARE(model.snapshot().first().height,14.0);
+        model.setText(id,answer.repeated(5),14);
+        QVERIFY(model.snapshot().first().height>14);
+    }
+    void faintMergedLinesStopAtObstacles() {
+        QImage image(600,800,QImage::Format_RGB32); image.fill(Qt::white);
+        QPainter painter(&image); painter.setPen(QPen(QColor(220,220,220),1));
+        for(int x=60;x<=540;x+=4) painter.drawPoint(x,100);
+        painter.drawLine(160,100,180,100); painter.drawLine(340,100,355,100);
+        painter.fillRect(50,180,510,30,QColor(245,210,230)); painter.setPen(QPen(QColor(145,145,145),1));
+        for(int x=60;x<=540;x+=4) painter.drawPoint(x,200);
+        painter.drawLine(160,200,180,200); painter.drawLine(340,200,355,200);
+        painter.setPen(QPen(Qt::black,1));
+        for(int y:{300,400}) for(int x=100;x<=200;x+=4) painter.drawPoint(x,y);
+        painter.setPen(QPen(QColor(220,220,220),1)); painter.drawRect(204,300,180,60);
+        QFont font; font.setPixelSize(12); painter.setFont(font); painter.drawText(204,400,QStringLiteral("IIIIIIIIII"));
+        painter.end();
+        const auto areas=AnswerLines::detect(image,{600,800});
+        auto at=[&](int x,int y) { for(const auto& area:areas) if(area.contains(QPointF(x/600.0,y/800.0))) return area; return QRectF(); };
+        for(int y:{90,190}) {
+            const auto area=at(300,y); QVERIFY(!area.isEmpty());
+            QVERIFY(area.left()*600<=62); QVERIFY(area.right()*600>=538);
+        }
+        for(int y:{290,390}) {
+            const auto area=at(150,y); QVERIFY(!area.isEmpty());
+            QVERIFY2(area.right()*600<=203,"Extension must stop at faint table edges and printed text.");
+        }
+    }
+    void longDashedAtCandidateLimit() {
+        QImage image(1024,2048,QImage::Format_RGB32); image.fill(Qt::white);
+        QPainter painter(&image); painter.setPen(QPen(Qt::black,1));
+        for(int i=0;i<AnswerLines::maxLines-1;++i)
+            for(int x=30;x<=150;x+=4) painter.drawPoint(x,40+i*15);
+        const int lastY=40+(AnswerLines::maxLines-1)*15;
+        for(int x=30;x<=982;x+=4) painter.drawPoint(x,lastY+qRound(5*(x-30)/952.0));
+        for(int x=30;x<=150;x+=4) painter.drawPoint(x,lastY+20);
+        painter.end();
+        const auto areas=AnswerLines::detect(image,{1024,2048});
+        QCOMPARE(areas.size(),AnswerLines::maxLines);
+        const auto last=*std::max_element(areas.begin(),areas.end(),[](const auto& a,const auto& b){return a.top()<b.top();});
+        QVERIFY(last.left()*1024<=32); QVERIFY(last.right()*1024>=980);
+    }
+    void previewKeepsFinalAnswerGeometry() {
+        QThread thread; auto* worker=new PdfWorker;
+        worker->moveToThread(&thread);
+        connect(worker,&PdfWorker::stopped,&thread,&QThread::quit,Qt::DirectConnection);
+        connect(&thread,&QThread::finished,worker,&QObject::deleteLater);
+        QList<PdfFrame> frames;
+        QObject deliveryContext;
+        connect(worker,&PdfWorker::frameReady,&deliveryContext,[&](PdfFrame frame){frames.append(std::move(frame));},Qt::QueuedConnection);
+        thread.start();
+        auto render=[&](quint64 revision,int width,bool previewOnly) {
+            PdfRequest request; request.session=1; request.revision=revision;
+            request.path=QStringLiteral(LANGLERN_FIXTURES)+"/answer-lines.pdf";
+            request.width=width; request.skipPreview=true; request.previewOnly=previewOnly;
+            worker->submit(request);
+            QElapsedTimer timer; timer.start();
+            while(timer.elapsed()<10000) {
+                for(const auto& frame:frames) {
+                    if(frame.revision==revision && !frame.image.isNull()) return frame;
+                }
+                QTest::qWait(10);
+            }
+            return PdfFrame();
+        };
+        const auto final=render(1,1200,false);
+        const auto preview=render(2,480,true);
+        const auto refreshed=render(3,1200,false);
+        // Clean up the PDFium thread even when a frame assertion below fails.
+        worker->shutdown();
+        QElapsedTimer timer; timer.start();
+        while(thread.isRunning() && timer.elapsed()<10000) QTest::qWait(10);
+        QVERIFY(thread.wait(1000));
+        QVERIFY(final.answerLinesReady); QVERIFY(!final.answerLines.isEmpty());
+        QVERIFY(preview.preview); QVERIFY(!preview.image.isNull());
+        QVERIFY(!preview.answerLinesReady); QVERIFY(preview.answerLines.isEmpty());
+        ReadingModel model; model.reset(final.pages);
+        model.put(0,final.image,1200,true,final.answerLines,final.answerLinesReady);
+        model.put(0,preview.image,480,false,preview.answerLines,preview.answerLinesReady);
+        QCOMPARE(model.answerLines(0),final.answerLines);
+        QVERIFY(refreshed.answerLinesReady);
+        model.put(0,refreshed.image,1200,true,refreshed.answerLines,refreshed.answerLinesReady);
+        QCOMPARE(model.answerLines(0),refreshed.answerLines);
+    }
+    void realTextbookFieldsStableAcrossRenderWidths() {
+        // The detector runs on the zoom-dependent final render. Before the chain
+        // detector, page 34 lost "Âge" at 800 px and page 39 lost three name
+        // fields; at 600 px many fields absorbed the preceding colon.
+        const auto path=qEnvironmentVariable("LANGLERN_REAL_PDF",QStringLiteral("C:/Users/jiong/Desktop/法语/你好法语3学生用书第二版.pdf"));
+        if(!QFileInfo::exists(path)) QSKIP("The configured real textbook is unavailable on this runner; real-PDF acceptance was not performed.");
+        QThread thread; auto* worker=new PdfWorker;
+        worker->moveToThread(&thread);
+        connect(worker,&PdfWorker::stopped,&thread,&QThread::quit,Qt::DirectConnection);
+        connect(&thread,&QThread::finished,worker,&QObject::deleteLater);
+        QList<PdfFrame> frames;
+        QObject deliveryContext;
+        connect(worker,&PdfWorker::frameReady,&deliveryContext,[&](PdfFrame frame){frames.append(std::move(frame));},Qt::QueuedConnection);
+        thread.start();
+        quint64 revision=0;
+        auto fields=[&](int page,int width) {
+            PdfRequest request; request.session=1; request.revision=++revision; request.page=page;
+            request.path=path; request.width=width; request.skipPreview=true;
+            worker->submit(request);
+            QElapsedTimer timer; timer.start();
+            while(timer.elapsed()<30000) {
+                for(const auto& frame:frames) if(frame.revision==request.revision && !frame.image.isNull()) {
+                    QList<QRectF> dotted;
+                    for(const auto& r:frame.answerLines)
+                        if(std::abs(r.height()*frame.geometry.units.height()-AnswerLines::dottedFieldHeight)<.01) dotted.append(r);
+                    return dotted;
+                }
+                QTest::qWait(10);
+            }
+            return QList<QRectF>{QRectF(-1,-1,0,0)};
+        };
+        struct Expected { int page; QList<QPointF> spans; };
+        // Endpoints read from the 2400 px rendering of each page.
+        const QList<Expected> expected{
+            {33,{{.621,.714},{.798,.889},{.613,.660},{.756,.889},{.639,.889},{.684,.889},{.695,.746},{.842,.890}}},
+            {38,{{.144,.460},{.167,.460},{.144,.188},{.297,.460},{.252,.460},{.403,.460},{.306,.460},{.187,.460},{.209,.460}}}};
+        QStringList failures;
+        for(const auto& e:expected) for(int width:{600,800,1200}) {
+            const auto found=fields(e.page,width);
+            qInfo()<<"stable_fields page"<<e.page+1<<"width"<<width<<found;
+            if(found.size()!=e.spans.size()) failures<<QStringLiteral("page %1 width %2: %3 fields").arg(e.page+1).arg(width).arg(found.size());
+            for(const auto& span:e.spans) {
+                bool match=false;
+                for(const auto& r:found) match=match||(std::abs(r.left()-span.x())<.008 && std::abs(r.right()-span.y())<.008);
+                if(!match) failures<<QStringLiteral("page %1 width %2: missing %3-%4").arg(e.page+1).arg(width).arg(span.x()).arg(span.y());
+            }
+        }
+        worker->shutdown();
+        QElapsedTimer timer; timer.start();
+        while(thread.isRunning() && timer.elapsed()<10000) QTest::qWait(10);
+        QVERIFY(thread.wait(1000));
+        QVERIFY2(failures.isEmpty(),qPrintable(failures.join(QStringLiteral("; "))));
+    }
     void realTextbookDashedFields() {
         const auto path=qEnvironmentVariable("LANGLERN_REAL_PDF",QStringLiteral("C:/Users/jiong/Desktop/法语/你好法语3学生用书第二版.pdf"));
         if(!QFileInfo::exists(path)) QSKIP("The configured real textbook is unavailable on this runner; real-PDF acceptance was not performed.");
@@ -71,6 +254,7 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(settled(),30000);
         QTRY_VERIFY_WITH_TIMEOUT(shell.model().nextUnknown()<0,30000);
         qInfo()<<"real_textbook"<<QFileInfo(path).size()<<"page"<<34<<"candidates"<<shell.model().answerLines(33).size();
+        qInfo()<<"real_fields"<<shell.model().answerLines(33);
         QCOMPARE(shell.model().answerLines(33).size(),8);
         const auto output=qEnvironmentVariable("LANGLERN_REAL_ARTIFACT_DIR");
         if(!output.isEmpty()) {
@@ -105,13 +289,112 @@ private slots:
         QTRY_COMPARE(shell.annotations()->snapshot().first().text,QStringLiteral("Marie"));
         QTRY_VERIFY(shell.annotations()->snapshot().first().height<expanded.height);
         QTest::keyClick(window,Qt::Key_Return,Qt::ControlModifier);
-        QVERIFY(!shell.answerBlankAt(areas[2].center().x(),areas[2].center().y()).isEmpty());
+        // High-DPI focus/viewport updates can temporarily replace the cached frame.
+        QTRY_VERIFY_WITH_TIMEOUT(!shell.answerBlankAt(areas[2].center().x(),areas[2].center().y()).isEmpty(),30000);
+        // The long address rule must remain one editor across its full extent.
+        const auto address=areas[4];
+        const auto units=shell.annotations()->geometry(33).units;
+        QVERIFY(address.width()/shell.pageWidth()>.24);
+        const double addressLeft=(address.left()-shell.pageLeft(33))/shell.pageWidth();
+        const double addressRight=(address.right()-shell.pageLeft(33))/shell.pageWidth();
+        // Independently checked on the rendered source: the dots span .639 to .889.
+        QVERIFY(std::abs(addressLeft-.639)<.004); QVERIFY(std::abs(addressRight-.889)<.004);
+        QTest::mouseMove(window,scene(address.center()),30);
+        QTRY_VERIFY(hint->isVisible());
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,hint->mapToScene(QPointF(hint->width()/2,hint->height()/2)).toPoint());
+        QTRY_COMPARE(shell.annotations()->snapshot().size(),2);
+        const auto addressId=shell.annotations()->selectedId(); QVERIFY(!addressId.isEmpty());
+        const QString longAnswer=QStringLiteral("12 rue de la Paix, 75002 Paris");
+        QGuiApplication::clipboard()->setText(longAnswer); QTest::keyClick(window,Qt::Key_V,Qt::ControlModifier);
+        auto addressNote=[&] { for(const auto& n:shell.annotations()->snapshot()) if(n.id==addressId) return n; return TextAnnotation(); };
+        QTRY_COMPARE(addressNote().text,longAnswer);
+        QVERIFY(addressNote().maximumWidth>.24*units.width());
+        QTRY_COMPARE(addressNote().height,14.0);
+        QTest::keyClick(window,Qt::Key_Return,Qt::ControlModifier);
         if(!output.isEmpty()) QVERIFY(window->grabWindow().save(output+"/real-answer.png"));
-        const auto note=shell.annotations()->snapshot().first();
+        const auto notes=shell.annotations()->snapshot();
         shell.saveNow(); QTRY_VERIFY(shell.storageStatus().contains(QStringLiteral("已保存")));
         shell.clearSelection(); QTRY_COMPARE(shell.pageCount(),0); shell.selectFile(QUrl::fromLocalFile(path));
-        QTRY_VERIFY_WITH_TIMEOUT(shell.storageReady(),30000); QTRY_COMPARE(shell.annotations()->snapshot().size(),1);
-        QCOMPARE(shell.annotations()->snapshot().first(),note);
+        QTRY_VERIFY_WITH_TIMEOUT(shell.storageReady(),30000); QTRY_COMPARE(shell.annotations()->snapshot().size(),2);
+        QCOMPARE(shell.annotations()->snapshot(),notes);
+        window->close(); QTRY_VERIFY(shell.shutdownComplete());
+    }
+    void realTextbookLongLineSamples_data() {
+        QTest::addColumn<int>("page");
+        QTest::addColumn<QRectF>("expected");
+        QTest::newRow("page7-abbreviations")<<7<<QRectF();
+        // Endpoints checked against the source page, not detector output.
+        QTest::newRow("page39-name-answer")<<39<<QRectF(.144,.290,.316,0);
+        // Seed 20261020 sampled 88, 67, 47 from visually checked separator pages.
+        QTest::newRow("page88-separator")<<88<<QRectF(.124,.580,.751,0);
+        QTest::newRow("page67-separator")<<67<<QRectF(.123,.824,.752,0);
+        QTest::newRow("page47-separator")<<47<<QRectF(.121,.723,.753,0);
+    }
+    void realTextbookLongLineSamples() {
+        QFETCH(int,page); QFETCH(QRectF,expected);
+        const auto path=qEnvironmentVariable("LANGLERN_REAL_PDF",QStringLiteral("C:/Users/jiong/Desktop/法语/你好法语3学生用书第二版.pdf"));
+        if(!QFileInfo::exists(path)) QSKIP("The configured real textbook is unavailable; real-PDF sampling was not performed.");
+        ShellState shell; QQmlApplicationEngine engine;
+        engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}}); engine.loadFromModule("Langlern.Shell","Main");
+        auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(window);
+        window->show(); QVERIFY(QTest::qWaitForWindowExposed(window));
+        shell.selectFile(QUrl::fromLocalFile(path)); QTRY_VERIFY_WITH_TIMEOUT(shell.storageReady(),30000);
+        QTRY_COMPARE(shell.pageCount(),153); shell.goToPage(page); shell.setZoom(.65);
+        QTRY_VERIFY_WITH_TIMEOUT(shell.model().ready(page-1,shell.model().targetWidth(page-1,window->devicePixelRatio())),30000);
+        QTRY_VERIFY_WITH_TIMEOUT(shell.model().nextUnknown()<0,30000);
+        const auto lines=shell.model().answerLines(page-1);
+        qInfo()<<"sample_page"<<page<<"fields"<<lines;
+        const auto output=qEnvironmentVariable("LANGLERN_REAL_ARTIFACT_DIR");
+        if(!output.isEmpty()) {
+            const auto folder=output+QStringLiteral("/page-%1").arg(page); QVERIFY(QDir().mkpath(folder));
+            auto overlay=shell.model().image(page-1).copy(); QVERIFY(overlay.save(folder+"/source.png"));
+            QPainter painter(&overlay); painter.setPen(QPen(Qt::red,1));
+            for(const auto& r:lines) painter.drawRect(QRectF(r.x()*overlay.width(),r.y()*overlay.height(),r.width()*overlay.width(),r.height()*overlay.height()));
+            painter.end(); QVERIFY(overlay.save(folder+"/candidates.png"));
+        }
+        if(page==7) {
+            qInfo()<<"Page 7 is an abbreviations table with decorative solid rules; no long dashed answer field to accept.";
+        } else {
+            const auto g=shell.annotations()->geometry(page-1);
+            const QPointF target(expected.center().x(),expected.y()-4/g.units.height());
+            const auto area=shell.answerBlankAt(shell.pageLeft(page-1)+target.x()*shell.pageWidth(),shell.pageTop(page-1)+target.y()*shell.pageHeight(page-1));
+            QVERIFY2(!area.isEmpty(),qPrintable(QStringLiteral("Missing long rule on page %1").arg(page)));
+            const double left=(area.left()-shell.pageLeft(page-1))/shell.pageWidth();
+            const double right=(area.right()-shell.pageLeft(page-1))/shell.pageWidth();
+            qInfo()<<"sample_endpoints"<<page<<left<<right<<"expected"<<expected.left()<<expected.right();
+            QVERIFY2(std::abs(left-expected.left())<.006,qPrintable(QStringLiteral("Page %1 left endpoint is incomplete: %2").arg(page).arg(left)));
+            QVERIFY2(std::abs(right-expected.right())<.006,qPrintable(QStringLiteral("Page %1 right endpoint is incomplete: %2").arg(page).arg(right)));
+            if(page==39) {
+                auto* viewport=find(window->contentItem(),"pdfViewport"); QVERIFY(viewport);
+                viewport->setProperty("contentY",std::max(0.0,area.center().y()-viewport->height()/2));
+                QTRY_VERIFY(std::abs(viewport->property("contentY").toDouble()-shell.scrollOffset())<.5);
+                auto* hint=find(window->contentItem(),"answerLineHint"); QVERIFY(hint);
+                // Wait for this specific field after asynchronous viewport/frame
+                // changes, rather than clicking a still-visible neighbouring hint.
+                auto hoverTarget=[&] {
+                    const QPointF content(shell.pageLeft(page-1)+target.x()*shell.pageWidth(),shell.pageTop(page-1)+target.y()*shell.pageHeight(page-1));
+                    const auto current=shell.answerBlankAt(content.x(),content.y());
+                    if(current.isEmpty()) return false;
+                    const auto point=viewport->mapToScene(current.center()-QPointF(viewport->property("contentX").toDouble(),viewport->property("contentY").toDouble())).toPoint();
+                    QTest::mouseMove(window,point,1);
+                    const auto center=hint->mapToScene(QPointF(hint->width()/2,hint->height()/2));
+                    return hint->isVisible() && QLineF(center,point).length()<2 && std::abs(hint->width()-current.width())<1;
+                };
+                QTRY_VERIFY_WITH_TIMEOUT(hoverTarget(),30000);
+                QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,hint->mapToScene(QPointF(hint->width()/2,hint->height()/2)).toPoint());
+                QTRY_COMPARE(shell.annotations()->snapshot().size(),1);
+                QVERIFY(std::abs(shell.annotations()->snapshot().first().maximumWidth-expected.width()*g.units.width())<.006*g.units.width());
+                auto* editor=find(window->contentItem(),"annotationEditor"); QVERIFY(editor); QTRY_VERIFY(editor->hasActiveFocus());
+                const QString answer=QStringLiteral("Marie Dupont et Jean Martin à Paris");
+                QGuiApplication::clipboard()->setText(answer); QTest::keyClick(window,Qt::Key_V,Qt::ControlModifier);
+                QTRY_COMPARE(shell.annotations()->snapshot().first().text,answer);
+                const auto note=shell.annotations()->snapshot().first();
+                QFont font(note.family); font.setPixelSize(qRound(note.fontSize));
+                qInfo()<<"sample_text_layout"<<note.width<<note.maximumWidth<<note.fontSize<<QFontMetricsF(font).horizontalAdvance(answer)<<editor->property("contentWidth")<<editor->property("contentHeight")<<note.styles.size();
+                QTRY_COMPARE(shell.annotations()->snapshot().first().height,14.0);
+                if(!output.isEmpty()) QVERIFY(window->grabWindow().save(output+"/page-39/answer.png"));
+            }
+        }
         window->close(); QTRY_VERIFY(shell.shutdownComplete());
     }
     void hoverRuleReusesEditorAndShrinksAfterDeletion() {

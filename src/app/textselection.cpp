@@ -172,14 +172,32 @@ QVariantList TextSelection::rectangles(int page) const {
     const auto data=pages_.value(page);
     if (!data) return result;
     const auto [first,last]=range(page);
-    QRectF pending;
+    // Paint one continuous band per text line, like a native text selection.
+    // OCR glyph boxes are tight and separated (x-height letters, word spaces),
+    // so per-glyph rectangles read as faint outlines rather than a selection.
+    QRectF band;
+    auto flush=[&] {
+        if (band.isEmpty()) return;
+        const double pad=band.height()*0.12; // ascender/descender breathing room
+        result.append(band.adjusted(-pad*0.25,-pad,pad*0.25,pad).intersected(QRectF(0,0,1,1)));
+        band=QRectF();
+    };
     for (int i=first; i>=0 && i<=last && i<data->characters.size(); ++i) {
         const auto& c=data->characters[i];
-        if (!c.visible) continue;
-        // Merge touching glyph bounds only; preserve line/column gaps and intrinsic rotation.
-        if (!pending.isEmpty() && pending.adjusted(-0.001,-0.001,0.001,0.001).intersects(c.box)) pending=pending.united(c.box);
-        else { if (!pending.isEmpty()) result.append(pending); pending=c.box; }
+        if (!c.visible) {
+            if (c.unicode==U'\n' || c.unicode==U'\r') flush();
+            continue;
+        }
+        if (band.isEmpty()) { band=c.box; continue; }
+        const double overlap=std::min(band.bottom(),c.box.bottom())-std::max(band.top(),c.box.top());
+        const double lineHeight=std::max(band.height(),c.box.height());
+        const bool sameLine=overlap>=0.5*std::min(band.height(),c.box.height())
+            // Text running backwards or jumping a column gap starts a new band;
+            // vertical/rotated text therefore keeps per-glyph boxes.
+            && c.box.left()>=band.right()-0.5*lineHeight && c.box.left()-band.right()<=3*lineHeight;
+        if (sameLine) band=band.united(c.box);
+        else { flush(); band=c.box; }
     }
-    if (!pending.isEmpty()) result.append(pending);
+    flush();
     return result;
 }

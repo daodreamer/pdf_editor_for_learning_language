@@ -328,7 +328,9 @@ void PdfWorker::execute(const PdfRequest& r) {
             frame.errorCode.clear();
             frame.preview = preview;
             frame.limited = width < wanted;
-            if(!r.ocrOnly && (!preview || r.previewOnly)) {
+            // Prefetch previews can merge/erase dotted marks at 480 px. Preserve
+            // cached field geometry until a final render can replace it reliably.
+            if(!r.ocrOnly && !preview) {
                 frame.answerLines=AnswerLines::detect(frame.image,frame.geometry.units);
                 frame.answerLinesReady=true;
             }

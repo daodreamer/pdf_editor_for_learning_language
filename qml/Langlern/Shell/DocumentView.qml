@@ -133,7 +133,10 @@ ColumnLayout {
                         required property var modelData
                         x: modelData.x * sheet.width; y: modelData.y * sheet.height
                         width: modelData.w * sheet.width; height: modelData.h * sheet.height
-                        color: "#10007aff"; border.color: "#30007aff"; radius: 2
+                        // Hovered word uses the same fill as a text selection.
+                        color: wordHover.hovered ? "#69287df0" : "#10007aff"
+                        border.color: wordHover.hovered ? "transparent" : "#30007aff"; radius: 2
+                        HoverHandler { id: wordHover; cursorShape: Qt.PointingHandCursor }
                         TapHandler { onTapped: view.wordRequested(ocrWord.modelData.word, ocrWord.modelData.context) }
                         Accessible.role: Accessible.Button; Accessible.name: modelData.word
                     }
