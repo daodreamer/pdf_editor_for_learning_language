@@ -18,7 +18,7 @@ class AnnotationModel : public QAbstractListModel {
     Q_PROPERTY(QString gestureError READ gestureError NOTIFY gestureErrorChanged)
     Q_PROPERTY(quint64 version READ version NOTIFY contentChanged)
 public:
-    enum Role { Id=Qt::UserRole+1, Page, Anchor, BoxWidth, BoxHeight, FontSize, Text, Family, Color, PageUnits, Order, WidthLocked, Styles };
+    enum Role { Id=Qt::UserRole+1, Page, Anchor, BoxWidth, BoxHeight, FontSize, Text, Family, Color, PageUnits, Order, WidthLocked, Styles, LineSpacing };
     explicit AnnotationModel(QObject* parent=nullptr) : QAbstractListModel(parent) { connect(this,&AnnotationModel::contentChanged,this,[this]{++version_;}); }
     quint64 version() const { return version_; }
     Q_INVOKABLE QVariantMap pageStats(int page) const;
@@ -48,7 +48,7 @@ public:
     Q_INVOKABLE void cancelGesture();
     Q_INVOKABLE void removeInk();
     Q_INVOKABLE bool gestureActive() const { return gesture_ != Gesture::None; }
-    Q_INVOKABLE QString create(int page,double x,double y,double maximumWidth=0,double fieldHeight=24);
+    Q_INVOKABLE QString create(int page,double x,double y,double maximumWidth=0,double fieldHeight=24,double lineSpacing=0,int lines=1);
     Q_INVOKABLE void select(const QString& id);
     Q_INVOKABLE void finishEditing();
     Q_INVOKABLE void setText(const QString& id,const QString& text,double height,const QVariantList& styles = {});

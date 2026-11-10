@@ -1,42 +1,52 @@
 import QtQuick
 import QtQuick.Shapes
 
+// Line icons from Lucide v0.460.0 (ISC, see third_party/notices/Lucide-ISC.txt),
+// converted to path data so they stay vector and recolourable per theme. The curve
+// renderer antialiases strokes analytically; the default geometry renderer does not.
 Shape {
     id: icon
     required property string symbol
     required property color ink
-    implicitWidth: 20
-    implicitHeight: 20
-    transform: Scale { xScale: 20 / 24; yScale: 20 / 24 }
-    readonly property var paths: {
-        "library": "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",
-        "recent": "M12 6v6l4 2M21 12a9 9 0 1 0-18 0a9 9 0 1 0 18 0",
-        "plus": "M12 5v14M5 12h14",
-        "minus": "M5 12h14",
-        "bookmark": "M6 3h12v18l-6-4-6 4z",
-        "audio": "M9 18V5l11-2v13M9 18a3 2 0 1 1-6 0a3 2 0 1 1 6 0M20 16a3 2 0 1 1-6 0a3 2 0 1 1 6 0",
-        "more": "M5 12h.01M12 12h.01M19 12h.01",
-        "auto": "M12 2l2.8 7.2L22 12l-7.2 2.8L12 22l-2.8-7.2L2 12l7.2-2.8z",
-        "pen": "M14 5l5 5M4 20l5-1L21 7l-5-5L4 14z",
-        "mark": "M4 12l5 5L20 5",
-        "read": "M7 3l14 9L7 21z",
-        "erase": "M8 5h13v14H8L2 12zM11 9l6 6M17 9l-6 6",
-        "close": "M6 6l12 12M18 6L6 18",
-        "copy": "M16 8V3H3v13h5 M10 8h9q2 0 2 2v9q0 2-2 2h-9q-2 0-2-2v-9q0-2 2-2",
-        "delete": "M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7",
-        "export": "M14 3h7v7M21 3l-10 10M10 3H3v18h18v-7",
-        "help": "M9 9a3 3 0 0 1 6 0c0 2-3 2-3 5M12 17h.01 M21 12a9 9 0 1 0-18 0a9 9 0 1 0 18 0",
-        "next": "M9 5l7 7-7 7",
-        "open": "M3 7h6l2 3h10l-3 10H3z M3 7V4h6l2 3h8v3",
-        "previous": "M15 5l-7 7 7 7",
-        "redo": "M15 5l6 5-6 5M21 10H11a7 7 0 0 0-7 7v3",
-        "save": "M4 3h13l4 4v14H3V3z M7 3v6h9V3M7 21v-8h10v8",
-        "theme": "M20 15A9 9 0 0 1 9 4a9 9 0 1 0 11 11z",
-        "undo": "M9 5L3 10l6 5M3 10h10a7 7 0 0 1 7 7v3",
-    }
+    property real size: 20
+    // Fixed box: Shape would otherwise report each path's own bounds as its
+    // implicit size, so icons of different shapes would not line up.
+    width: size
+    height: size
+    implicitWidth: size
+    implicitHeight: size
+    preferredRendererType: Shape.CurveRenderer
+    readonly property var paths: ({
+        "library": "M4 3H9A1 1 0 0 1 10 4V9A1 1 0 0 1 9 10H4A1 1 0 0 1 3 9V4A1 1 0 0 1 4 3Z M15 3H20A1 1 0 0 1 21 4V9A1 1 0 0 1 20 10H15A1 1 0 0 1 14 9V4A1 1 0 0 1 15 3Z M15 14H20A1 1 0 0 1 21 15V20A1 1 0 0 1 20 21H15A1 1 0 0 1 14 20V15A1 1 0 0 1 15 14Z M4 14H9A1 1 0 0 1 10 15V20A1 1 0 0 1 9 21H4A1 1 0 0 1 3 20V15A1 1 0 0 1 4 14Z", // layout-grid
+        "recent": "M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0 M12 6 L12 12 L16 14", // clock
+        "plus": "M5 12h14 M12 5v14", // plus
+        "minus": "M5 12h14", // minus
+        "bookmark": "M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z", // bookmark
+        "audio": "M9 18V5l12-2v13 M3 18a3 3 0 1 0 6 0a3 3 0 1 0 -6 0 M15 16a3 3 0 1 0 6 0a3 3 0 1 0 -6 0", // music
+        "more": "M11 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0 M18 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0 M4 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0", // ellipsis
+        "auto": "M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z M20 3v4 M22 5h-4 M4 17v2 M5 18H3", // sparkles
+        "pen": "M12 20h9 M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z", // pen-line
+        "type": "M4 7 L4 4 L20 4 L20 7 M9 20L15 20 M12 4L12 20", // type
+        "mark": "M20 6 9 17l-5-5", // check
+        "read": "M2 10v3 M6 6v11 M10 3v18 M14 8v7 M18 5v13 M22 10v3", // audio-lines
+        "erase": "M7 21l-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21 M22 21H7 M5 11l9 9", // eraser
+        "close": "M18 6 6 18 M6 6l12 12", // x
+        "copy": "M10 8H20A2 2 0 0 1 22 10V20A2 2 0 0 1 20 22H10A2 2 0 0 1 8 20V10A2 2 0 0 1 10 8Z M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2", // copy
+        "delete": "M3 6h18 M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6 M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2 M10 11L10 17 M14 11L14 17", // trash-2
+        "export": "M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8 M16 6 L12 2 L8 6 M12 2L12 15", // share
+        "help": "M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0 M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3 M12 17h.01", // circle-help
+        "next": "M9 18l6-6-6-6", // chevron-right
+        "open": "M6 14l1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2", // folder-open
+        "previous": "M15 18l-6-6 6-6", // chevron-left
+        "redo": "M15 14l5-5-5-5 M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13", // redo-2
+        "save": "M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7 M7 3v4a1 1 0 0 0 1 1h7", // save
+        "theme": "M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z", // moon
+        "undo": "M9 14 4 9l5-5 M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11", // undo-2
+    })
     ShapePath {
+        scale: Qt.size(icon.size / 24, icon.size / 24)
         strokeColor: icon.ink
-        strokeWidth: 1.7
+        strokeWidth: 1.6 // device-independent px; Lucide is ~1.67 at 20 px, slightly lighter reads closer to SF Symbols
         fillColor: "transparent"
         capStyle: ShapePath.RoundCap
         joinStyle: ShapePath.RoundJoin

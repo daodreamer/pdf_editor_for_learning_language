@@ -3,6 +3,7 @@
 #include <QQuickItem>
 #include <QPointer>
 #include <QElapsedTimer>
+#include <QSet>
 
 class InkInput : public QQuickItem {
     Q_OBJECT
@@ -20,6 +21,7 @@ class InkInput : public QQuickItem {
     Q_PROPERTY(QPointF selectionPosition READ selectionPosition NOTIFY textGestureChanged)
 public:
     explicit InkInput(QQuickItem* parent=nullptr);
+    ~InkInput() override;
     ShellState* shell() const { return shell_; }
     void setShell(ShellState* shell);
     int mode() const { return mode_; }
@@ -32,8 +34,8 @@ public:
     void setInkWidth(double width);
     double contentX() const { return contentX_; }
     double contentY() const { return contentY_; }
-    void setContentX(double value) { if(contentX_!=value) { if(!selectingText_)cancel(); contentX_=value; } }
-    void setContentY(double value) { if(contentY_!=value) { if(!selectingText_)cancel(); contentY_=value; } }
+    void setContentX(double value) { if(contentX_!=value) { if(!selectingText_)cancel(); breakRhythm(); contentX_=value; } }
+    void setContentY(double value) { if(contentY_!=value) { if(!selectingText_)cancel(); breakRhythm(); contentY_=value; } }
     bool selectingText() const { return selectingText_; }
     QPointF selectionPosition() const { return textPointer_; }
 signals:
@@ -56,6 +58,8 @@ private:
     void extend(QPointF position);
     void cancel();
     void updateMouseInput();
+    void updateToolCursor();
+    bool selectionCursor_=false;
     QPointF normalized(QPointF position) const;
     QPointer<ShellState> shell_;
     QPointer<QQuickWindow> filteredWindow_;
@@ -74,6 +78,18 @@ private:
     QString autoNote_;
     QElapsedTimer autoNoteAge_;
     QPointF autoOrigin_;
+    QList<QPointF> autoTrail_; // every point since an automatic-mode press
+    // End of the last automatic-mode stroke, in content coordinates.
+    QElapsedTimer lastStroke_;
+    QPointF lastStrokePoint_;
+    int lastStrokePage_=-1;
+    bool inWritingRhythm(QPointF position) const;
+    // Scrolling, typing, other controls or another tool end a writing burst.
+    void breakRhythm() { lastStroke_.invalidate(); }
+    bool eraseTextUnder(QPointF position); // right-button erase of typed answers
+    QSet<QString> pendingTextErase_;
+    QPointF lastErasePoint_;
+    void noteStrokeEnded(QPointF position);
     QVariantList passiveRects_;
     int passivePage_=-1;
 };

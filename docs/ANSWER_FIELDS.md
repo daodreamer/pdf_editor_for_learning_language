@@ -51,3 +51,15 @@ CPU 缓存统计现在包含横线候选容量，GPU 统计仍只计页面纹理
 ```
 
 详细证据用例：在 Qt SDK PATH 下设置 `LANGLERN_ANSWER_ARTIFACT_DIR` 为新建的空目录，运行 `build/windows/annotation_tests.exe answerRuleDetection hoverRuleReusesEditorAndShrinksAfterDeletion`；该目录将得到截图和实际导出文件。扫描样例重建只需 Python 标准库，不下载依赖。持久化字段说明见 [STORAGE_FORMAT.md](STORAGE_FORMAT.md)。
+
+## 2026-11-10 多行填写线作为一个整体答案
+
+**行为**：几条连续的填写线视为一个答案块。悬停块内任意一行，提示框覆盖整块；点击后创建一个文字答案覆盖所有横线。输入到行尾自动换到下一条横线，按 Enter 也换到下一条横线；块内任意文本可像一个输入框一样选择、格式化、撤销，Ctrl+Delete 或右键擦除整体删除，删除后整块重新提示。
+
+**分组规则**（`ShellState::answerBlockAt`，在悬停/点击时基于已检测的横线与当前页面图像计算，不改检测结果或缓存）：同一字段类型（高度一致）、左右端对齐（页宽 2% 内）、相邻间距 12–40 pt 且稳定（±20%）、均未被已有答案覆盖、两条横线之间没有印刷内容（排除“题目—横线—题目—横线”）。横线左侧紧邻印刷标号（“1”“a)”“Nom :”）的行开始新的题目，因此编号单行题各自独立；标号判定要求墨迹只在该行文字带内，旁边插图不算标号。
+
+**排版**：新增可选字段 `notes.lineSpacing`（PDF 单位，旧文件为 0），见 [STORAGE_FORMAT.md](STORAGE_FORMAT.md)。首行与单行答案位置相同（基线在横线上方约 0.6 pt），其余行间距按字体实际行距补足到横线行距（`QTextBlockFormat::LineDistanceHeight`），由 `applyLineSpacing` 在编辑器、尺寸计算和 PDF 导出三处共用。FixedHeight 方案实测会把多余空间放在文字上方，使每行落在横线下约 5 pt，已弃用。块答案删减文字时保持整块高度。
+
+**验证**：`realWorkbookRuledBlockAnswer`（练习册 3 第 14 页）：7 行块识别、行距 20.10 pt；编辑器各行间距 20.09 pt；导出基线 10.44 / 30.53 / 50.63 pt，横线在 11 / 31.1 / 51.2 pt；存储往返一致；块内其他行不再单独提示；整体删除后提示恢复。页面截图逐像素核对文字底部位于横线上方 2–3 px。练习册 1、2、3 全书分组抽查：第 9 页三组 4 行、练习册 1 第 40 页每题 2 行、练习册 2 第 25 页每题 3 行均与版面一致；练习册 3 第 10 页“题目—横线”交替的练习不再被合并。
+
+本轮完整 CTest 中 `text_selection`、`natural_speech` 两项失败：运行时前台为全屏游戏窗口，测试窗口无法成为活动窗口，依赖窗口激活的 Ctrl+C 快捷键与选区浮层无法触发；临时关闭提示计算的对照实验同样失败，确认与本改动无关，但未在无干扰时复跑，标记为未验证。其余 8 组通过，qmllint 通过。证据：`benchmarks/results/ruled-blocks-20261110/`。

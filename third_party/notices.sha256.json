@@ -114,5 +114,9 @@
   {
     "file": "notices/CppWinRT-MIT.txt",
     "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+  },
+  {
+    "file": "notices/Lucide-ISC.txt",
+    "sha256": "1e7290b35280a048667bbf0ebabac1c7fd52a75300e8b2946ac165715997f2bc"
   }
 ]

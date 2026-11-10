@@ -44,6 +44,7 @@ ExportText prepareExportText(const QList<TextAnnotation>& notes) {
         QTextOption option; option.setAlignment(Qt::AlignLeft); option.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
         document.setDefaultTextOption(option); document.setPlainText(note.text); document.setTextWidth(note.width);
         applyTextStyles(document,note.styles);
+        applyLineSpacing(document,note.lineSpacing);
         (void)document.documentLayout()->documentSize();
         ExportNote out{note,{}};
         for(auto block=document.begin();block.isValid();block=block.next()) {

@@ -27,11 +27,22 @@ Rectangle {
                 required property int index
                 width: 52
                 height: 42
-                contentItem: Column {
-                    spacing: 1
-                    LineIcon { visible: button.index !== 2; anchors.horizontalCenter: parent.horizontalCenter; symbol: ["auto", "pen", "", "mark", "read", "erase"][button.index]; ink: tools.current === button.index ? tools.theme.accent : tools.theme.text }
-                    Text { visible: button.index === 2; anchors.horizontalCenter: parent.horizontalCenter; text: "Aa"; color: tools.current === button.index ? tools.theme.accent : tools.theme.text; font.pixelSize: 17; font.weight: Font.DemiBold }
-                    Text { anchors.horizontalCenter: parent.horizontalCenter; text: button.modelData.label; color: tools.current === button.index ? tools.theme.accent : tools.theme.text; font.pixelSize: 10 }
+                padding: 0
+                // Fixed slots, not a Column: every icon occupies the same 20 px box at
+                // the same height and every label shares one baseline.
+                contentItem: Item {
+                    LineIcon {
+                        x: Math.round((parent.width - width) / 2); y: 5
+                        symbol: ["auto", "pen", "type", "mark", "read", "erase"][button.index]
+                        ink: tools.current === button.index ? tools.theme.accent : tools.theme.text
+                    }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        y: 28
+                        text: button.modelData.label
+                        color: tools.current === button.index ? tools.theme.accent : tools.theme.text
+                        font.pixelSize: 10
+                    }
                 }
                 background: Rectangle { radius: 9; color: tools.current === button.index ? tools.theme.tint : button.hovered ? tools.theme.fill : "transparent" }
                 onClicked: tools.picked(index)

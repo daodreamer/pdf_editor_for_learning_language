@@ -14,5 +14,13 @@ inline constexpr double dottedBlankAbove=7, dottedBlankBelow=4, dottedFieldHeigh
 // rules count; isolated marks must also stand out from the paper around them.
 inline constexpr double backgroundOffsetPoints=5;
 inline constexpr int inkCeiling=232, inkContrast=24, minimumMarkContrast=18;
+// Faint rules: fine grey dots printed only ~10-25 levels below the paper, which
+// never reach the ink mask. A 1-2 row band this much darker than flat paper
+// faintOffsetPoints above and below, covering faintFill of a field-length run.
+inline constexpr double faintOffsetPoints=1.6, faintFill=0.45;
+inline constexpr int faintContrast=6, faintFlatness=6, faintPaperFloor=140;
+// Paper rows above and below a faint rule must be smooth (std. dev. in levels);
+// textured fills (banners, halftone) produce random faint hits.
+inline constexpr double faintPaperNoise=4;
 QList<QRectF> detect(const QImage& image,QSizeF pageUnits);
 }

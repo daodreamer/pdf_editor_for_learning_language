@@ -137,7 +137,12 @@ private slots:
         QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,start,1);
         QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,start,1);
         QTRY_VERIFY(input->selectingText());
-        QTest::mouseMove(window,finish,20);QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,finish);
+        // The text cursor holds for the whole drag (hover is suspended while pressed).
+        QVERIFY(QGuiApplication::overrideCursor());QCOMPARE(QGuiApplication::overrideCursor()->shape(),Qt::IBeamCursor);
+        QTest::mouseMove(window,finish,20);
+        QVERIFY(QGuiApplication::overrideCursor());QCOMPARE(QGuiApplication::overrideCursor()->shape(),Qt::IBeamCursor);
+        QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,finish);
+        QTRY_VERIFY(!QGuiApplication::overrideCursor());
         QTRY_COMPARE(shell.textSelection()->text(),QStringLiteral("Hello World"));
         QVERIFY(shell.annotations()->inkSnapshot().isEmpty());QVERIFY(shell.annotations()->snapshot().isEmpty());
         auto* copy=find(window->contentItem(),"copyPageSelection");QVERIFY(copy);QTRY_VERIFY(copy->isVisible());

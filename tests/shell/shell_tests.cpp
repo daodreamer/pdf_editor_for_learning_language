@@ -145,8 +145,10 @@ private slots:
         QTRY_VERIFY(!shell.busy());
         QTRY_VERIFY(shell.storageReady());
         bool replaced = false;
+        // Replace the document while the large render is in flight. A preview no
+        // longer replaces the sharp page already shown, so key off the busy state.
         const auto interception = connect(&shell, &ShellState::imageChanged, &shell, [&] {
-            if (!replaced && !shell.pageImage().isNull() && shell.pageImage().width() == 480) {
+            if (!replaced && !shell.pageImage().isNull() && shell.busy()) {
                 replaced = true;
                 shell.selectFile(scanUrl);
             }

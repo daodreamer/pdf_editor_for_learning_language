@@ -1,5 +1,9 @@
 #include "textstyles.h"
 #include <QTextCursor>
+#include <QTextBlock>
+#include <QTextLayout>
+#include <QAbstractTextDocumentLayout>
+#include <QHash>
 #include <cmath>
 
 QVariantList encodeTextStyles(const QList<TextStyle>& styles) {
@@ -25,6 +29,29 @@ bool decodeTextStyles(const QVariantList& values,int textLength,QList<TextStyle>
         end=int(start+length);
     }
     styles=std::move(result); return true;
+}
+void applyLineSpacing(QTextDocument& document,double lineSpacing) {
+    if(!(lineSpacing>0)) return;
+    // Keep the first line where a single-line answer sits (baseline just above the
+    // rule) and add the remaining pitch *below* each line. FixedHeight would put the
+    // extra space above the text and push every line under its rule.
+    static thread_local QHash<QString,double> naturalPitch;
+    const auto font=document.defaultFont();
+    const auto key=font.key();
+    if(!naturalPitch.contains(key)) {
+        QTextDocument probe; probe.setDocumentMargin(0); probe.setDefaultFont(font); probe.setPlainText(QStringLiteral("A\nA"));
+        (void)probe.documentLayout()->documentSize();
+        const auto first=probe.begin(),second=first.next();
+        naturalPitch.insert(key,second.layout()->position().y()+second.layout()->lineAt(0).y()
+            -first.layout()->position().y()-first.layout()->lineAt(0).y());
+    }
+    const double distance=std::max(0.0,lineSpacing-naturalPitch.value(key));
+    for(auto block=document.begin();block.isValid();block=block.next()) {
+        const auto current=block.blockFormat();
+        if(current.lineHeightType()==QTextBlockFormat::LineDistanceHeight && current.lineHeight()==distance) continue;
+        QTextBlockFormat format; format.setLineHeight(distance,QTextBlockFormat::LineDistanceHeight);
+        QTextCursor cursor(block); cursor.mergeBlockFormat(format);
+    }
 }
 void applyTextStyles(QTextDocument& document,const QList<TextStyle>& styles) {
     for(const auto& s:styles) {

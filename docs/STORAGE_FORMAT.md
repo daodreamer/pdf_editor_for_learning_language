@@ -25,6 +25,7 @@ payload 包含 notes 与 ink：
 | notes.widthLocked | 可选布尔值；新建为 false，仅手动 resize 设为 true。换行和到达页边不再自动锁宽。缺失时按 true 读取以保留旧答案版式；删除文字时解除锁宽，以原宽度为自动换行上限 |
 | notes.minimumHeight | 可选正数，缺失为 24；用户手动调整的高度下限，实际框高还会为完整文字排版扩展 |
 | notes.maximumWidth | 可选非负数，缺失/0 表示使用页面剩余宽度；横线创建的答案以横线宽度为上限。删减文字时可缩小实际框宽/高，minimumHeight 恢复为 24；手动 resize 会清除此上限 |
+| notes.lineSpacing | 可选非负数，PDF 单位，缺失/0 表示字体默认行距（旧文件兼容）。多行填写线块创建的整体答案保存印刷横线的行距：首行基线位置与单行答案相同，其后每行（自动换行或 Enter）下移一个行距落在下一条横线上；编辑器、尺寸计算与导出共用同一行距规则。此类答案删减文字时不缩小到低于整块高度 |
 | notes.styles | 可选有序数组，缺失为空；start/length 为纯文字 UTF-16 区间，size 为 8–72 整数字号，color 为 #AARRGGBB，bold/italic 为布尔值。区间不能重叠或越界；不保存 HTML、图片或外部资源 |
 | notes.order | 字符串创建序号；文字内部叠放顺序 |
 | ink.id / page / points | UUID、页号、PDF 原始点列；不保存视口像素 |

@@ -12,7 +12,7 @@
 
 QHash<int,QByteArray> AnnotationModel::roleNames() const {
     return {{Id,"noteId"},{Page,"notePage"},{Anchor,"noteAnchor"},{BoxWidth,"noteWidth"},{BoxHeight,"noteHeight"},
-        {FontSize,"noteFontSize"},{Text,"noteText"},{Family,"noteFamily"},{Color,"noteColor"},{PageUnits,"notePageUnits"},{Order,"noteOrder"},{WidthLocked,"noteWidthLocked"},{Styles,"noteStyles"}};
+        {FontSize,"noteFontSize"},{Text,"noteText"},{Family,"noteFamily"},{Color,"noteColor"},{PageUnits,"notePageUnits"},{Order,"noteOrder"},{WidthLocked,"noteWidthLocked"},{Styles,"noteStyles"},{LineSpacing,"noteLineSpacing"}};
 }
 QVariantMap AnnotationModel::pageStats(int page) const {
     int answered=0,right=0,wrong=0,ink=0;
@@ -33,6 +33,7 @@ QVariant AnnotationModel::data(const QModelIndex& index,int role) const {
     case BoxWidth: return n.width;
     case WidthLocked: return n.widthLocked;
     case Styles: return encodeTextStyles(n.styles);
+    case LineSpacing: return n.lineSpacing;
     case BoxHeight: return n.height;
     case FontSize: return n.fontSize;
     case Text: return n.text;
@@ -78,8 +79,9 @@ void AnnotationModel::record(TextAnnotation before,TextAnnotation after) {
     if(before==after) return;
     record(Command{std::move(before),std::move(after),{}, {}});
 }
-QString AnnotationModel::create(int page,double x,double y,double maximumWidth,double fieldHeight) {
+QString AnnotationModel::create(int page,double x,double y,double maximumWidth,double fieldHeight,double lineSpacing,int lines) {
     if(!geometry_.contains(page) || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(maximumWidth) || !std::isfinite(fieldHeight) || fieldHeight<=0 || maximumWidth<0 || x<0 || y<0 || x>=1 || y>=1) return {};
+    if(!std::isfinite(lineSpacing) || lineSpacing<0 || lines<1 || lines>64 || (lines>1 && !(lineSpacing>0))) return {};
     cancelGesture(); clearInkSelection(); finishEditing();
     // Leave room for a usable editor at the right/bottom edge.
     const auto g=geometry_[page];
@@ -92,6 +94,11 @@ QString AnnotationModel::create(int page,double x,double y,double maximumWidth,d
     if(fieldHeight<24) {
         n.fontSize=std::clamp(double(qRound(fieldHeight*.62)),8.0,14.0);
         n.minimumHeight=n.height=fieldHeight;
+    }
+    if(lines>1) {
+        // One answer covering every rule of the block; lines advance by the rule pitch.
+        n.lineSpacing=lineSpacing;
+        n.minimumHeight=n.height=fieldHeight+(lines-1)*lineSpacing;
     }
     QFont font(n.family); font.setPixelSize(qRound(n.fontSize));
     n.width=std::min(std::ceil(QFontMetricsF(font).horizontalAdvance(QStringLiteral("this")))+2,(1-x)*g.units.width());
@@ -142,12 +149,12 @@ void AnnotationModel::setEditorText(const QString& id,const QString& text,double
             if(n.maximumWidth==0) n.maximumWidth=n.width;
             n.widthLocked=false; changedRoles.append(WidthLocked);
         }
-        n.minimumHeight=n.fontSize<14?14:24;
+        if(!(n.lineSpacing>0)) n.minimumHeight=n.fontSize<14?14:24;
     }
     QFont font(n.family); font.setPixelSize(qRound(n.fontSize));
     QTextDocument layout; layout.setDocumentMargin(0); layout.setDefaultFont(font);
     QTextOption option; option.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
-    layout.setDefaultTextOption(option); layout.setPlainText(text); applyTextStyles(layout,n.styles);
+    layout.setDefaultTextOption(option); layout.setPlainText(text); applyTextStyles(layout,n.styles); applyLineSpacing(layout,n.lineSpacing);
     if(!n.widthLocked) {
         const auto g=geometry_.value(n.page);
         double available=(1-g.pdfToDisplay.map(n.anchor).x())*g.units.width();
@@ -194,7 +201,7 @@ void AnnotationModel::resize(const QString& id,double x,double y,double width,do
     QTextDocument layout; layout.setDocumentMargin(0); layout.setDefaultFont(font);
     QTextOption option; option.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
     layout.setDefaultTextOption(option); layout.setPlainText(n.text); layout.setTextWidth(n.width);
-    applyTextStyles(layout,n.styles);
+    applyTextStyles(layout,n.styles); applyLineSpacing(layout,n.lineSpacing);
     n.height=std::min(g.units.height(),std::max(n.minimumHeight,layout.size().height()));
     x=std::clamp(x,0.0,std::max(0.0,1-n.width/g.units.width()));
     y=std::clamp(y,0.0,std::max(0.0,1-n.height/g.units.height()));

@@ -3,7 +3,10 @@
 #include "shellstate.h"
 #include "annotationtext.h"
 #include "answerlines.h"
+#include "exporttext.h"
 #include <QPainter>
+#include <QRandomGenerator>
+#include <QFontMetrics>
 #include <QElapsedTimer>
 #include <QFontMetricsF>
 #include <QClipboard>
@@ -130,6 +133,38 @@ private slots:
             QVERIFY2(area.right()*600<=203,"Extension must stop at faint table edges and printed text.");
         }
     }
+    void faintFineDottedRules() {
+        // Workbook blanks: fine grey dots only ~10-20 levels below white. They never
+        // reach the ink mask, so the faint-rule pass must find them end to end.
+        QImage image(600,800,QImage::Format_RGB32); image.fill(Qt::white);
+        QPainter painter(&image);
+        painter.setPen(QPen(QColor(238,238,238),1));
+        for(int x=60;x<=540;x+=2) painter.drawPoint(x,300);
+        painter.setPen(QPen(QColor(245,245,245),1));
+        for(int x=100;x<=400;x+=2) painter.drawPoint(x,500);
+        // A textured banner fill must not produce faint hits.
+        QRandomGenerator noise(20261110);
+        for(int y=600;y<640;++y) for(int x=50;x<550;++x) { const int v=223+int(noise.bounded(30)); image.setPixelColor(x,y,QColor(v,v,v)); }
+        // Text directly above a faint rule still disqualifies it (no writing space).
+        painter.setPen(Qt::black); QFont font; font.setPixelSize(14); painter.setFont(font);
+        const QString sentence=QStringLiteral("Printed sentence directly above the dots");
+        painter.drawText(QPointF(100,697),sentence);
+        const int textEnd=100+QFontMetrics(font).horizontalAdvance(sentence);
+        painter.setPen(QPen(QColor(238,238,238),1));
+        for(int x=104;x<=textEnd-4;x+=2) painter.drawPoint(x,700);
+        painter.end();
+        const auto areas=AnswerLines::detect(image,{600,800});
+        qInfo()<<"faint_rules"<<areas;
+        auto at=[&](double x,double y) { for(const auto& r:areas) if(r.contains(QPointF(x/600,y/800))) return r; return QRectF(); };
+        const auto first=at(300,292); QVERIFY(!first.isEmpty());
+        QVERIFY(first.left()*600<=64); QVERIFY(first.right()*600>=536);
+        const auto second=at(250,492); QVERIFY(!second.isEmpty());
+        QVERIFY(second.left()*600<=104); QVERIFY(second.right()*600>=396);
+        for(const auto& r:areas) {
+            QVERIFY2(r.bottom()*800<590 || r.top()*800>650,"textured band produced a field");
+            QVERIFY2(r.bottom()*800<680 || r.top()*800>710,"rule under text produced a field");
+        }
+    }
     void longDashedAtCandidateLimit() {
         QImage image(1024,2048,QImage::Format_RGB32); image.fill(Qt::white);
         QPainter painter(&image); painter.setPen(QPen(Qt::black,1));
@@ -238,6 +273,147 @@ private slots:
         while(thread.isRunning() && timer.elapsed()<10000) QTest::qWait(10);
         QVERIFY(thread.wait(1000));
         QVERIFY2(failures.isEmpty(),qPrintable(failures.join(QStringLiteral("; "))));
+    }
+    void realWorkbookFaintFields() {
+        // Workbook pages print blanks as very light, fine dots (~10-25 levels below
+        // white). Before the faint-rule pass p.16's eleven inline blanks were all
+        // missed and p.14's lines stopped where the print was lightest.
+        const auto path=qEnvironmentVariable("LANGLERN_REAL_WORKBOOK",QStringLiteral("C:/Users/jiong/Desktop/法语/你好法语3练习册第二版.pdf"));
+        if(!QFileInfo::exists(path)) QSKIP("The real workbook is unavailable on this runner; workbook acceptance was not performed.");
+        QThread thread; auto* worker=new PdfWorker;
+        worker->moveToThread(&thread);
+        connect(worker,&PdfWorker::stopped,&thread,&QThread::quit,Qt::DirectConnection);
+        connect(&thread,&QThread::finished,worker,&QObject::deleteLater);
+        QList<PdfFrame> frames; QObject deliveryContext;
+        connect(worker,&PdfWorker::frameReady,&deliveryContext,[&](PdfFrame frame){frames.append(std::move(frame));},Qt::QueuedConnection);
+        thread.start();
+        quint64 revision=0;
+        auto fields=[&](int page,int width) {
+            PdfRequest request; request.session=1; request.revision=++revision; request.page=page;
+            request.path=path; request.width=width; request.skipPreview=true;
+            worker->submit(request);
+            QElapsedTimer timer; timer.start();
+            while(timer.elapsed()<30000) {
+                for(const auto& frame:frames) if(frame.revision==request.revision && !frame.image.isNull()) return frame.answerLines;
+                QTest::qWait(10);
+            }
+            return QList<QRectF>{};
+        };
+        QStringList failures;
+        for(int width:{800,1200}) {
+            const auto p14=fields(13,width);
+            qInfo()<<"workbook p14 width"<<width<<p14;
+            int full=0; for(const auto& r:p14) full+=r.left()<.14 && r.right()>.91;
+            if(full<12) failures<<QStringLiteral("p14@%1: %2 of 12 lines span .14-.91").arg(width).arg(full);
+            const auto p16=fields(15,width);
+            qInfo()<<"workbook p16 width"<<width<<p16;
+            int inline_=0; for(const auto& r:p16) inline_+=r.top()>.31 && r.bottom()<.48 && r.width()>.06 && r.width()<.13;
+            if(inline_<11) failures<<QStringLiteral("p16@%1: %2 of 11 inline blanks").arg(width).arg(inline_);
+        }
+        worker->shutdown();
+        QElapsedTimer timer; timer.start();
+        while(thread.isRunning() && timer.elapsed()<10000) QTest::qWait(10);
+        QVERIFY(thread.wait(1000));
+        QVERIFY2(failures.isEmpty(),qPrintable(failures.join(QStringLiteral("; "))));
+    }
+    void realWorkbookRuledBlockAnswer() {
+        // Several stacked rules are one answer: it wraps at the rule ends, Enter goes to
+        // the next rule, every text line sits on its rule, and it is deleted as a whole.
+        const auto path=qEnvironmentVariable("LANGLERN_REAL_WORKBOOK",QStringLiteral("C:/Users/jiong/Desktop/法语/你好法语3练习册第二版.pdf"));
+        if(!QFileInfo::exists(path)) QSKIP("The real workbook is unavailable on this runner; ruled-block acceptance was not performed.");
+        ShellState shell; QQmlApplicationEngine engine;
+        engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}}); engine.loadFromModule("Langlern.Shell","Main");
+        auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(window);
+        window->resize(1300,950); window->show(); QVERIFY(QTest::qWaitForWindowExposed(window));
+        shell.selectFile(QUrl::fromLocalFile(path)); QTRY_VERIFY_WITH_TIMEOUT(shell.storageReady(),30000);
+        QTRY_VERIFY_WITH_TIMEOUT(shell.pageCount()>0,30000);
+        auto settled=[&] { for(int page:shell.model().priority()) if(!shell.model().ready(page,shell.model().targetWidth(page,window->devicePixelRatio()))) return false; return true; };
+        // Diagnostic: block grouping on a range of real pages (LANGLERN_BLOCK_SURVEY=1: all).
+        const bool survey=qEnvironmentVariableIntValue("LANGLERN_BLOCK_SURVEY")==1;
+        for(int page=survey?1:9;page<=(survey?shell.pageCount():16);++page) {
+            shell.goToPage(page); QTRY_VERIFY_WITH_TIMEOUT(settled(),30000);
+            QStringList blocks;
+            for(const auto& line:shell.model().answerLines(page-1)) {
+                const auto b=shell.answerBlockAt(page-1,line.center());
+                if(b.lines>1 && qFuzzyCompare(b.first.top(),line.top())) blocks<<QStringLiteral("%1 lines @%2").arg(b.lines).arg(line.top(),0,'f',3);
+            }
+            qInfo()<<"ruled_blocks page"<<page<<blocks;
+        }
+        if(survey) { window->close(); QTRY_VERIFY(shell.shutdownComplete()); return; }
+        QCOMPARE(shell.pageCount(),66);
+        shell.goToPage(14); QTRY_VERIFY_WITH_TIMEOUT(settled(),30000);
+        const int page=13;
+        const auto g=shell.annotations()->geometry(page); QVERIFY(g.valid);
+        auto content=[&](QPointF n) { return QPointF(shell.pageLeft(page)+n.x()*shell.pageWidth(),shell.pageTop(page)+n.y()*shell.pageHeight(page)); };
+        // Exercise 2: seven rules from y ~ .40 to .57 (normalized field rects).
+        QRectF top; for(const auto& l:shell.model().answerLines(page)) if(l.top()>.38 && l.top()<.42 && l.left()<.2) top=l;
+        QVERIFY(!top.isEmpty());
+        const auto block=shell.answerBlockAt(page,top.center());
+        qInfo()<<"ruled_block"<<block.area<<block.lines<<block.pitch*g.units.height();
+        QCOMPARE(block.lines,7);
+        const double pitch=block.pitch*g.units.height();
+        QVERIFY(pitch>17 && pitch<23);
+        const auto hint=shell.answerBlankAt(content(top.center()).x(),content(top.center()).y());
+        QVERIFY(hint.height()>6*pitch/g.units.height()*shell.pageHeight(page));
+        const auto id=shell.createAnswerAt(content(top.center()).x(),content(top.center()).y()); QVERIFY(!id.isEmpty());
+        QCOMPARE(shell.annotations()->snapshot().size(),1);
+        auto note=[&]{ return shell.annotations()->snapshot().first(); };
+        QVERIFY(std::abs(note().lineSpacing-pitch)<.01);
+        QVERIFY(std::abs(note().height-(top.height()*g.units.height()+6*pitch))<.01);
+        auto* editor=find(window->contentItem(),"annotationEditor"); QVERIFY(editor); QTRY_VERIFY(editor->hasActiveFocus());
+        const QString first=QStringLiteral("La série a duré dix ans et le dernier épisode a été regardé par des millions de téléspectateurs ");
+        QGuiApplication::clipboard()->setText(first.repeated(2)); QTest::keyClick(window,Qt::Key_V,Qt::ControlModifier);
+        QTest::keyClick(window,Qt::Key_Return);
+        QGuiApplication::clipboard()->setText(QStringLiteral("Une nouvelle idée sur la ligne suivante.")); QTest::keyClick(window,Qt::Key_V,Qt::ControlModifier);
+        QTRY_VERIFY(note().text.contains(QStringLiteral("ligne suivante")));
+        // Each visual line's baseline lands on its own rule (rule = field bottom - 3 pt).
+        QTRY_VERIFY(editor->property("lineCount").toInt()>=3);
+        const int lines=editor->property("lineCount").toInt();
+        QVERIFY(lines<=7);
+        QVERIFY(std::abs(note().height-(top.height()*g.units.height()+6*pitch))<.01); // still the block, not grown
+        const double ruleTop=top.bottom()*g.units.height()-3-top.top()*g.units.height(); // rule offset inside the box
+        int position=0; QList<double> lineTops;
+        for(int i=0;i<lines;++i) {
+            QRectF r; QMetaObject::invokeMethod(editor,"positionToRectangle",Q_RETURN_ARG(QRectF,r),Q_ARG(int,position));
+            lineTops<<r.top();
+            // advance to next visual line
+            QPointF below(r.left(),r.top()+pitch*1.0+1); int next=0;
+            QMetaObject::invokeMethod(editor,"positionAt",Q_RETURN_ARG(int,next),Q_ARG(qreal,2.0),Q_ARG(qreal,below.y()));
+            if(next<=position) break; position=next;
+        }
+        qInfo()<<"ruled_line_tops"<<lineTops<<"pitch"<<pitch<<"rule offset"<<ruleTop;
+        for(int i=1;i<lineTops.size();++i) QVERIFY2(std::abs(lineTops[i]-lineTops[i-1]-pitch)<.6,qPrintable(QStringLiteral("line %1 pitch %2").arg(i).arg(lineTops[i]-lineTops[i-1])));
+        QVERIFY(lineTops.size()>=3);
+        QTest::keyClick(window,Qt::Key_Return,Qt::ControlModifier);
+        {
+            // Saved and exported exactly like the editor shows it.
+            const auto saved=AnnotationSnapshot{shell.annotations()->snapshot(),{},0};
+            AnnotationSnapshot restored; QString error;
+            QVERIFY(StorageWorker::decode(StorageWorker::encode(saved,"test"),"test",restored,error)); QCOMPARE(restored.notes,saved.notes);
+            QVERIFY(std::abs(restored.notes.first().lineSpacing-pitch)<.01);
+            const auto exported=prepareExportText({note()});
+            QList<double> baselines;
+            for(const auto& glyph:exported.notes.first().glyphs) {
+                bool known=false; for(double b:baselines) known=known||std::abs(b-glyph.baseline.y())<.5;
+                if(!known) baselines<<glyph.baseline.y();
+            }
+            std::sort(baselines.begin(),baselines.end());
+            qInfo()<<"ruled_export_baselines"<<baselines<<"rule offset"<<ruleTop;
+            QVERIFY(baselines.size()>=3);
+            for(int i=1;i<baselines.size();++i) QVERIFY2(std::abs(baselines[i]-baselines[i-1]-pitch)<.6,qPrintable(QString::number(baselines[i]-baselines[i-1])));
+            QVERIFY2(std::abs(baselines.first()-ruleTop)<2.5,"first exported line is not on the first rule");
+        }
+        // Other rules of the block offer no separate hint while the answer exists.
+        const auto third=shell.model().answerLines(page);
+        for(const auto& l:third) if(l.top()>top.top()+1.5*block.pitch && l.top()<block.area.bottom())
+            QVERIFY(shell.answerBlankAt(content(l.center()).x(),content(l.center()).y()).isEmpty());
+        const auto output=qEnvironmentVariable("LANGLERN_REAL_ARTIFACT_DIR");
+        if(!output.isEmpty()) { QTest::qWait(150); QVERIFY(window->grabWindow().save(output+"/ruled-block.png")); }
+        // Deleting removes the whole block answer at once; the hint returns.
+        shell.annotations()->select(id); QTest::keyClick(window,Qt::Key_Delete,Qt::ControlModifier);
+        QTRY_VERIFY(shell.annotations()->snapshot().isEmpty());
+        QTRY_VERIFY(!shell.answerBlankAt(content(top.center()).x(),content(top.center()).y()).isEmpty());
+        window->close(); QTRY_VERIFY(shell.shutdownComplete());
     }
     void realTextbookDashedFields() {
         const auto path=qEnvironmentVariable("LANGLERN_REAL_PDF",QStringLiteral("C:/Users/jiong/Desktop/法语/你好法语3学生用书第二版.pdf"));
@@ -466,6 +642,27 @@ private slots:
         QTest::keyClick(window,Qt::Key_Return,Qt::ControlModifier);
         QVERIFY(shell.answerBlankAt(target.center().x(),target.center().y()).isEmpty());
         QTest::mouseMove(window,scene(target.center()),20); QVERIFY(!hint->isVisible());
+        {
+            // Holding the right button erases typed answers too, with any tool, and the
+            // line offers its answer hint again afterwards.
+            auto* box=editor->parentItem()->parentItem(); QVERIFY(box);
+            const auto start=box->mapToScene(QPointF(box->width()/2,box->height()/2)).toPoint();
+            const auto committed=shell.annotations()->snapshot();
+            QTest::mousePress(window,Qt::RightButton,Qt::NoModifier,start-QPoint(30,0));
+            QTest::mouseMove(window,start,20); QTest::mouseMove(window,start+QPoint(20,0),20);
+            QTest::mouseRelease(window,Qt::RightButton,Qt::NoModifier,start+QPoint(20,0));
+            QTRY_VERIFY(shell.annotations()->snapshot().isEmpty());
+            QVERIFY(!shell.answerBlankAt(target.center().x(),target.center().y()).isEmpty());
+            QTest::mouseMove(window,scene(target.center())+QPoint(3,0),20); QTRY_VERIFY(hint->isVisible());
+            QTest::keyClick(window,Qt::Key_Z,Qt::ControlModifier);
+            QTRY_COMPARE(shell.annotations()->snapshot(),committed);
+            QTest::keyClick(window,Qt::Key_Y,Qt::ControlModifier);
+            QTRY_VERIFY(shell.annotations()->snapshot().isEmpty());
+            QTest::keyClick(window,Qt::Key_Z,Qt::ControlModifier);
+            QTRY_COMPARE(shell.annotations()->snapshot(),committed);
+            editor=find(window->contentItem(),"annotationEditor"); QVERIFY(editor);
+            QTest::mouseMove(window,scene(target.center()),20); QTRY_VERIFY(!hint->isVisible());
+        }
         if(!output.isEmpty()) QVERIFY(window->grabWindow().save(output+"/answer-shrunk.png"));
         QCOMPARE(shell.model().renderJobs,jobs);
         if(!output.isEmpty()) {
@@ -595,15 +792,37 @@ private slots:
         QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,p+QPoint(30,20));
         QCOMPARE(shell.annotations()->snapshot().first(),before);
         QCOMPARE(shell.model().renderJobs,jobs);
-        auto* moveHandle=find(note,"annotationMoveHandle"); QVERIFY(moveHandle);
-        QTest::mouseMove(window,note->mapToScene(QPointF(20,8)).toPoint()); QTRY_COMPARE(frame->opacity(),1.0);
-        const auto moveStart=moveHandle->mapToScene(QPointF(20,8)).toPoint();
+        // No visible move tab: dragging an answer that is not being edited moves it.
+        QVERIFY(!find(note,"annotationMoveHandle"));
+        auto* moveArea=find(note,"annotationMoveArea"); QVERIFY(moveArea);
+        QVERIFY(shell.annotations()->selectedId().isEmpty());
+        const auto moveStart=moveArea->mapToScene(QPointF(20,8)).toPoint();
         QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,moveStart);
         QTest::mouseMove(window,moveStart+QPoint(25,20),25);
-        shell.setZoom(.7);
+        QVERIFY(note->property("moving").toBool());
+        shell.setZoom(.7); // A layout change cancels the drag without committing.
         QTest::mouseMove(window,moveStart+QPoint(35,25),25);
         QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,moveStart+QPoint(35,25));
         QCOMPARE(shell.annotations()->snapshot().first(),before);
+        QVERIFY(!editor->hasActiveFocus());
+        QTest::qWait(250);
+        const auto dragStart=moveArea->mapToScene(QPointF(note->width()/2,note->height()/2)).toPoint();
+        QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,dragStart);
+        QTest::mouseMove(window,dragStart+QPoint(12,6),20);
+        QTest::mouseMove(window,dragStart+QPoint(40,30),20);
+        QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,dragStart+QPoint(40,30));
+        QTRY_VERIFY(shell.annotations()->snapshot().first().anchor!=before.anchor);
+        QCOMPARE(shell.annotations()->snapshot().first().text,before.text);
+        QVERIFY(!editor->hasActiveFocus());
+        const auto moved=shell.annotations()->snapshot().first();
+        shell.annotations()->undo(); QCOMPARE(shell.annotations()->snapshot().first(),before);
+        shell.annotations()->redo(); QCOMPARE(shell.annotations()->snapshot().first(),moved);
+        // A plain click edits instead, with the caret where the user clicked.
+        QTest::qWait(250);
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,moveArea->mapToScene(QPointF(note->width()-3,note->height()/2)).toPoint());
+        QTRY_VERIFY(editor->hasActiveFocus());
+        QCOMPARE(shell.annotations()->snapshot().first().anchor,moved.anchor);
+        QVERIFY(editor->property("cursorPosition").toInt()>0); // at the click, not reset to the start
         QVERIFY2(warnings.isEmpty(),qPrintable(warnings.join('\n')));
         window->close(); QTRY_VERIFY(shell.shutdownComplete());
     }
@@ -747,8 +966,12 @@ private slots:
             shell.pageTop(0)+.2*shell.pageHeight(0)-viewport->property("contentY").toDouble())).toPoint();
         QTest::mousePress(window,Qt::RightButton,Qt::NoModifier,point);
         QTest::mouseRelease(window,Qt::RightButton,Qt::NoModifier,point);
+        // The right button erases typed answers as well as strokes, even while the
+        // answer is being edited; each removal is its own undo step.
         QTRY_VERIFY(shell.annotations()->inkSnapshot().isEmpty());
-        QCOMPARE(shell.annotations()->snapshot().first(),saved);
+        QTRY_VERIFY(shell.annotations()->snapshot().isEmpty());
+        shell.annotations()->undo(); QCOMPARE(shell.annotations()->snapshot().size(),1); QCOMPARE(shell.annotations()->snapshot().first(),saved);
+        QVERIFY(shell.annotations()->inkSnapshot().isEmpty());
         shell.annotations()->undo(); QCOMPARE(shell.annotations()->inkSnapshot().size(),1);
         window->close(); QTRY_VERIFY(shell.shutdownComplete());
     }
@@ -838,13 +1061,13 @@ private slots:
         QVERIFY(QLineF(note->mapToScene(QPointF()),posF(normalizedAnchor.x(),normalizedAnchor.y())).length()*window->devicePixelRatio()<=1);
         window->resize(1000,740); QTest::qWait(250);
         QVERIFY(QLineF(note->mapToScene(QPointF()),posF(normalizedAnchor.x(),normalizedAnchor.y())).length()*window->devicePixelRatio()<=1);
-        // Re-enter existing note and move using its actual handle.
+        // Re-enter existing note; while editing, its edge moves it.
         QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,note->mapToScene(QPointF(8,8)).toPoint());
         QTRY_VERIFY(editor->hasActiveFocus());
-        auto* handle=find(window->contentItem(),QStringLiteral("annotationMoveHandle")); QVERIFY(handle);
-        const auto start=handle->mapToScene(QPointF(15,8)).toPoint();
+        auto* edge=find(note,QStringLiteral("annotationMoveEdge0")); QVERIFY(edge); QVERIFY(edge->isEnabled());
+        const auto start=edge->mapToScene(QPointF(note->width()/2,edge->height()/2)).toPoint();
         QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,start);
-        QVERIFY2(note->property("moving").toBool(),"Move handle did not receive the press");
+        QVERIFY2(note->property("moving").toBool(),"Move edge did not receive the press");
         QTest::mouseMove(window,start+QPoint(65,35),40);
         QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,start+QPoint(65,35));
         QTRY_VERIFY(shell.annotations()->snapshot().first().anchor!=anchor);

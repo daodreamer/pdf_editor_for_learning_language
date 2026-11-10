@@ -1,5 +1,9 @@
 # 依赖与许可审查
 
+## 2026-11-09 Lucide 线性图标
+
+工具栏及菜单图标改用 Lucide v0.460.0（lucide-static，unpkg 固定版本）的 26 个图标路径，ISC 许可（部分源自 Feather，MIT），允许任意使用、修改和再分发，须保留版权与许可声明：原文放在 `notices/Lucide-ISC.txt`，并加入 `notices.sha256.json`；打包脚本复制 notices 目录。SVG 元素在开发时转换为 PathSvg 路径数据嵌入 `qml/Langlern/Shell/LineIcon.qml`（圆/矩形/折线转换为等价路径，不改变图形），仍由既有 Qt Quick Shapes 渲染，改用 CurveRenderer 解析抗锯齿；不新增 QtSvg、运行库或网络依赖。下文阶段 8“原创路径、没有复制 Lucide 资源”为历史状态。
+
 ## 2026-10-19 Pocket TTS / Estelle
 
 独立项目 C++20 适配器使用 ONNX Runtime 1.23.2 CPU（MIT 及二进制 ThirdPartyNotices）、SentencePiece 0.2.1（Apache-2.0 及嵌入 protobuf-lite/abseil 通知）、SoundTouch 2.3.3（LGPL-2.1-or-later，单独可替换 DLL、源码 tar 随包）。项目适配器自身使用 MIT，不复制未单独授权的第三方导出脚本。法语 6 层模型为 Kyutai 权重的 Vincweb ONNX/INT8 转换，固定提交 `84541283b060685dbc7f9f9d8066f4b00235820c`，CC BY 4.0；Estelle 官方录音为 CC0，预计算状态源与转换方法在模型 manifest/model card 中记录。所有来源和散列见 pocket.lock.json；JSON 词表的本地格式转换保留编号、分数和 byte fallback，并注明改动。

@@ -395,6 +395,66 @@ private slots:
         QVERIFY2(warnings.isEmpty(),qPrintable(warnings.join('\n')));
         w->close(); QTRY_VERIFY(s.shutdownComplete());
     }
+    void autoModeHandwritingPrecisionAndDots() {
+        ShellState s; QQmlApplicationEngine engine; QStringList warnings;
+        connect(&engine,&QQmlEngine::warnings,&engine,[&](const QList<QQmlError>& errors){for(const auto& e:errors) warnings.append(e.toString());});
+        engine.setInitialProperties({{"shell",QVariant::fromValue(&s)}}); engine.loadFromModule("Langlern.Shell","Main");
+        QVERIFY(!engine.rootObjects().isEmpty()); auto* w=qobject_cast<QQuickWindow*>(engine.rootObjects().first()); QVERIFY(w);
+        w->show(); QVERIFY(QTest::qWaitForWindowExposed(w)); w->requestActivate(); QVERIFY(QTest::qWaitForWindowActive(w));
+        s.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/scan.pdf"));
+        QTRY_VERIFY(s.storageReady()); QTRY_VERIFY(s.annotations()->geometry(0).valid); QTRY_VERIFY(!s.busy()); s.setZoom(.6); QTRY_VERIFY(!s.busy()); QTest::qWait(300);
+        auto* viewport=find(w->contentItem(),"pdfViewport"); QVERIFY(viewport);
+        auto* input=qobject_cast<InkInput*>(find(w->contentItem(),"inkInput")); QVERIFY(input);
+        QTest::keyClick(w,Qt::Key_A,Qt::ControlModifier|Qt::ShiftModifier); QTRY_COMPARE(input->mode(),0); QTest::qWait(60);
+        // No crosshair: automatic and typing leave the system arrow (and the cursors of
+        // items below); the pen shows an ink dot, the eraser a ring, move-ink a hand.
+        QCOMPARE(input->cursor().shape(),Qt::ArrowCursor);
+        QTest::keyClick(w,Qt::Key_P,Qt::ControlModifier|Qt::ShiftModifier); QTRY_COMPARE(input->mode(),3);
+        QCOMPARE(input->cursor().shape(),Qt::BitmapCursor);
+        const auto dot=input->cursor().pixmap().toImage();
+        QVERIFY(!dot.isNull()); QCOMPARE(QColor(dot.pixelColor(dot.width()/2,dot.height()/2)).rgb(),input->inkColor().rgb());
+        QTest::keyClick(w,Qt::Key_E,Qt::ControlModifier|Qt::ShiftModifier); QTRY_COMPARE(input->mode(),4);
+        QCOMPARE(input->cursor().shape(),Qt::BitmapCursor);
+        QTest::keyClick(w,Qt::Key_M,Qt::ControlModifier|Qt::ShiftModifier); QTRY_COMPARE(input->mode(),5);
+        QCOMPARE(input->cursor().shape(),Qt::OpenHandCursor);
+        QTest::keyClick(w,Qt::Key_T,Qt::ControlModifier|Qt::ShiftModifier); QTRY_COMPARE(input->mode(),2);
+        QCOMPARE(input->cursor().shape(),Qt::ArrowCursor);
+        QTest::keyClick(w,Qt::Key_A,Qt::ControlModifier|Qt::ShiftModifier); QTRY_COMPARE(input->mode(),0); QTest::qWait(60);
+        // A letter smaller than the system drag distance (10 px on Windows) is
+        // still handwriting, and every intermediate point is kept.
+        const auto a=point(s,viewport,.3,.5);
+        const QList<QPoint> trail{{2,0},{3,2},{3,4},{2,6},{0,7},{-2,6}};
+        QTest::mousePress(w,Qt::LeftButton,Qt::NoModifier,a);
+        for(const auto& d:trail) QTest::mouseMove(w,a+d,5);
+        QTest::mouseRelease(w,Qt::LeftButton,Qt::NoModifier,a+trail.last());
+        QTRY_COMPARE(s.annotations()->inkSnapshot().size(),1);
+        QVERIFY(s.annotations()->snapshot().isEmpty());
+        QVERIFY2(s.annotations()->inkSnapshot().first().points.size()>=trail.size(),"buffered points before the start threshold were dropped");
+        // Taps during the writing rhythm are dots, including a quick double tap (ü).
+        QTest::mouseClick(w,Qt::LeftButton,Qt::NoModifier,a+QPoint(14,-6));
+        QTRY_COMPARE(s.annotations()->inkSnapshot().size(),2);
+        QTest::mouseClick(w,Qt::LeftButton,Qt::NoModifier,a+QPoint(24,-6));
+        QTest::mouseClick(w,Qt::LeftButton,Qt::NoModifier,a+QPoint(28,-6));
+        QTRY_COMPARE(s.annotations()->inkSnapshot().size(),4);
+        int dots=0; for(const auto& stroke:s.annotations()->inkSnapshot()) dots+=stroke.points.size()==1;
+        QCOMPARE(dots,3);
+        QVERIFY(s.annotations()->snapshot().isEmpty()); QVERIFY(!s.textSelection()->ready());
+        // Outside the rhythm (time or distance) a click still opens a text box.
+        QTest::qWait(1350);
+        QTest::mouseClick(w,Qt::LeftButton,Qt::NoModifier,a+QPoint(30,0));
+        QTRY_VERIFY(!s.annotations()->selectedId().isEmpty());
+        QCOMPARE(s.annotations()->inkSnapshot().size(),4);
+        s.finishTextEditing(); QTRY_VERIFY(s.annotations()->selectedId().isEmpty()); QTest::qWait(60);
+        QTest::mousePress(w,Qt::LeftButton,Qt::NoModifier,point(s,viewport,.2,.75));
+        QTest::mouseMove(w,point(s,viewport,.25,.75),5);
+        QTest::mouseRelease(w,Qt::LeftButton,Qt::NoModifier,point(s,viewport,.25,.75));
+        QTRY_COMPARE(s.annotations()->inkSnapshot().size(),5);
+        QTest::mouseClick(w,Qt::LeftButton,Qt::NoModifier,point(s,viewport,.75,.2)); // far from the last stroke
+        QTRY_VERIFY(!s.annotations()->selectedId().isEmpty());
+        QCOMPARE(s.annotations()->inkSnapshot().size(),5);
+        QVERIFY2(warnings.isEmpty(),qPrintable(warnings.join('\n')));
+        w->close(); QTRY_VERIFY(s.shutdownComplete());
+    }
     void overlapOrderAndStyles() {
         ShellState s; QQmlApplicationEngine engine;
         engine.setInitialProperties({{"shell",QVariant::fromValue(&s)}}); engine.loadFromModule("Langlern.Shell","Main");

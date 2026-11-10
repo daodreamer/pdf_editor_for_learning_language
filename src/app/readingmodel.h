@@ -46,6 +46,10 @@ public:
     qint64 cpuBytes() const;
     qint64 gpuBytes() const;
     qint64 pageBudget() const;
+    // Most pages that can be active for the current viewport and zoom, whatever the
+    // scroll position. Budgeting by this (not the live active count) keeps texture
+    // size stable while scrolling, so visible pages are never evicted and re-rendered.
+    int plannedPages() const;
     void recordDemand(int page, int width);
     quint64 lookups = 0, exactHits = 0, degradedHits = 0, misses = 0, renderJobs = 0, evictions = 0;
     ReadingConfig config;
@@ -60,6 +64,7 @@ private:
     double rowHeight(int page) const;
     struct Entry { QImage pixels; int requestedWidth = 0; bool final = false; quint64 use = 0; QList<QRectF> answerLines; };
     QList<QSizeF> sizes_;
+    double minRatio_ = 792.0 / 612.0; // shortest page height/width, for plannedPages()
     QList<bool> known_;
     QList<double> tops_;
     QList<double> rowTops_;

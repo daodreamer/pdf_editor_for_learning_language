@@ -84,11 +84,16 @@ public:
     ReadingModel& model() { return model_; }
     AnnotationModel* annotations() { return &annotations_; }
     Q_INVOKABLE bool containsPage(double x,double y) const;
-    bool interactiveContentAt(double x,double y) const;
+    Q_INVOKABLE bool interactiveContentAt(double x,double y) const;
     bool eraseTextAt(double x,double y);
+    QString textBoxAt(double x,double y) const; // topmost text answer under a content point
     Q_INVOKABLE QString createTextBox(double x,double y);
     Q_INVOKABLE QRectF answerBlankAt(double x,double y) const;
     Q_INVOKABLE QString createAnswerAt(double x,double y);
+    // Consecutive ruled lines answered as one text: normalized page area (all rules),
+    // rule pitch (normalized height) and rule count. lines==0 when nothing is there.
+    struct AnswerBlock { QRectF area; QRectF first; double pitch = 0; int lines = 0; };
+    AnswerBlock answerBlockAt(int page,QPointF normalized) const;
     Q_INVOKABLE void finishTextEditing();
     Q_INVOKABLE void commitInput();
     Q_INVOKABLE void resetInput();

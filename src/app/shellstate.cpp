@@ -437,19 +437,24 @@ bool ShellState::interactiveContentAt(double x,double y) const {
     const QPointF p((x-model_.left(page))/width,(y-model_.top(page))/height);
     const auto g=annotations_.geometry(page);if(!g.valid)return true;
     for(const auto& n:annotations_.snapshot())if(n.page==page){const auto anchor=g.pdfToDisplay.map(n.anchor);
-        if(QRectF(anchor,QSizeF(n.width/g.units.width(),n.height/g.units.height())).adjusted(-10/width,-18/height,10/width,10/height).contains(p))return true;}
+        if(QRectF(anchor,QSizeF(n.width/g.units.width(),n.height/g.units.height())).adjusted(-10/width,-10/height,10/width,10/height).contains(p))return true;}
     return false;
 }
-bool ShellState::eraseTextAt(double x,double y) {
-    if(!containsPage(x,y))return false;
+QString ShellState::textBoxAt(double x,double y) const {
+    if(!containsPage(x,y))return {};
     const int page=model_.pageAtPosition(x,y);
-    if(page<0)return false;const auto g=annotations_.geometry(page);if(!g.valid)return false;
+    if(page<0)return {};const auto g=annotations_.geometry(page);if(!g.valid)return {};
     const QPointF p((x-model_.left(page))/model_.pageWidth(),(y-model_.top(page))/model_.height(page));
     auto notes=annotations_.snapshot();std::sort(notes.begin(),notes.end(),[](const auto& a,const auto& b){return a.order>b.order;});
     for(const auto& n:notes)if(n.page==page){const auto anchor=g.pdfToDisplay.map(n.anchor);
-        if(QRectF(anchor,QSizeF(n.width/g.units.width(),n.height/g.units.height())).contains(p)){
-            focusPage(page);annotations_.select(n.id);annotations_.removeSelected();return true;}}
-    return false;
+        if(QRectF(anchor,QSizeF(n.width/g.units.width(),n.height/g.units.height())).contains(p)) return n.id;}
+    return {};
+}
+bool ShellState::eraseTextAt(double x,double y) {
+    const auto id=textBoxAt(x,y);
+    if(id.isEmpty())return false;
+    focusPage(model_.pageAtPosition(x,y));annotations_.select(id);annotations_.removeSelected();
+    return true;
 }
 void ShellState::extendTextSelection(double x,double y) {
     if (shuttingDown_ || !pageCount_ || !std::isfinite(x) || !std::isfinite(y)) return;
@@ -470,33 +475,115 @@ void ShellState::finishTextEditing() {
     emit textCommitRequested();
     annotations_.finishEditing();
 }
+ShellState::AnswerBlock ShellState::answerBlockAt(int page,QPointF point) const {
+    const auto g=annotations_.geometry(page);
+    const auto image=model_.image(page);
+    if(!g.valid || image.isNull()) return {};
+    const auto notes=annotations_.snapshot();
+    auto occupied=[&](const QRectF& line) {
+        for(const auto& n:notes) if(n.page==page) {
+            const auto rect=QRectF(g.pdfToDisplay.map(n.anchor),QSizeF(n.width/g.units.width(),n.height/g.units.height()));
+            if(rect.intersects(line)) return true;
+        }
+        return false;
+    };
+    auto lines=model_.answerLines(page);
+    std::sort(lines.begin(),lines.end(),[](const QRectF& a,const QRectF& b){ return a.top()<b.top(); });
+    int start=-1;
+    for(int i=0;i<lines.size() && start<0;++i) if(lines[i].contains(point) && !occupied(lines[i])) start=i;
+    if(start<0) return {};
+    const double pt=1/g.units.height(), ptX=1/g.units.width();
+    // A printed label just left of a rule ("1", "a)", "Nom :") marks its own question.
+    auto labelled=[&](const QRectF& line) {
+        const double rule=line.bottom()-3*pt;
+        const int x0=std::max(0,int((line.left()-22*ptX)*image.width())), x1=int((line.left()-1.5*ptX)*image.width());
+        const int y0=std::max(0,int((rule-10*pt)*image.height())), y1=std::min(image.height()-1,int((rule+pt)*image.height()));
+        auto darkIn=[&](int top,int bottom) {
+            int dark=0;
+            for(int y=std::max(0,top);y<=std::min(image.height()-1,bottom);++y) {
+                const auto* row=reinterpret_cast<const QRgb*>(image.constScanLine(y));
+                for(int x=x0;x<=x1 && x<image.width();++x) dark+=qGray(row[x])<140;
+            }
+            return dark;
+        };
+        const int band=darkIn(y0,y1);
+        if(band<4) return false;
+        // A label is text on the rule's own row; an illustration beside the rules
+        // continues well above and below it.
+        const int around=darkIn(int((rule-18*pt)*image.height()),y0-1)+darkIn(y1+1,int((rule+8*pt)*image.height()));
+        return around<=band/2;
+    };
+    // The nearest rule above/below that overlaps horizontally (skipping other columns).
+    auto neighbour=[&](int i,int step) {
+        for(int k=i+step;k>=0 && k<lines.size();k+=step)
+            if(lines[k].left()<lines[i].right() && lines[i].left()<lines[k].right() && std::abs(lines[k].top()-lines[i].top())>lines[i].height()*.5) return k;
+        return -1;
+    };
+    // Rules of one answer have nothing printed between them; a question line between
+    // two rules makes them separate answers even when aligned and evenly spaced.
+    auto clearBetween=[&](const QRectF& upper,const QRectF& lower) {
+        const double from=upper.bottom()-3*pt+2*pt, to=lower.bottom()-3*pt-2*pt;
+        const int y0=std::max(0,int(from*image.height())), y1=std::min(image.height()-1,int(to*image.height()));
+        const int x0=std::max(0,int(std::max(upper.left(),lower.left())*image.width()));
+        const int x1=std::min(image.width()-1,int(std::min(upper.right(),lower.right())*image.width()));
+        int dark=0,total=0;
+        for(int y=y0;y<=y1;++y) {
+            const auto* row=reinterpret_cast<const QRgb*>(image.constScanLine(y));
+            for(int x=x0;x<=x1;x+=2) { ++total; dark+=qGray(row[x])<160; }
+        }
+        return dark<=std::max(2,total/300);
+    };
+    double pitch=0;
+    // Same field type, aligned ends, a steady 12-40 pt pitch, still unanswered.
+    auto joins=[&](int upper,int lower,int adding) {
+        const auto& a=lines[upper]; const auto& b=lines[lower];
+        const double gap=b.top()-a.top();
+        if(std::abs(a.height()-b.height())>.5*pt || std::abs(a.left()-b.left())>.02 || std::abs(a.right()-b.right())>.02) return false;
+        if(gap<std::max(a.height(),12*pt) || gap>40*pt || occupied(lines[adding]) || !clearBetween(a,b)) return false;
+        return pitch==0 || std::abs(gap-pitch)<=pitch*.2;
+    };
+    int first=start,last=start;
+    while(!labelled(lines[first])) {
+        const int k=neighbour(first,-1);
+        if(k<0 || !joins(k,first,k)) break;
+        if(pitch==0) pitch=lines[first].top()-lines[k].top();
+        first=k;
+    }
+    for(;;) {
+        const int k=neighbour(last,1);
+        if(k<0 || labelled(lines[k]) || !joins(last,k,k)) break;
+        if(pitch==0) pitch=lines[k].top()-lines[last].top();
+        last=k;
+    }
+    AnswerBlock block;
+    block.first=lines[first];
+    block.lines=1; block.area=lines[first];
+    for(int k=first;k!=last;) { k=neighbour(k,1); block.area=block.area.united(lines[k]); ++block.lines; }
+    block.pitch=block.lines>1?(lines[last].top()-lines[first].top())/(block.lines-1):0;
+    return block;
+}
 QRectF ShellState::answerBlankAt(double x,double y) const {
     if(!containsPage(x,y)) return {};
     const int page=model_.pageAtPosition(x,y);
     const double w=model_.pageWidth(),h=model_.height(page);
-    if(model_.image(page).isNull()) return {};
     const QPointF point((x-model_.left(page))/w,(y-model_.top(page))/h);
-    const auto g=annotations_.geometry(page);
-    if(!g.valid) return {};
-    for(const auto& line:model_.answerLines(page)) {
-        if(!line.contains(point)) continue;
-        bool occupied=false;
-        for(const auto& n:annotations_.snapshot()) if(n.page==page) {
-            const auto rect=QRectF(g.pdfToDisplay.map(n.anchor),QSizeF(n.width/g.units.width(),n.height/g.units.height()));
-            if(rect.intersects(line)) { occupied=true; break; }
-        }
-        if(!occupied) return {model_.left(page)+line.x()*w,model_.top(page)+line.y()*h,line.width()*w,line.height()*h};
-    }
-    return {};
+    const auto block=answerBlockAt(page,point);
+    if(!block.lines) return {};
+    const auto& a=block.area;
+    return {model_.left(page)+a.x()*w,model_.top(page)+a.y()*h,a.width()*w,a.height()*h};
 }
 QString ShellState::createAnswerAt(double x,double y) {
-    const auto area=answerBlankAt(x,y);
-    if(area.isEmpty()) return {};
+    if(!containsPage(x,y)) return {};
     const int page=model_.pageAtPosition(x,y);
+    const QPointF point((x-model_.left(page))/model_.pageWidth(),(y-model_.top(page))/model_.height(page));
+    const auto block=answerBlockAt(page,point);
+    if(!block.lines) return {};
     finishTextEditing(); textSelection_.clear(); focusPage(page);
     const auto g=annotations_.geometry(page);
-    return annotations_.create(page,(area.x()-model_.left(page))/model_.pageWidth(),
-        (area.y()-model_.top(page))/model_.height(page),area.width()/model_.pageWidth()*g.units.width(),area.height()/model_.height(page)*g.units.height());
+    // A block of rules becomes one answer: it wraps at the rule ends and each line
+    // (wrapped or Enter-started) lands on the next rule.
+    return annotations_.create(page,block.area.x(),block.area.y(),block.area.width()*g.units.width(),
+        block.first.height()*g.units.height(),block.pitch*g.units.height(),block.lines);
 }
 QString ShellState::createTextBox(double x,double y) {
     if(shuttingDown_ || !storageReady_ || transitioning_ || !pageCount_ || !std::isfinite(x) || !std::isfinite(y)) return {};

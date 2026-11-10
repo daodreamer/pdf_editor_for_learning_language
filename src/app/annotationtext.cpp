@@ -1,4 +1,5 @@
 #include "annotationtext.h"
+#include "textstyles.h"
 #include <QTextBlock>
 #include <QTextFragment>
 #include <QTextCursor>
@@ -8,8 +9,25 @@ void AnnotationText::setDocument(QQuickTextDocument* document) {
     if(document_==document) return;
     if(document_) disconnect(document_->textDocument(),nullptr,this,nullptr);
     document_=document;
-    if(document_) connect(document_->textDocument(),&QTextDocument::contentsChanged,this,[this]{if(!restoring_)emit changed();});
+    if(document_) connect(document_->textDocument(),&QTextDocument::contentsChanged,this,[this]{
+        if(restoring_) return;
+        applySpacing(); // a pasted or Enter-started paragraph keeps the rule pitch
+        emit changed();
+    });
+    applySpacing();
     emit documentChanged();
+}
+void AnnotationText::setLineSpacing(double spacing) {
+    if(!std::isfinite(spacing) || spacing<0 || spacing==lineSpacing_) return;
+    lineSpacing_=spacing; applySpacing(); emit lineSpacingChanged();
+}
+void AnnotationText::applySpacing() {
+    if(!document_ || !(lineSpacing_>0)) return;
+    // Formatting only, never reported as a user edit. Paragraphs created by Enter
+    // inherit the format, so while typing this changes nothing (keeping undo intact).
+    const bool wasRestoring=restoring_; restoring_=true;
+    applyLineSpacing(*document_->textDocument(),lineSpacing_);
+    restoring_=wasRestoring;
 }
 QString AnnotationText::plainText() const { return document_?document_->textDocument()->toPlainText():QString(); }
 QVariantList AnnotationText::styles() const {
@@ -51,5 +69,6 @@ void AnnotationText::restore(const QVariantList& values) {
     restoring_=true;
     QTextCursor cursor(document_->textDocument()); cursor.select(QTextCursor::Document); cursor.setCharFormat(QTextCharFormat());
     applyTextStyles(*document_->textDocument(),decoded);
+    applyLineSpacing(*document_->textDocument(),lineSpacing_);
     document_->textDocument()->clearUndoRedoStacks(); restoring_=false;
 }

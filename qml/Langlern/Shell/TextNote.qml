@@ -18,6 +18,7 @@ Item {
     required property real noteFontSize
     required property string noteText
     required property var noteStyles
+    required property real noteLineSpacing
     required property string noteFamily
     required property color noteColor
     required property size notePageUnits
@@ -43,6 +44,7 @@ Item {
         document: editor.textDocument
         baseColor: note.noteColor
         baseSize: note.noteFontSize
+        lineSpacing: note.noteLineSpacing
         onChanged: editor.scheduleSync()
     }
     Component.onCompleted: restoreStyles()
@@ -64,7 +66,7 @@ Item {
     property real viewportX: 0
     property real viewportY: 0
     property rect resizePreview
-    readonly property bool showFrame: selected || hover.hovered || resizing || moveMouse.pressed
+    readonly property bool showFrame: selected || hover.hovered || resizing || pressMoving
     function cancelAdjustment(): void {
         resizing = false
         moving = false
@@ -191,47 +193,105 @@ Item {
         acceptedModifiers: Qt.AltModifier
         onTapped: note.shell.annotations.cycleMark(note.noteId)
     }
-    Rectangle {
-        objectName: "annotationMoveHandle"
-        visible: note.showFrame || opacity > 0
-        enabled: editor.text.length > 0 && !note.marking
-        opacity: frame.opacity
-        width: Math.min(64, note.width)
-        height: 16
-        y: -height
-        color: "#397bd2"
-        Text { anchors.centerIn: parent; text: qsTr("移动"); color: "white"; font.pixelSize: 11 }
+    // Moving follows intent instead of a visible handle. While the answer is not
+    // being edited, dragging anywhere on it moves it and a plain click places the
+    // caret where clicked. While editing, drags inside select text and the box
+    // edge (move cursor on hover) moves it. Corners remain resize handles.
+    readonly property bool movable: editor.text.length > 0 && !marking
+    readonly property bool pressMoving: moveZones.anyPressed
+    function placeCaret(item: Item, x: real, y: real, word: bool): void {
+        const p = item.mapToItem(editor, x, y)
+        editor.forceActiveFocus()
+        editor.cursorPosition = editor.positionAt(p.x, p.y)
+        if (word) editor.selectWord()
+    }
+    Item {
+        id: moveZones
+        anchors.fill: parent
+        readonly property bool anyPressed: bodyZone.pressed || edgeRepeater.pressedCount > 0
+        readonly property real edge: 4
         MouseArea {
-            id: moveMouse
+            id: bodyZone
+            objectName: "annotationMoveArea"
             anchors.fill: parent
+            enabled: note.movable && !note.selected
             preventStealing: true
-            cursorShape: Qt.SizeAllCursor
+            cursorShape: note.moving ? Qt.ClosedHandCursor : Qt.IBeamCursor
             property point start
+            property bool dragged: false
             onActiveFocusChanged: if (!activeFocus && note.moving) note.cancelAdjustment()
             onPressed: function(mouse) {
-                note.shell.finishTextEditing()
-                forceActiveFocus()
-                note.moving = true
                 start = mapToItem(note.parent, mouse.x, mouse.y)
+                dragged = false
             }
             onPositionChanged: function(mouse) {
-                if (!pressed || !note.moving) return
+                if (!pressed) return
                 const p = mapToItem(note.parent, mouse.x, mouse.y)
-                note.dragOffset = Qt.point(p.x - start.x, p.y - start.y)
+                if (!dragged && Math.hypot(p.x - start.x, p.y - start.y) >= Application.styleHints.startDragDistance / 2) {
+                    dragged = true
+                    note.shell.finishTextEditing()
+                    forceActiveFocus()
+                    note.moving = true
+                }
+                if (note.moving) note.dragOffset = Qt.point(p.x - start.x, p.y - start.y)
             }
-            onReleased: {
-                if (!note.moving) { if (activeFocus) note.editingFinished(); return }
-                const x = note.noteAnchor.x + note.dragOffset.x / note.pageWidth
-                const y = note.noteAnchor.y + note.dragOffset.y / note.pageHeight
-                note.dragOffset = Qt.point(0, 0)
-                note.moving = false
-                note.shell.annotations.move(note.noteId, x, y)
-                note.editingFinished()
+            onReleased: function(mouse) {
+                if (note.moving) note.commitMove()
+                else if (!dragged) note.placeCaret(bodyZone, mouse.x, mouse.y, false)
             }
+            onDoubleClicked: function(mouse) { note.placeCaret(bodyZone, mouse.x, mouse.y, true) }
             onCanceled: note.cancelAdjustment()
-            Keys.onEscapePressed: { note.cancelAdjustment(); note.editingFinished() }
-            Accessible.name: qsTr("移动文字答案")
+            Keys.onEscapePressed: note.cancelAdjustment()
+            Accessible.name: qsTr("编辑或拖动文字答案")
         }
+        Repeater {
+            id: edgeRepeater
+            property int pressedCount: 0
+            model: 4 // top, right, bottom, left
+            delegate: MouseArea {
+                id: edgeZone
+                required property int index
+                objectName: "annotationMoveEdge" + index
+                readonly property bool horizontal: index % 2 === 0
+                x: index === 1 ? note.width - moveZones.edge : index === 3 ? -moveZones.edge : 0
+                y: index === 2 ? note.height - moveZones.edge : index === 0 ? -moveZones.edge : 0
+                width: horizontal ? note.width : 2 * moveZones.edge
+                height: horizontal ? 2 * moveZones.edge : note.height
+                enabled: note.movable && note.selected
+                preventStealing: true
+                cursorShape: Qt.SizeAllCursor
+                property point start
+                onPressedChanged: edgeRepeater.pressedCount += pressed ? 1 : -1
+                onActiveFocusChanged: if (!activeFocus && note.moving) note.cancelAdjustment()
+                onPressed: function(mouse) {
+                    note.shell.finishTextEditing()
+                    forceActiveFocus()
+                    note.moving = true
+                    start = mapToItem(note.parent, mouse.x, mouse.y)
+                }
+                onPositionChanged: function(mouse) {
+                    if (!pressed || !note.moving) return
+                    const p = mapToItem(note.parent, mouse.x, mouse.y)
+                    note.dragOffset = Qt.point(p.x - start.x, p.y - start.y)
+                }
+                onReleased: {
+                    if (note.moving) note.commitMove()
+                    else if (activeFocus) note.editingFinished()
+                }
+                onCanceled: note.cancelAdjustment()
+                Keys.onEscapePressed: { note.cancelAdjustment(); note.editingFinished() }
+                Accessible.name: qsTr("移动文字答案")
+            }
+        }
+    }
+    function commitMove(): void {
+        const x = noteAnchor.x + dragOffset.x / pageWidth
+        const y = noteAnchor.y + dragOffset.y / pageHeight
+        const changed = dragOffset.x !== 0 || dragOffset.y !== 0
+        dragOffset = Qt.point(0, 0)
+        moving = false
+        if (changed) shell.annotations.move(noteId, x, y)
+        editingFinished()
     }
     Repeater {
         model: 4

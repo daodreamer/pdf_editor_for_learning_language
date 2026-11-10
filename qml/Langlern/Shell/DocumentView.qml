@@ -42,7 +42,7 @@ ColumnLayout {
     readonly property bool answerHintsEnabled: !marking && !reading && (inputMode === 0 || inputMode === 2) && shell.storageReady
     onAnswerHintsEnabledChanged: updateAnswerHint()
     function updateAnswerHint(): void {
-        if (!answerHintsEnabled || !answerHover.hovered || viewport.moving || shell.annotations.gestureActive() || inkInput.selectingText) { answerHint = Qt.rect(0, 0, 0, 0); return }
+        if (!answerHintsEnabled || !answerHover.hovered || viewport.moving || wheelGlide.running || shell.annotations.gestureActive() || inkInput.selectingText) { answerHint = Qt.rect(0, 0, 0, 0); return }
         const p = viewport.contentItem.mapFromItem(answerHover.parent, answerHover.point.position.x, answerHover.point.position.y)
         answerHint = shell.answerBlankAt(p.x, p.y)
     }
@@ -72,7 +72,12 @@ ColumnLayout {
         function report(): void {
             view.shell.updateViewport(contentY, height, width, renderDpr)
         }
-        onContentYChanged: { view.answerHint = Qt.rect(0, 0, 0, 0); if (!viewportTimer.running) viewportTimer.start() }
+        onContentYChanged: {
+            view.answerHint = Qt.rect(0, 0, 0, 0)
+            if (!viewportTimer.running) viewportTimer.start()
+            // Scrollbar drags, page jumps and flicks take over from wheel smoothing.
+            if (wheelGlide.running && !wheelGlide.writing) wheelGlide.stop()
+        }
         onContentXChanged: view.answerHint = Qt.rect(0, 0, 0, 0)
         onWidthChanged: viewportTimer.restart()
         onHeightChanged: viewportTimer.restart()
@@ -143,6 +148,72 @@ ColumnLayout {
                 }
             }
         }
+        // Wheel scrolling with speed detection: slow notches move a modest step,
+        // a fast spin ramps each notch up towards a screen so pages flip quickly.
+        // Motion eases towards the target every frame, so it never jumps.
+        WheelHandler {
+            id: wheelScroll
+            objectName: "wheelScroll"
+            acceptedModifiers: Qt.NoModifier
+            target: null
+            property real lastNotch: 0
+            property real averageInterval: 260 // ms between notches, smoothed
+            property real boost: 1
+            property int direction: 0
+            readonly property real calmRate: 4 // notches/s at or below which steps stay at base size
+            readonly property real baseStep: Math.max(90, Math.min(160, viewport.height * 0.16))
+            readonly property real maxStep: Math.max(baseStep, viewport.height * 0.9)
+            onWheel: function(event) {
+                const angle = event.angleDelta.y
+                if (angle === 0 && event.pixelDelta.y === 0) { event.accepted = false; return } // horizontal: Flickable
+                const highResolution = event.pixelDelta.y !== 0 || angle % 120 !== 0
+                if (highResolution) {
+                    // Touchpads and free-spinning wheels already deliver smooth deltas.
+                    const delta = event.pixelDelta.y !== 0 ? event.pixelDelta.y : angle / 120 * baseStep
+                    wheelGlide.jump(-delta)
+                    boost = 1
+                    event.accepted = true
+                    return
+                }
+                const now = Date.now()
+                const interval = now - lastNotch
+                const dir = angle > 0 ? -1 : 1
+                lastNotch = now
+                // Speed is the smoothed notch rate; a pause or reversal starts calm again.
+                averageInterval = dir !== direction || interval > 260 ? 260 : averageInterval * 0.5 + Math.max(8, interval) * 0.5
+                boost = Math.max(1, Math.min(maxStep / baseStep, 1 + (1000 / averageInterval - calmRate) * 0.18))
+                if (dir !== direction) wheelGlide.settle()
+                direction = dir
+                wheelGlide.glide(dir * Math.abs(angle / 120) * Math.min(maxStep, baseStep * boost))
+                event.accepted = true
+            }
+        }
+        FrameAnimation {
+            id: wheelGlide
+            property real target: 0
+            property bool writing: false
+            readonly property real timeConstant: 0.075 // seconds; ~95% of the way in 0.22 s
+            function bounded(y: real): real { return Math.max(0, Math.min(viewport.contentHeight - viewport.height, y)) }
+            function settle(): void { target = viewport.contentY }
+            function glide(delta: real): void {
+                if (!running) target = viewport.contentY
+                target = bounded(target + delta)
+                if (target !== viewport.contentY) { viewport.cancelFlick(); start() }
+            }
+            function jump(delta: real): void {
+                stop()
+                viewport.cancelFlick()
+                viewport.contentY = bounded(viewport.contentY + delta)
+            }
+            onTriggered: {
+                const remaining = target - viewport.contentY
+                const next = Math.abs(remaining) < 0.5 ? target : viewport.contentY + remaining * (1 - Math.exp(-frameTime / timeConstant))
+                writing = true
+                viewport.contentY = next
+                writing = false
+                if (next === target) stop()
+            }
+        }
         WheelHandler {
             acceptedModifiers: Qt.ControlModifier
             onWheel: function(event) {
@@ -161,7 +232,9 @@ ColumnLayout {
             height: viewport.height
             acceptedButtons: Qt.LeftButton
             preventStealing: true
-            cursorShape: view.inputMode === 2 ? Qt.IBeamCursor : Qt.ArrowCursor
+            // Text cursor in select/type modes; otherwise the default arrow (pen,
+            // eraser and move-ink cursors come from InkInput).
+            cursorShape: view.regionSelection ? Qt.CrossCursor : (view.inputMode === 1 || view.inputMode === 2) ? Qt.IBeamCursor : undefined
             property bool dragging: false
             property bool selecting: false
             property point origin

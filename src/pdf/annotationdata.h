@@ -26,6 +26,9 @@ struct TextAnnotation {
     double minimumHeight = 24;
     QList<TextStyle> styles;
     double maximumWidth = 0; // Optional automatic width cap, in PDF units; 0 uses the page edge.
+    // Ruled multi-line answer: fixed baseline pitch in PDF units matching the printed
+    // rules, so each wrapped or Enter-started line lands on the next rule. 0 = font default.
+    double lineSpacing = 0;
     bool operator==(const TextAnnotation&) const = default;
 };
 struct InkStroke {

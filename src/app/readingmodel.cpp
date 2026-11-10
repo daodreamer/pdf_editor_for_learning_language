@@ -64,6 +64,9 @@ void ReadingModel::setDoublePage(bool enabled) {
     const int anchor=pageAt(y_);doublePage_=enabled;updateWidth();rebuild(anchor,0);
 }
 void ReadingModel::rebuild(int anchor, double fraction) {
+    minRatio_ = std::numeric_limits<double>::max();
+    for (int p=0;p<count();++p) minRatio_ = std::min(minRatio_, ratio(p));
+    if (!count()) minRatio_ = 792.0 / 612.0;
     double top = ReadingConfig::gap;
     tops_.resize(count());
     rowTops_.clear();
@@ -141,7 +144,17 @@ QList<int> ReadingModel::priority() const {
     });
     return pages;
 }
-qint64 ReadingModel::pageBudget() const { return std::max(qint64(4), config.gpuBytes / std::max(qint64(1),qint64(active_.size()))); }
+int ReadingModel::plannedPages() const {
+    if (!count()) return 1;
+    const double row = std::max(1.0, pageWidth_ * minRatio_) + ReadingConfig::gap;
+    // Partly visible rows at both edges, plus the prefetched neighbour rows.
+    const int rows = int(std::floor(viewHeight_ / row)) + 2 + 2 * ReadingConfig::neighbors;
+    return std::clamp(rows * columns(), 1, count());
+}
+qint64 ReadingModel::pageBudget() const {
+    const qint64 pages = std::max<qint64>(plannedPages(), active_.size());
+    return std::max(qint64(4), config.gpuBytes / pages);
+}
 int ReadingModel::targetWidth(int page, double dpr) const {
     const double r = ratio(page);
     const double cap = std::min({double(ReadingConfig::maxDimension), ReadingConfig::maxDimension/r,
@@ -165,6 +178,16 @@ QList<QRectF> ReadingModel::answerLines(int p) const {
 }
 void ReadingModel::put(int p,QImage image,int width,bool final,QList<QRectF> lines,bool linesReady) {
     if (image.isNull() || image.sizeInBytes() > pageBudget()) return;
+    if (!final) {
+        // Never let a low-resolution preview replace a sharp page that is already
+        // shown (it would read as the page flashing/refreshing); keep it until the
+        // new final render arrives.
+        const auto it = cache_.find(p);
+        if (it != cache_.end() && it->final && !it->pixels.isNull() && it->pixels.sizeInBytes() <= pageBudget()) {
+            it->use = ++tick_;
+            return;
+        }
+    }
     if(!linesReady) lines=answerLines(p);
     const auto cap=config.cpuBytes/(2*std::max(qsizetype(1),active_.size())*qint64(sizeof(QRectF)));
     if(lines.size()>cap) lines.resize(qsizetype(cap));

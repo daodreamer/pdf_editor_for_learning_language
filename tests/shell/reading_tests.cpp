@@ -7,6 +7,9 @@
 #include <QTimer>
 #include <QFile>
 #include <QDir>
+#include <QFileInfo>
+#include <QSet>
+#include <QWheelEvent>
 #include <QPdfWriter>
 #include <QPainter>
 #include <QPageSize>
@@ -101,6 +104,122 @@ private slots:
         QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,next->mapToScene(QPointF(next->width()/2,next->height()/2)).toPoint());QCOMPARE(s.currentPage(),3);
         QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,previous->mapToScene(QPointF(previous->width()/2,previous->height()/2)).toPoint());QCOMPARE(s.currentPage(),1);
         QVERIFY2(warnings.isEmpty(),qPrintable(warnings.join('\n')));window->close();QTRY_VERIFY(s.shutdownComplete());
+    }
+    void wheelScrollAcceleratesAndGlides() {
+        ShellState s;QQmlApplicationEngine engine;QStringList warnings;
+        connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError>& errors){for(const auto& e:errors)warnings.append(e.toString());});
+        engine.setInitialProperties({{"shell",QVariant::fromValue(&s)}});engine.loadFromModule("Langlern.Shell","Main");
+        auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));QVERIFY(window);
+        window->resize(1200,800);window->show();QVERIFY(QTest::qWaitForWindowExposed(window));
+        const auto find=[](auto&& self,QQuickItem* item,const QString& name)->QQuickItem*{if(item->objectName()==name)return item;for(auto* child:item->childItems())if(auto* found=self(self,child,name))return found;return nullptr;};
+        s.selectFile(QUrl::fromLocalFile(fixture));QTRY_VERIFY(s.storageReady());
+        QQuickItem* viewport=nullptr;QTRY_VERIFY((viewport=find(find,window->contentItem(),"pdfViewport")));
+        s.setZoom(2);QTRY_VERIFY(!s.busy());QTest::qWait(200);
+        const auto y=[&]{return viewport->property("contentY").toDouble();};
+        const auto setY=[&](double v){viewport->setProperty("contentY",v);QTest::qWait(30);};
+        const QPointF at=viewport->mapToScene(QPointF(viewport->width()/2,viewport->height()/2));
+        const auto wheel=[&](QPoint angle,QPoint pixels=QPoint()){
+            QWheelEvent e(at,window->mapToGlobal(at),pixels,angle,Qt::NoButton,Qt::NoModifier,Qt::NoScrollPhase,false);
+            QGuiApplication::sendEvent(window,&e);
+        };
+        const auto settle=[&]{double last=-1;QElapsedTimer t;t.start();while(t.elapsed()<2000){QTest::qWait(40);if(std::abs(y()-last)<.01)break;last=y();}};
+        QVERIFY(viewport->property("contentHeight").toDouble()>viewport->height()*12);
+        setY(0);
+        // One notch glides: intermediate positions are visible, no instant jump.
+        wheel({0,-120});
+        QList<double> samples;QElapsedTimer t;t.start();
+        while(t.elapsed()<400){QTest::qWait(10);samples.append(y());}
+        settle();
+        const double notch=y();
+        QVERIFY2(notch>=90 && notch<=161,qPrintable(QString::number(notch)));
+        bool intermediate=false;for(double v:samples)intermediate|=v>2 && v<notch-2;
+        QVERIFY2(intermediate,"wheel step jumped instead of gliding");
+        // Slow, deliberate notches stay small.
+        setY(0);
+        for(int i=0;i<5;++i){wheel({0,-120});QTest::qWait(300);}
+        settle();const double slow=y();
+        // A fast spin flips pages: the same five notches travel much farther.
+        setY(0);
+        for(int i=0;i<5;++i){wheel({0,-120});QTest::qWait(20);}
+        settle();const double fast=y();
+        // A sustained fast spin reaches the per-notch cap of ~0.9 screen.
+        setY(0);
+        for(int i=0;i<12;++i){wheel({0,-120});QTest::qWait(25);}
+        settle();const double spin=y();
+        QVERIFY2(spin>5*viewport->height(),qPrintable(QString::number(spin)));
+        qInfo()<<"wheel_notch"<<notch<<"slow5"<<slow<<"fast5"<<fast<<"spin12"<<spin<<"viewport"<<viewport->height();
+        QVERIFY2(fast>slow*2,qPrintable(QStringLiteral("fast %1 slow %2").arg(fast).arg(slow)));
+        QVERIFY(fast<=5*viewport->height()*0.9+1);
+        // Reversing cancels the remaining glide and heads back immediately.
+        setY(3000);
+        for(int i=0;i<4;++i){wheel({0,-120});QTest::qWait(15);}
+        const double turning=y();wheel({0,120});settle();
+        QVERIFY2(y()<turning,qPrintable(QStringLiteral("%1 -> %2").arg(turning).arg(y())));
+        // Touchpad pixel deltas follow the fingers exactly, without glide.
+        setY(500);wheel({0,-37},{0,-37});QCOMPARE(y(),537.0);
+        QVERIFY2(warnings.isEmpty(),qPrintable(warnings.join('\n')));
+        window->close();QTRY_VERIFY(s.shutdownComplete());
+    }
+    void realTextbookScrollContinuity_data() {
+        QTest::addColumn<double>("zoom");QTest::addColumn<QSize>("size");
+        QTest::newRow("fit-1400x950")<<1.0<<QSize(1400,950);
+        QTest::newRow("zoom60-1400x950")<<.6<<QSize(1400,950);
+        QTest::newRow("zoom40-1700x1000")<<.4<<QSize(1700,1000);
+        QTest::newRow("zoom150-1400x950")<<1.5<<QSize(1400,950);
+    }
+    void realTextbookScrollContinuity() {
+        QFETCH(double,zoom);QFETCH(QSize,size);
+        // Steady wheel-like scrolling must never blank, downgrade or jump a page the
+        // user can see; those read as the page "refreshing".
+        const auto path=qEnvironmentVariable("LANGLERN_REAL_PDF",QStringLiteral("C:/Users/jiong/Desktop/法语/你好法语3学生用书第二版.pdf"));
+        if(!QFileInfo::exists(path)) QSKIP("The configured real textbook is unavailable on this runner; real-PDF scrolling was not performed.");
+        ShellState s;QQmlApplicationEngine engine;QStringList warnings;
+        connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError>& errors){for(const auto& e:errors)warnings.append(e.toString());});
+        engine.setInitialProperties({{"shell",QVariant::fromValue(&s)}});engine.loadFromModule("Langlern.Shell","Main");
+        auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));QVERIFY(window);
+        window->resize(size);window->show();QVERIFY(QTest::qWaitForWindowExposed(window));
+        const auto find=[](auto&& self,QQuickItem* item,const QString& name)->QQuickItem*{if(item->objectName()==name)return item;for(auto* child:item->childItems())if(auto* found=self(self,child,name))return found;return nullptr;};
+        s.selectFile(QUrl::fromLocalFile(path));QTRY_VERIFY_WITH_TIMEOUT(s.storageReady(),30000);
+        QQuickItem* viewport=nullptr;QTRY_VERIFY((viewport=find(find,window->contentItem(),"pdfViewport")));
+        QTRY_COMPARE(s.pageCount(),153);s.setZoom(zoom);s.goToPage(20);
+        QTRY_VERIFY_WITH_TIMEOUT(!s.busy(),30000);
+        const double dpr=window->devicePixelRatio();
+        int blank=0,downgraded=0,jumps=0,unrenderedSteps=0,visibleUpgrades=0;
+        QHash<int,int> shown; // page -> widest final pixels seen while visible
+        QHash<int,qint64> lastKey; QSet<int> previewSeen;
+        const auto jobs=s.model().renderJobs;
+        // Start while page metadata may still be arriving, then keep going.
+        for(int step=0;step<600;++step) {
+            const double before=viewport->property("contentY").toDouble();
+            const double wanted=before+30;
+            viewport->setProperty("contentY",wanted);
+            QTest::qWait(8);
+            const double after=viewport->property("contentY").toDouble();
+            if(std::abs(after-wanted)>1 && wanted<viewport->property("contentHeight").toDouble()-viewport->height()) {
+                ++jumps; qInfo()<<"scroll_jump step"<<step<<"wanted"<<wanted<<"got"<<after;
+            }
+            const int first=s.model().pageAt(after),last=s.model().pageAt(after+viewport->height());
+            for(int p=first;p<=last;++p) {
+                const auto image=s.model().image(p);
+                if(image.isNull()) { ++unrenderedSteps; if(shown.contains(p)) { ++blank; qInfo()<<"blank_visible page"<<p+1<<"step"<<step; } continue; }
+                const bool sharp=s.model().ready(p,s.model().targetWidth(p,dpr));
+                if(!sharp) previewSeen.insert(p);
+                else if(previewSeen.contains(p) && lastKey.value(p)!=image.cacheKey()) { ++visibleUpgrades; previewSeen.remove(p); }
+                lastKey[p]=image.cacheKey();
+                if(s.model().ready(p,s.model().targetWidth(p,dpr)) ) {
+                    if(image.width()<shown.value(p,0)) { ++downgraded; qInfo()<<"downgraded page"<<p+1<<image.width()<<"<"<<shown.value(p); }
+                    shown[p]=std::max(shown.value(p,0),image.width());
+                } else if(shown.contains(p) && image.width()<shown.value(p)) {
+                    ++downgraded; qInfo()<<"preview_over_final page"<<p+1<<image.width()<<"<"<<shown.value(p)<<"step"<<step;
+                }
+            }
+        }
+        qInfo()<<"scroll_visible_quality unrendered_page_steps"<<unrenderedSteps<<"blur_to_sharp_swaps"<<visibleUpgrades;
+        qInfo()<<"scroll_continuity blank"<<blank<<"downgraded"<<downgraded<<"jumps"<<jumps
+            <<"render_jobs"<<s.model().renderJobs-jobs<<"pages_seen"<<shown.size()<<"dpr"<<dpr;
+        QCOMPARE(jumps,0);QCOMPARE(blank,0);QCOMPARE(downgraded,0);
+        QVERIFY2(warnings.isEmpty(),qPrintable(warnings.join('\n')));
+        window->close();QTRY_VERIFY(s.shutdownComplete());
     }
     void doublePageShortLastSpreadKeepsTarget() {
         const auto path=caseWorkspace->filePath("landscape.pdf");
