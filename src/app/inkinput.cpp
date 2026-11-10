@@ -90,7 +90,11 @@ void InkInput::updateToolCursor() {
     painter.setRenderHint(QPainter::Antialiasing);
     const QRectF r((box-diameter)/2,(box-diameter)/2,diameter,diameter);
     if(mode_==3) {
-        painter.setPen(QPen(QColor(255,255,255,235),1.5)); // halo keeps dark ink visible on dark pages
+        // White halo behind (keeps dark ink visible on dark pages), then a solid dot
+        // of the exact ink colour: an outline drawn on the dot would wash out its
+        // centre when the dot is only a few pixels wide.
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(255,255,255,235)); painter.drawEllipse(r.adjusted(-1.5,-1.5,1.5,1.5));
         painter.setBrush(color_); painter.drawEllipse(r);
     } else {
         painter.setBrush(Qt::NoBrush);
@@ -105,7 +109,7 @@ void InkInput::setInkWidth(double width) { if(width_!=width) { cancel(); width_=
 void InkInput::cancel() { autoWordTimer_.stop();if(shell_) shell_->annotations()->cancelGesture(); page_=-1; tablet_=false;autoPending_=false;autoTrail_.clear(); rightErasing_=false; if(selectingText_){selectingText_=false;emit textGestureChanged();} }
 bool InkInput::eraseTextUnder(QPointF p) {
     if(!shell_) return false;
-    const auto id=shell_->textBoxAt(p.x()+contentX_,p.y()+contentY_);
+    const auto id=shell_->textBoxAt(p.x()+contentX_,p.y()+contentY_,AnnotationConfig::eraserPixels);
     if(id.isEmpty() || pendingTextErase_.contains(id)) return false;
     // The box may be the focused editor: delete it after this event has been
     // dispatched, never from inside the window's event filter.

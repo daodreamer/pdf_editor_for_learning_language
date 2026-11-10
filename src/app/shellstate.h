@@ -86,7 +86,8 @@ public:
     Q_INVOKABLE bool containsPage(double x,double y) const;
     Q_INVOKABLE bool interactiveContentAt(double x,double y) const;
     bool eraseTextAt(double x,double y);
-    QString textBoxAt(double x,double y) const; // topmost text answer under a content point
+    // Topmost text answer under a content point, or within tolerance (logical px).
+    QString textBoxAt(double x,double y,double tolerance=0) const;
     Q_INVOKABLE QString createTextBox(double x,double y);
     Q_INVOKABLE QRectF answerBlankAt(double x,double y) const;
     Q_INVOKABLE QString createAnswerAt(double x,double y);

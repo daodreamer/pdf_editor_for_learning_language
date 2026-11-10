@@ -440,18 +440,20 @@ bool ShellState::interactiveContentAt(double x,double y) const {
         if(QRectF(anchor,QSizeF(n.width/g.units.width(),n.height/g.units.height())).adjusted(-10/width,-10/height,10/width,10/height).contains(p))return true;}
     return false;
 }
-QString ShellState::textBoxAt(double x,double y) const {
+QString ShellState::textBoxAt(double x,double y,double tolerance) const {
     if(!containsPage(x,y))return {};
     const int page=model_.pageAtPosition(x,y);
     if(page<0)return {};const auto g=annotations_.geometry(page);if(!g.valid)return {};
     const QPointF p((x-model_.left(page))/model_.pageWidth(),(y-model_.top(page))/model_.height(page));
     auto notes=annotations_.snapshot();std::sort(notes.begin(),notes.end(),[](const auto& a,const auto& b){return a.order>b.order;});
     for(const auto& n:notes)if(n.page==page){const auto anchor=g.pdfToDisplay.map(n.anchor);
-        if(QRectF(anchor,QSizeF(n.width/g.units.width(),n.height/g.units.height())).contains(p)) return n.id;}
+        const double dx=tolerance/model_.pageWidth(),dy=tolerance/model_.height(page);
+        if(QRectF(anchor,QSizeF(n.width/g.units.width(),n.height/g.units.height())).adjusted(-dx,-dy,dx,dy).contains(p)) return n.id;}
     return {};
 }
 bool ShellState::eraseTextAt(double x,double y) {
-    const auto id=textBoxAt(x,y);
+    // The eraser acts within its radius, for typed answers as for strokes.
+    const auto id=textBoxAt(x,y,AnnotationConfig::eraserPixels);
     if(id.isEmpty())return false;
     focusPage(model_.pageAtPosition(x,y));annotations_.select(id);annotations_.removeSelected();
     return true;
