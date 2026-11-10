@@ -221,7 +221,11 @@ private slots:
                 QVERIFY(shot.copy(pixels).save(QDir(output).filePath(QString("menu-%1-%2.png").arg(QString::fromLatin1(QTest::currentDataTag())).arg(i))));
             }
             QTest::keyClick(window,Qt::Key_Down);QTRY_VERIFY(menu->property("currentIndex").toInt()>=0);
-            QTest::keyClick(window,Qt::Key_Escape);QTRY_VERIFY(!menu->property("visible").toBool());
+            const auto focusName=[&]{ auto* f=window->activeFocusItem(); return f?QString(f->metaObject()->className())+"/"+f->objectName():QStringLiteral("none"); };
+            qInfo()<<"menu_step"<<i<<"window"<<window->size()<<"active"<<window->isActive()<<"focus"<<focusName();
+            QTest::keyClick(window,Qt::Key_Escape);
+            QTRY_VERIFY2(!menu->property("visible").toBool(),qPrintable(QStringLiteral("step %1: menu still visible, opened=%2 focus=%3 active=%4")
+                .arg(i).arg(menu->property("opened").toBool()).arg(focusName()).arg(window->isActive())));
         }
         click(button);QTRY_VERIFY(menu->property("opened").toBool());
         auto* doublePage=window->findChild<QQuickItem*>("menuDoublePage");QVERIFY(doublePage);

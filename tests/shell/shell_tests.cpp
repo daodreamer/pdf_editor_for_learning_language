@@ -144,15 +144,18 @@ private slots:
         QTRY_VERIFY(shell.sessionId()!=beforeReplacement && shell.selectedUrl()==originalUrl);
         QTRY_VERIFY(!shell.busy());
         QTRY_VERIFY(shell.storageReady());
-        bool replaced = false;
+        bool replaced = false, armed = false;
         // Replace the document while the large render is in flight. A preview no
-        // longer replaces the sharp page already shown, so key off the busy state.
+        // longer replaces the sharp page already shown, so key off the busy state
+        // once the large render has been requested. Switch documents after the
+        // signal returns, never re-entrantly from inside the old session's update.
         const auto interception = connect(&shell, &ShellState::imageChanged, &shell, [&] {
-            if (!replaced && !shell.pageImage().isNull() && shell.busy()) {
+            if (armed && !replaced && !shell.pageImage().isNull() && shell.busy()) {
                 replaced = true;
-                shell.selectFile(scanUrl);
+                QMetaObject::invokeMethod(&shell, [&] { shell.selectFile(scanUrl); }, Qt::QueuedConnection);
             }
         });
+        armed = true;
         shell.setRenderWidth(8100);
         QTRY_VERIFY(replaced);
         QTRY_COMPARE(shell.selectedUrl(),scanUrl);
