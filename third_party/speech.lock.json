@@ -1,0 +1,59 @@
+{
+  "engine": "Langlern native ONNX CPU adapter for Supertonic 3; no server or Python runtime",
+  "model": {
+    "repo": "Supertone/supertonic-3",
+    "commit": "3cadd1ee6394adea1bd021217a0e650ede09a323",
+    "license": "OpenRAIL-M",
+    "code_reference_commit": "1e9799e964ea4c0dad7cde993b65c3c813a7b373"
+  },
+  "derivation": {
+    "script": "tools/derive-speech-models.py",
+    "requirements": "tools/requirements-speech.lock.txt"
+  },
+  "sources": [
+    {
+      "name": "onnxruntime",
+      "url": "https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-win-x64-1.23.2.zip",
+      "sha256": "0b38df9af21834e41e73d602d90db5cb06dbd1ca618948b8f1d66d607ac9f3cd"
+    },
+    {
+      "name": "soundtouch",
+      "url": "https://www.surina.net/soundtouch/soundtouch-2.3.3.tar.gz",
+      "sha256": "43b23dfac2f64a3aff55d64be096ffc7b73842c3f5665caff44975633a975a99"
+    }
+  ],
+  "upstream": [
+    {"path": "onnx/duration_predictor.onnx", "sha256": "c3eb91414d5ff8a7a239b7fe9e34e7e2bf8a8140d8375ffb14718b1c639325db", "bytes": 3700147},
+    {"path": "onnx/text_encoder.onnx", "sha256": "c7befd5ea8c3119769e8a6c1486c4edc6a3bc8365c67621c881bbb774b9902ff", "bytes": 36416150},
+    {"path": "onnx/vector_estimator.onnx", "sha256": "883ac868ea0275ef0e991524dc64f16b3c0376efd7c320af6b53f5b780d7c61c", "bytes": 256534781},
+    {"path": "onnx/vocoder.onnx", "sha256": "085de76dd8e8d5836d6ca66826601f615939218f90e519f70ee8a36ed2a4c4ba", "bytes": 101424195},
+    {"path": "onnx/tts.json", "sha256": "42078d3aef1cd43ab43021f3c54f47d2d75ceb4e75f627f118890128b06a0d09", "bytes": 8253},
+    {"path": "onnx/unicode_indexer.json", "sha256": "9bf7346e43883a81f8645c81224f786d43c5b57f3641f6e7671a7d6c493cb24f", "bytes": 277676},
+    {"path": "voice_styles/M1.json", "sha256": "e35604687f5d23694b8e91593a93eec0e4eca6c0b02bb8ed69139ab2ea6b0a5b", "bytes": 291748},
+    {"path": "voice_styles/F3.json", "sha256": "12f6ef2573baa2defa1128069cb59f203e3ab67c92af77b42df8a0e3a2f7c6ab", "bytes": 290794}
+  ],
+  "files": [
+    {"file": "models/duration_predictor.onnx", "derived_from": "onnx/duration_predictor.onnx", "sha256": "6f53e96d47917a28918ed0970abf393089e3bc6d7d6bf7b115342a1bdae89c36", "bytes": 1993709},
+    {"file": "models/text_encoder.onnx", "derived_from": "onnx/text_encoder.onnx", "sha256": "cbf2c872a22b7d1d99303425c249ee1eca1198db11fe1459aec53921073159a0", "bytes": 18474768},
+    {"file": "models/vector_estimator.onnx", "derived_from": "onnx/vector_estimator.onnx", "sha256": "073575704bf0b6ca0714eb6509029f324b794d5bd6dbdb27dccbbc5939abc167", "bytes": 65447164},
+    {"file": "models/vocoder.onnx", "derived_from": "onnx/vocoder.onnx", "sha256": "8ea6955582b93eb4ac5d8746549e49cb4d6b5ffaa844f8506f8d9fa0ab9a4309", "bytes": 50810904},
+    {"file": "models/tts.json", "upstream": "onnx/tts.json", "sha256": "42078d3aef1cd43ab43021f3c54f47d2d75ceb4e75f627f118890128b06a0d09", "bytes": 8253},
+    {"file": "models/unicode_indexer.json", "upstream": "onnx/unicode_indexer.json", "sha256": "9bf7346e43883a81f8645c81224f786d43c5b57f3641f6e7671a7d6c493cb24f", "bytes": 277676},
+    {"file": "voices/M1.json", "upstream": "voice_styles/M1.json", "sha256": "e35604687f5d23694b8e91593a93eec0e4eca6c0b02bb8ed69139ab2ea6b0a5b", "bytes": 291748},
+    {"file": "voices/F3.json", "upstream": "voice_styles/F3.json", "sha256": "12f6ef2573baa2defa1128069cb59f203e3ab67c92af77b42df8a0e3a2f7c6ab", "bytes": 290794}
+  ],
+  "notices": {
+    "ONNXRuntime-LICENSE.txt": "c250d6278f0b47a6439fb7592b08b58a55eb9f535aa49a1db63211c3f982b674",
+    "ONNXRuntime-ThirdPartyNotices.txt": "e00f828e0a33de591a355ae6606d2625f5758da7d2c844db7821c9dd3e3647b6",
+    "SoundTouch-LGPL.txt": "84c6d82dc7de80f5b73f231edfd3ddc5b53513908117452bfa37ea36bb4b7e0a",
+    "Supertonic-OpenRAIL-M.txt": "0d944a9110fed9a9602d60e0423a272903e7bd21ab060490774efc77c2275e9f",
+    "Supertonic-code-MIT.txt": "0dfe0d0ba84416fe3879d9a34f4909d8d0137c78d1e95834177b0414ac096fa2",
+    "Supertonic-model-card.md": "d414e4b085fb9989ebfd2b64f868ff861694022b4bdb805b09e702386dbdc7d5",
+    "Supertonic-modifications.txt": "ff3c82e2d3461725821977dee5958145e81c73a79192696aece39e553c595a0d"
+  },
+  "notice_sources": {
+    "Supertonic-OpenRAIL-M.txt": "https://huggingface.co/Supertone/supertonic-3/resolve/3cadd1ee6394adea1bd021217a0e650ede09a323/LICENSE",
+    "Supertonic-model-card.md": "https://huggingface.co/Supertone/supertonic-3/resolve/3cadd1ee6394adea1bd021217a0e650ede09a323/README.md",
+    "Supertonic-code-MIT.txt": "https://raw.githubusercontent.com/supertone-inc/supertonic/1e9799e964ea4c0dad7cde993b65c3c813a7b373/LICENSE"
+  }
+}

@@ -12,8 +12,8 @@ try {
     $env:PATH = "$root/.tools/venv/Scripts;$root/.deps/Qt/6.8.3/msvc2022_64/bin;" + $env:PATH
     & "$root/.tools/venv/Scripts/python" -X utf8 "$root/tools/bootstrap-ocr.py"
     if ($LASTEXITCODE) { throw 'Offline OCR dependency build failed' }
-    & "$root/.tools/venv/Scripts/python" -X utf8 "$root/tools/bootstrap-pocket.py"
-    if ($LASTEXITCODE) { throw 'Pocket TTS dependency preparation failed' }
+    & "$root/.tools/venv/Scripts/python" -X utf8 "$root/tools/bootstrap-speech.py"
+    if ($LASTEXITCODE) { throw 'Supertonic speech dependency preparation failed' }
     $options = @('-DLANGLERN_BUILD_PHASE0=OFF', "-DPDFium_DIR=$root/.deps/pdfium-win")
     if ($Phase0) { $options = @('-DLANGLERN_BUILD_PHASE0=ON', "-DPDFium_DIR=$root/.deps/pdfium-win") }
     if ($Test) { $options += '-DBUILD_TESTING=ON' }

@@ -229,7 +229,7 @@ private slots:
         if(waveOutGetNumDevs()==0)QSKIP("No audio output device; real speech playback validation NOT executed");
 #endif
         QVariantMap first;
-        for(const auto& entry:service.speechVoices())if(!entry.toMap()["id"].toString().startsWith("pocket:")){first=entry.toMap();break;}
+        for(const auto& entry:service.speechVoices())if(!entry.toMap()["id"].toString().startsWith("natural:")){first=entry.toMap();break;}
         if(first.isEmpty())QSKIP("No installed SAPI voices; native system speech validation NOT executed");
         service.setSpeechLocale(first["locale"].toString());service.setSpeechVoice(first["id"].toString());
         service.speak(QString(5000,'a'));QVERIFY(service.speaking());service.toggleSpeechPause();QVERIFY(service.speechPaused());

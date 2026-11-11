@@ -1,4 +1,4 @@
-"""Measure real native Estelle requests and the fixed textbook/answer UI on Windows."""
+"""Measure real native Supertonic French requests and the fixed textbook/answer UI on Windows."""
 import argparse
 import hashlib
 import json
@@ -36,8 +36,8 @@ def main():
             process=subprocess.Popen([str(exe),'shortSentencesAndRequestReuse','realTextbookAndAnswerButtons','-o',str(directory/'test.txt')+',txt'],env=env,stdout=stderr,stderr=stderr)
             monitor=psutil.Process(process.pid);samples=[];modules=set()
             while process.poll() is None:
-                if (time.monotonic_ns()-started)>180*1e9:
-                    process.kill();process.wait();raise TimeoutError('Speech benchmark exceeded 180 seconds')
+                if (time.monotonic_ns()-started)>300*1e9:
+                    process.kill();process.wait();raise TimeoutError('Speech benchmark exceeded 300 seconds')
                 try:
                     memory=monitor.memory_info();cpu=monitor.cpu_times()
                     samples.append({'elapsed_ms':(time.monotonic_ns()-started)/1e6,'rss_bytes':memory.rss,'private_bytes':memory.private,'cpu_seconds':cpu.user+cpu.system})
@@ -50,7 +50,7 @@ def main():
         log=(directory/'test.txt').read_text(encoding='utf-8',errors='replace')
         metrics=[]
         for line in log.splitlines():
-            if 'estelle_short ' in line or 'speech_pocket ' in line:
+            if 'speech_short ' in line or 'speech_natural ' in line:
                 metrics.append({key:float(value) for key,value in re.findall(r'(\w+)=([\d.]+)',line)})
         records.append({'run':index+1,'exit_code':code,'skipped':'SKIP' in log,'requests':metrics,
                         'peak_rss_bytes':max((s['rss_bytes'] for s in samples),default=0),
@@ -60,7 +60,7 @@ def main():
     textbook=Path(env.get('LANGLERN_REAL_PDF','C:/Users/jiong/Desktop/法语/你好法语3学生用书第二版.pdf'))
     summary={'platform':platform.platform(),'cpu':platform.processor(),'logical_cpus':psutil.cpu_count(),
              'memory_bytes':psutil.virtual_memory().total,'exe_sha256':digest(exe),
-             'model_lock_sha256':digest(ROOT/'third_party/pocket.lock.json'),
+             'model_lock_sha256':digest(ROOT/'third_party/speech.lock.json'),
              'textbook_sha256':digest(textbook) if textbook.exists() else None,
              'scope':'Release / OS caches warm; PCM availability proxy, no speaker presentation or GPU-memory measurement; includes Qt/PDF/OCR/UI resources',
              'results':records}

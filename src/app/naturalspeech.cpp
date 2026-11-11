@@ -1,5 +1,5 @@
-#include "pocketspeech.h"
-#include "../speech/pocketapi.h"
+#include "naturalspeech.h"
+#include "../speech/speechapi.h"
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QElapsedTimer>
@@ -29,9 +29,10 @@
 #endif
 
 namespace {
+// Bounded PCM hand-off between inference and playback (~11.9 s of 44.1 kHz mono float).
 constexpr qint64 queueBudget=2*1024*1024;
-constexpr unsigned sampleRate=24000;
-using Clock=std::chrono::steady_clock;
+// Inference threads: measured RTF 0.17 (1 thread) / 0.10 (4 threads) on the 20-core test device.
+int inferenceThreads(){return std::clamp(int(std::thread::hardware_concurrency()/2),1,4);}
 void briefWait() { std::this_thread::sleep_for(std::chrono::milliseconds(10)); }
 template<class Function> Function resolve(QLibrary& library,const char* name) {
     auto function=reinterpret_cast<Function>(library.resolve(name));
@@ -42,6 +43,7 @@ bool waitWhilePaused(const SpeechControl& control) {
     while(control.current() && control.paused.load())briefWait();
     return control.current();
 }
+bool knownVoice(const QString& voice){return voice==QLatin1String(NaturalVoices::male) || voice==QLatin1String(NaturalVoices::female);}
 struct TempoApi {
     using Create=void*(*)();using Destroy=void(*)(void*);
     Create create=nullptr;Destroy destroy=nullptr;
@@ -63,7 +65,7 @@ struct TempoApi {
 class Tempo {
     const TempoApi& api_;void* handle_=nullptr;
 public:
-    explicit Tempo(const TempoApi& api):api_(api),handle_(api.create()) {
+    Tempo(const TempoApi& api,unsigned sampleRate):api_(api),handle_(api.create()) {
         if(!handle_)throw std::runtime_error("Cannot create speech tempo processor");
         if(!api_.setChannels(handle_,1) || !api_.setRate(handle_,sampleRate)) {
             api_.destroy(handle_);handle_=nullptr;throw std::runtime_error("Cannot configure speech tempo processor");
@@ -91,6 +93,7 @@ class WaveOutput {
     const SpeechControl& control_;
     SpeechMetrics& metrics_;
     const std::atomic<bool>& aborted_;
+    std::size_t blockSamples_;
     bool paused_=false;
     void collect() {
         while(!blocks_.empty() && (blocks_.front()->header.dwFlags&WHDR_DONE)) {
@@ -100,7 +103,8 @@ class WaveOutput {
         }
     }
 public:
-    WaveOutput(const SpeechControl& control,SpeechMetrics& metrics,const std::atomic<bool>& aborted):control_(control),metrics_(metrics),aborted_(aborted) {
+    WaveOutput(const SpeechControl& control,SpeechMetrics& metrics,const std::atomic<bool>& aborted,unsigned sampleRate)
+        :control_(control),metrics_(metrics),aborted_(aborted),blockSamples_(sampleRate/25) {
         WAVEFORMATEX format{};format.wFormatTag=WAVE_FORMAT_PCM;format.nChannels=1;format.nSamplesPerSec=sampleRate;
         format.wBitsPerSample=16;format.nBlockAlign=2;format.nAvgBytesPerSec=sampleRate*2;
         checkAudio(waveOutOpen(&device_,WAVE_MAPPER,&format,0,0,CALLBACK_NULL));
@@ -121,7 +125,7 @@ public:
         for(std::size_t offset=0;offset<count;) {
             while(control_.current() && (blocks_.size()>=8 || control_.paused.load())) {if(!poll())return false;briefWait();}
             if(!poll())return false;
-            auto block=std::make_unique<Block>();const auto length=std::min(std::size_t(960),count-offset);
+            auto block=std::make_unique<Block>();const auto length=std::min(blockSamples_,count-offset);
             block->samples.resize(length);
             for(std::size_t i=0;i<length;++i) {
                 const auto value=samples[offset+i];block->samples[i]=std::isfinite(value)?short(std::round(std::clamp(value,-1.f,1.f)*32767.f)):0;
@@ -138,60 +142,64 @@ public:
 #endif
 }
 
-QString PocketSpeech::defaultRoot() {
-    const auto root=qEnvironmentVariable("LANGLERN_POCKET_DIR");
-    return root.isEmpty()?QCoreApplication::applicationDirPath()+"/voices/pocket-fr-estelle-v2":root;
+QString NaturalSpeech::defaultRoot() {
+    const auto root=qEnvironmentVariable("LANGLERN_SPEECH_DIR");
+    return root.isEmpty()?QCoreApplication::applicationDirPath()+"/voices/supertonic3-fr":root;
 }
-bool PocketSpeech::installed(const QString& root) {
+bool NaturalSpeech::installed(const QString& root) {
 #ifdef Q_OS_WIN
-    return QFileInfo::exists(root+"/manifest.json") && QFileInfo::exists(root+"/langlern_pocket.dll")
+    return QFileInfo::exists(root+"/manifest.json") && QFileInfo::exists(root+"/langlern_speech.dll")
         && QFileInfo::exists(root+"/onnxruntime.dll") && QFileInfo::exists(root+"/SoundTouchDLL.dll");
 #else
     Q_UNUSED(root);return false;
 #endif
 }
-struct PocketSpeech::Impl {
+struct NaturalSpeech::Impl {
     QString root;
     QThread* owner=QThread::currentThread();
     QLibrary ort,backend,tempoLibrary;
-    PocketCreate create=nullptr;PocketGenerate generate=nullptr;PocketDestroy destroy=nullptr;
+    SpeechCreate create=nullptr;SpeechSampleRate rate=nullptr;SpeechGenerate generate=nullptr;SpeechDestroy destroy=nullptr;
     TempoApi tempo;
     void* model=nullptr;
+    unsigned sampleRate=0;
     explicit Impl(QString path):root(std::move(path)) {}
     ~Impl(){Q_ASSERT(owner==QThread::currentThread());if(model)destroy(model);backend.unload();tempoLibrary.unload();ort.unload();}
     QString load(const SpeechControl& control,SpeechMetrics& metrics) {
         Q_ASSERT(owner==QThread::currentThread());QElapsedTimer timer;timer.start();
-        if(model){metrics.loadMs=0;return {};}
-        if(!PocketSpeech::installed(root))return QCoreApplication::translate("PocketSpeech","Estelle 自然语音包未安装或不完整。");
-        QFile expected(":/speech/pocket.lock.json");
-        if(!expected.open(QIODevice::ReadOnly))return QStringLiteral("Missing embedded Pocket model manifest");
+        if(model){metrics.loadMs=0;metrics.sampleRate=int(sampleRate);return {};}
+        if(!NaturalSpeech::installed(root))return QCoreApplication::translate("NaturalSpeech","自然法语语音包未安装或不完整。");
+        QFile expected(":/speech/speech.lock.json");
+        if(!expected.open(QIODevice::ReadOnly))return QStringLiteral("Missing embedded speech model manifest");
         const auto manifest=QJsonDocument::fromJson(expected.readAll()).object();
         const auto canonical=QFileInfo(root).canonicalFilePath()+'/';
         for(const auto& value:manifest.value("files").toArray()) {
             const auto item=value.toObject();const auto relative=item.value("file").toString();QFile file(root+'/'+relative);
             const auto resolved=QFileInfo(file).canonicalFilePath();
             if(relative.isEmpty() || !resolved.startsWith(canonical,Qt::CaseInsensitive) || !file.open(QIODevice::ReadOnly) || file.size()!=item.value("bytes").toInteger())
-                return QCoreApplication::translate("PocketSpeech","自然语音包文件缺失或损坏：%1").arg(relative);
+                return QCoreApplication::translate("NaturalSpeech","自然语音包文件缺失或损坏：%1").arg(relative);
             QCryptographicHash hash(QCryptographicHash::Sha256);
             while(!file.atEnd()) {
                 if(!control.current()){metrics.canceled=true;return {};}
                 const auto bytes=file.read(1024*1024);if(bytes.isEmpty() && file.error()!=QFileDevice::NoError)return file.errorString();hash.addData(bytes);
             }
-            if(hash.result().toHex()!=item.value("sha256").toString().toLatin1())return QCoreApplication::translate("PocketSpeech","自然语音包校验失败：%1").arg(relative);
+            if(hash.result().toHex()!=item.value("sha256").toString().toLatin1())return QCoreApplication::translate("NaturalSpeech","自然语音包校验失败：%1").arg(relative);
         }
         if(!control.current()){metrics.canceled=true;return {};}
         try {
             ort.setFileName(root+"/onnxruntime.dll");if(!ort.load())return ort.errorString();
-            backend.setFileName(root+"/langlern_pocket.dll");if(!backend.load())return backend.errorString();
+            backend.setFileName(root+"/langlern_speech.dll");if(!backend.load())return backend.errorString();
             tempoLibrary.setFileName(root+"/SoundTouchDLL.dll");if(!tempoLibrary.load())return tempoLibrary.errorString();
-            create=resolve<PocketCreate>(backend,"langlernPocketCreate");generate=resolve<PocketGenerate>(backend,"langlernPocketGenerate");destroy=resolve<PocketDestroy>(backend,"langlernPocketDestroy");
+            create=resolve<SpeechCreate>(backend,"langlernSpeechCreate");rate=resolve<SpeechSampleRate>(backend,"langlernSpeechSampleRate");
+            generate=resolve<SpeechGenerate>(backend,"langlernSpeechGenerate");destroy=resolve<SpeechDestroy>(backend,"langlernSpeechDestroy");
             tempo.load(tempoLibrary);std::array<char,2048> error{};
-            model=create(root.toUtf8().constData(),error.data(),error.size());
+            model=create(root.toUtf8().constData(),inferenceThreads(),error.data(),error.size());
             if(!model)return QString::fromUtf8(error.data());
+            sampleRate=unsigned(rate(model));
+            if(sampleRate<8000 || sampleRate>96000){destroy(model);model=nullptr;return QStringLiteral("Unsupported speech sample rate");}
         }catch(const std::exception& e){return QString::fromUtf8(e.what());}
-        metrics.loadMs=timer.nsecsElapsed()/1e6;return {};
+        metrics.loadMs=timer.nsecsElapsed()/1e6;metrics.sampleRate=int(sampleRate);return {};
     }
-    QString stream(const QString& text,const SpeechControl& control,SpeechMetrics& metrics,const std::function<bool(const float*,std::size_t)>& sink) {
+    QString stream(const QString& text,const QString& voice,const SpeechControl& control,SpeechMetrics& metrics,const std::function<bool(const float*,std::size_t)>& sink) {
         if(!control.current()){metrics.canceled=true;return {};}
         QElapsedTimer timer;timer.start();
         struct Context {const SpeechControl& control;SpeechMetrics& metrics;const std::function<bool(const float*,std::size_t)>& sink;QElapsedTimer& timer;bool first=true;quint64 samples=0;};
@@ -199,29 +207,33 @@ struct PocketSpeech::Impl {
         const auto output=[](const float* values,std::size_t count,void* opaque)->int {
             auto& c=*static_cast<Context*>(opaque);
             if(!c.control.current())return 0;
-            if(count>256*1024)return 0;
+            if(!count)return 1;
+            if(!values || count>256*1024)return 0;
             if(c.first){c.first=false;c.metrics.firstPcmMs=c.metrics.loadMs+c.timer.nsecsElapsed()/1e6;if(c.control.firstAudio)c.control.firstAudio();}
             c.samples+=count;
             try{return c.sink(values,count)?1:0;}catch(...){return 0;}
         };
-        const auto bytes=text.toUtf8();const int result=generate(model,bytes.constData(),output,&context,error.data(),error.size());
+        const auto bytes=text.toUtf8();const auto name=voice.toLatin1();
+        const int result=generate(model,bytes.constData(),name.constData(),output,&context,error.data(),error.size());
         metrics.generationMs=timer.nsecsElapsed()/1e6;metrics.audioSeconds=double(context.samples)/sampleRate;metrics.canceled=!control.current();
         if(result<0)return QString::fromUtf8(error.data());
         if(result==0 && control.current())return QStringLiteral("Speech stream consumer stopped unexpectedly");
-        if(result>0 && !context.samples)return QCoreApplication::translate("PocketSpeech","自然语音未生成有效音频。");
+        if(result>0 && !context.samples)return QCoreApplication::translate("NaturalSpeech","自然语音未生成有效音频。");
         return {};
     }
 };
-PocketSpeech::PocketSpeech(QString root):impl_(std::make_unique<Impl>(std::move(root))) {}
-PocketSpeech::~PocketSpeech()=default;
-QString PocketSpeech::generate(const QString& text,const SpeechControl& control,SpeechMetrics& metrics,const std::function<bool(const float*,std::size_t)>& sink) {
+NaturalSpeech::NaturalSpeech(QString root):impl_(std::make_unique<Impl>(std::move(root))) {}
+NaturalSpeech::~NaturalSpeech()=default;
+QString NaturalSpeech::generate(const QString& text,const QString& voice,const SpeechControl& control,SpeechMetrics& metrics,const std::function<bool(const float*,std::size_t)>& sink) {
+    if(!knownVoice(voice))return QStringLiteral("Unknown speech voice");
     const auto error=impl_->load(control,metrics);if(!error.isEmpty() || metrics.canceled)return error;
-    return impl_->stream(text,control,metrics,[&](const float* values,std::size_t count){return waitWhilePaused(control) && sink(values,count);});
+    return impl_->stream(text,voice,control,metrics,[&](const float* values,std::size_t count){return waitWhilePaused(control) && sink(values,count);});
 }
-QString PocketSpeech::speak(const QString& text,const SpeechControl& control,SpeechMetrics& metrics) {
+QString NaturalSpeech::speak(const QString& text,const QString& voice,const SpeechControl& control,SpeechMetrics& metrics) {
 #ifndef Q_OS_WIN
-    Q_UNUSED(text);Q_UNUSED(control);Q_UNUSED(metrics);return QStringLiteral("Natural speech playback is not implemented on this platform");
+    Q_UNUSED(text);Q_UNUSED(voice);Q_UNUSED(control);Q_UNUSED(metrics);return QStringLiteral("Natural speech playback is not implemented on this platform");
 #else
+    if(!knownVoice(voice))return QStringLiteral("Unknown speech voice");
     const auto loading=impl_->load(control,metrics);if(!loading.isEmpty() || metrics.canceled)return loading;
     struct Queue {
         std::mutex mutex;std::condition_variable cv;std::deque<std::vector<float>> chunks;
@@ -229,7 +241,7 @@ QString PocketSpeech::speak(const QString& text,const SpeechControl& control,Spe
     } queue;
     std::thread player([&] {
         try {
-            WaveOutput output(control,metrics,queue.failed);Tempo tempo(impl_->tempo);std::array<float,4096> processed{};
+            WaveOutput output(control,metrics,queue.failed,impl_->sampleRate);Tempo tempo(impl_->tempo,impl_->sampleRate);std::array<float,4096> processed{};
             while(control.current() && !queue.failed.load()) {
                 if(!output.poll())break;
                 std::vector<float> values;bool done=false;
@@ -249,7 +261,7 @@ QString PocketSpeech::speak(const QString& text,const SpeechControl& control,Spe
     });
     QString error;
     try {
-        error=impl_->stream(text,control,metrics,[&](const float* values,std::size_t count){
+        error=impl_->stream(text,voice,control,metrics,[&](const float* values,std::size_t count){
             while(control.current() && control.paused.load() && !queue.failed.load())briefWait();
             const auto bytes=qint64(count*sizeof(float));
             std::unique_lock lock(queue.mutex);

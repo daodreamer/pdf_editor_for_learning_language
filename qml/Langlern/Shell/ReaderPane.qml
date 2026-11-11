@@ -296,7 +296,12 @@ Item {
                 Layout.fillWidth: true; Accessible.name: qsTr("朗读语言")
             }
             ComboBox {
+                objectName: "speechVoice"
                 model: pane.services.speechVoices.filter(voice => voice.locale === pane.services.speechLocale)
+                // Without an explicit pick, French uses the saved male/female preference.
+                readonly property string effectiveVoice: pane.services.speechVoice !== "" ? pane.services.speechVoice
+                    : pane.services.speechLocale === "fr-FR" ? "natural:fr:" + pane.services.frenchVoice : ""
+                currentIndex: Math.max(0, model.findIndex(voice => voice.id === effectiveVoice))
                 textRole: "label"; valueRole: "id"
                 onActivated: pane.services.speechVoice = currentValue
                 displayText: count > 0 ? currentText : qsTr("此语言暂无可用的离线声音")
@@ -327,6 +332,9 @@ Item {
         onAddRequested: function(word, meaning, context) { pane.workspace.addWord(word, meaning, context, pane.shell.selectedName, pane.shell.currentPage) }
     }
     // The lookup language is a saved preference; the service only holds the live value.
-    Component.onCompleted: services.lookupLanguage = workspace.lookupLanguage
+    // Likewise the male/female French voice; write back only after the saved value has been applied.
+    property bool voicePreferenceApplied: false
+    Component.onCompleted: { services.lookupLanguage = workspace.lookupLanguage; services.frenchVoice = workspace.frenchVoice; voicePreferenceApplied = true }
     Connections { target: pane.services; function onLookupLanguageChanged(): void { pane.workspace.lookupLanguage = pane.services.lookupLanguage } }
+    Connections { target: pane.services; enabled: pane.voicePreferenceApplied; function onSpeechChanged(): void { pane.workspace.frenchVoice = pane.services.frenchVoice } }
 }

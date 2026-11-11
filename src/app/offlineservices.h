@@ -9,7 +9,7 @@
 #include <memory>
 #include <QtQml/qqmlregistration.h>
 class QTranslator;
-class PocketSpeech;
+class NaturalSpeech;
 
 class OfflineServices : public QObject {
     Q_OBJECT
@@ -42,6 +42,8 @@ class OfflineServices : public QObject {
     Q_PROPERTY(QString speechLocale READ speechLocale WRITE setSpeechLocale NOTIFY speechChanged)
     Q_PROPERTY(QVariantList speechVoices READ speechVoices NOTIFY speechChanged)
     Q_PROPERTY(QString speechVoice READ speechVoice WRITE setSpeechVoice NOTIFY speechChanged)
+    // Bundled natural French voice: "male" (default) or "female". Persisted by WorkspaceState via QML.
+    Q_PROPERTY(QString frenchVoice READ frenchVoice WRITE setFrenchVoice NOTIFY speechChanged)
 public:
     explicit OfflineServices(QObject* parent=nullptr);
     ~OfflineServices() override;
@@ -78,6 +80,8 @@ public:
     void setSpeechRate(double rate);
     void setSpeechLocale(QString locale);
     void setSpeechVoice(QString voice);
+    QString frenchVoice() const { return frenchVoice_; }
+    void setFrenchVoice(QString voice);
     Q_INVOKABLE void toggleSpeechPause();
     Q_INVOKABLE void previewScan(QImage image,QVariantMap options);
     Q_INVOKABLE void recognize(QImage image, QString document, int page, QString language);
@@ -126,11 +130,11 @@ private:
     std::atomic<bool> audioPollPending_{false};
     bool english_=false;
     bool speaking_=false,speechLoading_=false;
-    std::unique_ptr<PocketSpeech> pocket_;
+    std::unique_ptr<NaturalSpeech> natural_;
     QTimer speechIdleTimer_;
     std::atomic<bool> speechPaused_{false};
     std::atomic<double> speechRate_{1.0};
-    QString speechLocale_=QStringLiteral("fr-FR"), speechVoice_;
+    QString speechLocale_=QStringLiteral("fr-FR"), speechVoice_, frenchVoice_=QStringLiteral("male");
     QVariantList speechVoices_;
     std::unique_ptr<QTranslator> translator_;
 };

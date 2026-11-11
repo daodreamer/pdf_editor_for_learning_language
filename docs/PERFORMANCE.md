@@ -4,7 +4,9 @@
 
 2026-10-20 长虚线修复的真实教材回归与单页分析 A/B 见 [LONG_DASHED_LINES.md](LONG_DASHED_LINES.md)。首轮同输入原/新各 3×20 次，中位数 10.584 / 11.367 ms；追加抽查又发现并修复浅色/粘连点漏段，最终数据在同文扩展记录。这里只测后台检测，不代表帧率或首屏指标。
 
-2026-10-19 Pocket TTS / Estelle：新版模型三轮真实 CPU/教材按钮测量已记录在 [NATURAL_SPEECH.md](NATURAL_SPEECH.md)，可用 `benchmarks/run-speech.py` 重复；首请求 PCM 约 1.22–1.28 s、已加载模型约 29–39 ms，含 Qt/PDF/OCR 的进程峰值约 432–435 MiB RSS。PCM 交付不是声卡呈现或交互帧率，OS 缓存为热态，启动与打包验证另行记录。
+2026-11-11 法语自然朗读改为 Supertonic 3（男声 M1 默认 / 女声 F3），评测与实测见 [NATURAL_SPEECH.md](NATURAL_SPEECH.md)；下段 Estelle 数据仅为历史记录。
+
+2026-10-19 Pocket TTS / Estelle（已替换）：新版模型三轮真实 CPU/教材按钮测量已记录在 [NATURAL_SPEECH.md](NATURAL_SPEECH.md)，可用 `benchmarks/run-speech.py` 重复；首请求 PCM 约 1.22–1.28 s、已加载模型约 29–39 ms，含 Qt/PDF/OCR 的进程峰值约 432–435 MiB RSS。PCM 交付不是声卡呈现或交互帧率，OS 缓存为热态，启动与打包验证另行记录。
 
 
 OCR 增量使用 `benchmarks/run-ocr.py --run benchmarks/results/<新目录> --repeat 3`：三个独立 Release 进程，固定真实教材第 34 页、2400 像素目标宽（32 MiB 输入预算）。分别记录 PDF 底图生成、OCR worker（含初始化/缓存 IO）和触发至结果交付时间；10 ms UI Timer 最大间隔仅是事件循环响应代理，不是帧时间/屏幕呈现。20 ms 进程采样分别记录 RSS/private bytes；峰值覆盖整个真实教材测试进程，不能解释为 OCR 增量内存，也不等于 GPU 显存。重复任务另测结果缓存命中；缩放不得重新识别。实际结果和局限见 [OCR_SELECTION.md](OCR_SELECTION.md)。

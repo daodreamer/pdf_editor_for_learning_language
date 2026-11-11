@@ -111,7 +111,7 @@ set_target_properties(natural_speech_tests PROPERTIES WIN32_EXECUTABLE FALSE)
 target_link_libraries(natural_speech_tests PRIVATE shell_ui shell_uiplugin Qt6::Test Qt6::QuickControls2)
 langlern_warnings(natural_speech_tests)
 if(WIN32)
-    add_dependencies(natural_speech_tests langlern_pocket)
+    add_dependencies(natural_speech_tests langlern_speech)
     add_custom_command(TARGET natural_speech_tests POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:pdfium> $<TARGET_FILE_DIR:natural_speech_tests>)
 endif()

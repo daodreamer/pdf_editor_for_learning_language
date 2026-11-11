@@ -17,20 +17,28 @@ struct SpeechControl {
 struct SpeechMetrics {
     double loadMs=0,firstPcmMs=0,generationMs=0,audioSeconds=0;
     quint64 peakQueueBytes=0,playedSamples=0;
+    int sampleRate=0;
     bool canceled=false;
 };
 
+// Supertonic 3 French voices bundled with the application.
+namespace NaturalVoices {
+inline constexpr const char* male="M1";
+inline constexpr const char* female="F3";
+}
+
 // Owned and invoked exclusively by OfflineServices' speech worker.
-class PocketSpeech {
+class NaturalSpeech {
 public:
     static QString defaultRoot();
     static bool installed(const QString& root=defaultRoot());
-    explicit PocketSpeech(QString root=defaultRoot());
-    ~PocketSpeech();
-    PocketSpeech(const PocketSpeech&)=delete;
-    PocketSpeech& operator=(const PocketSpeech&)=delete;
-    QString speak(const QString& text,const SpeechControl& control,SpeechMetrics& metrics);
-    QString generate(const QString& text,const SpeechControl& control,SpeechMetrics& metrics,
+    explicit NaturalSpeech(QString root=defaultRoot());
+    ~NaturalSpeech();
+    NaturalSpeech(const NaturalSpeech&)=delete;
+    NaturalSpeech& operator=(const NaturalSpeech&)=delete;
+    QString speak(const QString& text,const QString& voice,const SpeechControl& control,SpeechMetrics& metrics);
+    // Generated PCM is mono float at metrics.sampleRate (filled before the first sink call).
+    QString generate(const QString& text,const QString& voice,const SpeechControl& control,SpeechMetrics& metrics,
                      const std::function<bool(const float*,std::size_t)>& sink);
 private:
     struct Impl;

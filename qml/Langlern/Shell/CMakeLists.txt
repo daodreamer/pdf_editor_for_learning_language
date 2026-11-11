@@ -5,7 +5,7 @@ qt_add_qml_module(shell_ui STATIC
     DEPENDENCIES QtQuick QtQuick.Shapes QtQuick.Controls QtQuick.Layouts QtQuick.Dialogs
     QML_FILES Main.qml Theme.qml DocumentView.qml TextNote.qml TextFormatPopover.qml SelectionActions.qml ActionButton.qml LineIcon.qml DesignButton.qml StudyTools.qml WorkspaceFrame.qml LibraryPage.qml BookCover.qml ReaderPane.qml PageSidebar.qml WordBookPage.qml ImportPage.qml AudioStrip.qml StudyProgress.qml DesignSwitch.qml LookupCard.qml
     SOURCES ../../../src/app/offlineservices.h ../../../src/app/offlineservices.cpp
-        ../../../src/app/pocketspeech.h ../../../src/app/pocketspeech.cpp
+        ../../../src/app/naturalspeech.h ../../../src/app/naturalspeech.cpp
         ../../../src/app/frenchdictionary.h ../../../src/app/frenchdictionary.cpp
         ../../../src/app/annotationtext.h ../../../src/app/annotationtext.cpp
         ../../../src/app/workspacestate.h ../../../src/app/workspacestate.cpp
@@ -30,8 +30,8 @@ qt_add_resources(shell_ui "interface_translations"
     BASE "../../../assets"
     FILES ../../../assets/i18n/en.json
 )
-qt_add_resources(shell_ui "pocket_manifest"
+qt_add_resources(shell_ui "speech_manifest"
     PREFIX "/speech"
     BASE "../../../third_party"
-    FILES ../../../third_party/pocket.lock.json
+    FILES ../../../third_party/speech.lock.json
 )

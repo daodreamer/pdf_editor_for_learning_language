@@ -43,10 +43,10 @@ def package(build, out, vs):
         name=model['language']+'.traineddata'
         if sha(build/'tessdata'/name)!=model['sha256'] or provenance['ocr_models'].get(name)!=model['sha256']:
             raise RuntimeError('OCR model differs from the pinned build: '+name)
-    voice_root=build/'voices/pocket-fr-estelle-v2'
+    voice_root=build/'voices/supertonic3-fr'
     voice_files={p.relative_to(voice_root).as_posix():sha(p) for p in sorted(voice_root.rglob('*')) if p.is_file()}
-    if not voice_files or voice_files!=provenance.get('pocket_files'):
-        raise RuntimeError('Estelle voice pack changed since build; rebuild first')
+    if not voice_files or voice_files!=provenance.get('speech_files'):
+        raise RuntimeError('Supertonic voice pack changed since build; rebuild first')
     configuration=provenance['configuration']
     flags=' '.join(value for key,value in configuration.items() if key!='CMAKE_BUILD_TYPE').lower()
     if configuration.get('CMAKE_BUILD_TYPE')!='Release' or 'sanitize' in flags:
@@ -67,7 +67,7 @@ def package(build, out, vs):
     shutil.copy2(build/'pdfium.dll', out)
     shutil.copytree(build/'fonts', out/'fonts')
     shutil.copytree(build/'tessdata', out/'tessdata')
-    shutil.copytree(build/'voices/pocket-fr-estelle-v2', out/'voices/pocket-fr-estelle-v2')
+    shutil.copytree(build/'voices/supertonic3-fr', out/'voices/supertonic3-fr')
     if (build/'dictionary').is_dir():
         shutil.copytree(build/'dictionary', out/'dictionary')
     command = [str(qt/'bin/windeployqt.exe'), '--release', '--qmldir', str(ROOT/'qml'),
@@ -105,7 +105,7 @@ def package(build, out, vs):
     shutil.copy2(ROOT/'third_party/dictionary.lock.json', licenses)
     shutil.copy2(ROOT/'third_party/dictionary-fr.lock.json', licenses)
     shutil.copy2(ROOT/'third_party/ocr.lock.json', licenses)
-    shutil.copy2(ROOT/'third_party/pocket.lock.json', licenses)
+    shutil.copy2(ROOT/'third_party/speech.lock.json', licenses)
     shutil.copy2(vs/'Licenses/1033/Redist.txt', licenses/'Microsoft-Redist.txt')
     sdk_notices=licenses/'windows-sdk';sdk_notices.mkdir(exist_ok=True)
     for name in ('sdk_license.rtf','sdk_third_party_notices.rtf'):
@@ -146,9 +146,9 @@ def package(build, out, vs):
         elif dll.name.lower()=='d3dcompiler_47.dll':
             record.update({'component':'Windows SDK D3D11 compiler','evidence':'windows-sdk/sdk_license.rtf',
                            'redist_sha256_matches':sha(dll)==sha(d3d_compiler)})
-        elif relative.startswith('voices/pocket-fr-estelle-v2/'):
-            record.update({'component':'Pocket TTS CPU / Estelle', 'evidence':'pocket/ notices and pocket.lock.json',
-                           'build_sha256_matches':provenance['pocket_files'].get(dll.relative_to(out/'voices/pocket-fr-estelle-v2').as_posix())==sha(dll)})
+        elif relative.startswith('voices/supertonic3-fr/'):
+            record.update({'component':'Supertonic 3 CPU speech (ONNX Runtime, SoundTouch)', 'evidence':'speech/ notices and speech.lock.json',
+                           'build_sha256_matches':provenance['speech_files'].get(dll.relative_to(out/'voices/supertonic3-fr').as_posix())==sha(dll)})
         elif (runtime/dll.name).is_file():
             record.update({'component':'MSVC CRT','evidence':'Microsoft-Redist.txt',
                            'redist_sha256_matches':sha(dll)==sha(runtime/dll.name)})

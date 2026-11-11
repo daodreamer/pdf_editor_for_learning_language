@@ -20,6 +20,7 @@ class WorkspaceState : public QObject {
     Q_PROPERTY(bool paper READ paper WRITE setPaper NOTIFY preferencesChanged)
     Q_PROPERTY(bool english READ english WRITE setEnglish NOTIFY preferencesChanged)
     Q_PROPERTY(QString lookupLanguage READ lookupLanguage WRITE setLookupLanguage NOTIFY preferencesChanged)
+    Q_PROPERTY(QString frenchVoice READ frenchVoice WRITE setFrenchVoice NOTIFY preferencesChanged)
 public:
     explicit WorkspaceState(QObject* parent=nullptr);
     ~WorkspaceState() override;
@@ -34,12 +35,14 @@ public:
     bool paper() const { return paper_; }
     bool english() const { return english_; }
     QString lookupLanguage() const { return lookupLanguage_; }
+    QString frenchVoice() const { return frenchVoice_; }
     void setDocument(QString path);
     void setLayout(int value);
     void setToolbar(int value);
     void setPaper(bool value);
     void setEnglish(bool value);
     void setLookupLanguage(QString value);
+    void setFrenchVoice(QString value);
     Q_INVOKABLE void remember(const QUrl& file, const QString& title, int pages, int page);
     Q_INVOKABLE void updateProgress(const QUrl& file,int pages,int page);
     Q_INVOKABLE void forget(const QUrl& file);
@@ -63,6 +66,7 @@ private:
     bool paper_=false;
     bool english_=false;
     QString lookupLanguage_=QStringLiteral("fr");
+    QString frenchVoice_=QStringLiteral("male");
     QThread writerThread_;
     QObject* writer_=nullptr;
     QTimer timer_;

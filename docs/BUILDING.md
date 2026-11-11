@@ -1,6 +1,10 @@
 # 构建与复现
 
-## 2026-10-19 Pocket TTS / Estelle 构建
+## 2026-11-11 Supertonic 3 法语语音构建
+
+`tools/build-windows.ps1` 先运行 `tools/bootstrap-speech.py`：按 `third_party/speech.lock.json` 下载 ONNX Runtime 1.23.2、SoundTouch 2.3.3 和 Supertone/supertonic-3 固定提交 `3cadd1ee6394adea1bd021217a0e650ede09a323` 的 fp32 图、M1/F3 声线，校验字节数与 SHA-256。随后在隔离的 `.tools/speech-venv`（按 `tools/requirements-speech.lock.txt` 固定 onnx 1.19.1、onnxruntime 1.23.2 等）运行 `tools/derive-speech-models.py` 派生随包图，派生结果必须与锁文件散列逐字节一致，否则构建失败；本机两次独立派生结果一致。首次开发构建需联网（上游 fp32 约 383 MiB 缓存在 `.deps/supertonic3-upstream`），应用运行不下载。DLL、模型、声线与许可证复制到 `build/windows/voices/supertonic3-fr`（约 136 MiB），窗口启动时不加载；`LANGLERN_SPEECH_DIR` 可指定同结构目录。详见 [NATURAL_SPEECH.md](NATURAL_SPEECH.md)。
+
+## 2026-10-19 Pocket TTS / Estelle 构建（已被替代，仅作历史记录）
 
 `tools/build-windows.ps1 -Test -Lint` 先运行 `bootstrap-pocket.py`，获取锁定的 ONNX Runtime 1.23.2、SentencePiece 0.2.1、SoundTouch 2.3.3 及法语模型，首次开发构建需联网；应用运行无网络下载。模型/语音/通知的 URL、版本、字节数及 SHA-256 均在 `third_party/pocket.lock.json`。原生 DLL、模型及许可证复制至 `build/windows/voices/pocket-fr-estelle-v2`，窗口启动时不加载；首次点击朗读才进行校验和模型加载。
 

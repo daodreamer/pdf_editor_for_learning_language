@@ -1,6 +1,14 @@
 # 系统架构设计
 
-## Pocket TTS / Estelle 增量契约（2026-10-19）
+## Supertonic 3 法语男/女声增量契约（2026-11-11）
+
+用户要求提高朗读音量与清晰度，并改用 Supertonic 3 的男声 M1 与女声 F3，默认男声，可在设置中切换；本节替代下文 Pocket TTS / Estelle 契约（其余线程与生命周期约束沿用）。独立 C++20 DLL `langlern_speech` 直接调用 ONNX Runtime 1.23.2 CPU 执行时长预测、文本编码、8 步流匹配和声码器四个图，按名称绑定输入；Qt Core 只用于 Unicode NFKD 规范化、JSON 资源和文本切分。不需要 G2P/espeak、SentencePiece、Python、GPU 或网络。应用侧 `NaturalSpeech` 通过窄 C ABI（创建/采样率/生成/销毁）延迟加载，校验内嵌 `speech.lock.json` 中的全部文件散列后才加载模型。
+
+文本先按段落和句末标点切成单句（超过 200 字符按逗号/分号、再按空格切开），每句独立生成整句 PCM，句间插入 0.3 s 静音；首句越短，首音越早。模型是非流式的：一句的推理不能中途中止，但每个图调用之间以 count=0 回调轮询请求版本，停止后丢弃结果，不把丢弃描述为中断底层调用。每句经响度归一（20 ms 帧、−45 dBFS 门限、目标有效 RMS −16 dBFS、增益限制 0.25–8×）和零相位前瞻峰值限幅（−1 dBFS 上限、3 ms 前瞻、50 ms 释放）后，以 ≤4096 样本切片进入既有 2 MiB 有界队列；播放线程按模型采样率 44.1 kHz 打开 WinMM，SoundTouch 保持音调调整语速。推理 intra-op 线程数为 min(4, 逻辑核/2)，与 PDFium 专用线程无关。
+
+声音选择：服务层固定提供 `natural:fr:male`（M1）与 `natural:fr:female`（F3）两项；`frenchVoice`（male/female，默认 male）作为偏好保存在 WorkspaceState 的 library-v1.json，ReaderPane 启动时载入后再回写。未显式选择声音时法语按偏好解析；选择任一自然法语项也会更新偏好。其他语言继续使用 SAPI 声音。
+
+## Pocket TTS / Estelle 增量契约（2026-10-19，已被上节替代）
 
 用户改选 Pocket TTS 法语模型及 Estelle 女声，停止 1.6B/CML 方案。采用独立 C++20 ONNX 推理适配器、固定新版 6 层法语 INT8 模型及官方预计算 Estelle KV，ONNX Runtime CPU 与 SentencePiece；不带 Python/PyTorch/CUDA、HTTP 服务或声音克隆。旧社区导出存在真实短句截断及静音，未进入最终候选；改用 Vincweb 固定转换，体积更小。独立 DLL 使用既有 Qt Core 处理 Unicode/元数据，应用通过窄 C ABI 调用，不在启动阶段链接/加载模型。SoundTouch 使用独立可替换 DLL 保持语速调整时的音调，随包保留 LGPL 通知、固定源码与构建说明。
 

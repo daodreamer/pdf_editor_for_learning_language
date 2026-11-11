@@ -12,7 +12,8 @@ def digest(path):
 
 def product_inputs():
     paths=[ROOT/'CMakeLists.txt', ROOT/'third_party/dependencies.lock.json', ROOT/'third_party/ocr.lock.json', ROOT/'tools/bootstrap-ocr.py',
-           ROOT/'third_party/pocket.lock.json', ROOT/'tools/bootstrap-pocket.py']
+           ROOT/'third_party/speech.lock.json', ROOT/'tools/bootstrap-speech.py', ROOT/'tools/derive-speech-models.py',
+           ROOT/'tools/requirements-speech.lock.txt']
     for directory in ('src','qml','assets'):
         paths.extend(p for p in (ROOT/directory).rglob('*') if p.is_file())
     return {p.relative_to(ROOT).as_posix():digest(p) for p in sorted(paths)}
@@ -30,6 +31,6 @@ if __name__=='__main__':
             'cmake_cache_sha256':digest(args.build/'CMakeCache.txt'),'configuration':cache,
             'ocr_libraries':{p.name:digest(p) for p in sorted((ROOT/'.deps/ocr/lib').glob('*.lib'))},
             'ocr_models':{p.name:digest(p) for p in sorted((args.build/'tessdata').glob('*.traineddata'))},
-            'pocket_files':{p.relative_to(args.build/'voices/pocket-fr-estelle-v2').as_posix():digest(p)
-                            for p in sorted((args.build/'voices/pocket-fr-estelle-v2').rglob('*')) if p.is_file()}}
+            'speech_files':{p.relative_to(args.build/'voices/supertonic3-fr').as_posix():digest(p)
+                            for p in sorted((args.build/'voices/supertonic3-fr').rglob('*')) if p.is_file()}}
     (args.build/'product-build.json').write_text(json.dumps(result,indent=2),encoding='utf-8')

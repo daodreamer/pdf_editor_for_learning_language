@@ -3,7 +3,7 @@ target_link_libraries(langlern PRIVATE shell_ui shell_uiplugin Qt6::QuickControl
 target_compile_definitions(langlern PRIVATE LANGLERN_BUILD_TYPE="$<CONFIG>")
 langlern_warnings(langlern)
 if(WIN32)
-    add_dependencies(langlern langlern_pocket)
+    add_dependencies(langlern langlern_speech)
 endif()
 if(WIN32)
     add_custom_command(TARGET langlern POST_BUILD

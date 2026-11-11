@@ -1,5 +1,5 @@
 #include "offlineservices.h"
-#include "pocketspeech.h"
+#include "naturalspeech.h"
 #include "scancleanup.h"
 #include "frenchdictionary.h"
 #include <QCoreApplication>
@@ -68,7 +68,10 @@ OfflineServices::OfflineServices(QObject* parent):QObject(parent),native_(std::m
 #ifdef Q_OS_WIN
         CoInitializeEx(nullptr,COINIT_MULTITHREADED);
         QVariantList voices;
-        if(PocketSpeech::installed())voices.append(QVariantMap{{"label",QStringLiteral("Estelle · 自然法语（离线）")},{"id",QStringLiteral("pocket:fr:estelle")},{"locale",QStringLiteral("fr-FR")}});
+        if(NaturalSpeech::installed()) {
+            voices.append(QVariantMap{{"label",tr("男声 · 自然法语（离线）")},{"id",QStringLiteral("natural:fr:male")},{"locale",QStringLiteral("fr-FR")}});
+            voices.append(QVariantMap{{"label",tr("女声 · 自然法语（离线）")},{"id",QStringLiteral("natural:fr:female")},{"locale",QStringLiteral("fr-FR")}});
+        }
         Microsoft::WRL::ComPtr<ISpObjectTokenCategory> category;
         Microsoft::WRL::ComPtr<IEnumSpObjectTokens> tokens;
         if(SUCCEEDED(CoCreateInstance(CLSID_SpObjectTokenCategory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&category)))
@@ -106,7 +109,7 @@ OfflineServices::OfflineServices(QObject* parent):QObject(parent),native_(std::m
     speechIdleTimer_.setSingleShot(true);speechIdleTimer_.setInterval(180000);
     connect(&speechIdleTimer_,&QTimer::timeout,this,[this]{
         const auto revision=speechRevision_.load();
-        QMetaObject::invokeMethod(speechWorker_,[this,revision]{if(revision==speechRevision_)pocket_.reset();},Qt::QueuedConnection);
+        QMetaObject::invokeMethod(speechWorker_,[this,revision]{if(revision==speechRevision_)natural_.reset();},Qt::QueuedConnection);
     });
     if(qEnvironmentVariableIsSet("LANGLERN_STARTUP_DETAIL"))qInfo("offline_service_construct_ms=%.3f",initialization.nsecsElapsed()/1e6);
 }
@@ -114,7 +117,7 @@ OfflineServices::~OfflineServices() {
     if(translator_)QCoreApplication::removeTranslator(translator_.get());
     ++ocrRevision_;++speechRevision_;++lookupRevision_;++previewRevision_;
     QMetaObject::invokeMethod(speechWorker_,[this]{
-        pocket_.reset();
+        natural_.reset();
 #ifdef Q_OS_WIN
         CoUninitialize();
 #endif
@@ -243,7 +246,19 @@ void OfflineServices::stopSpeaking() { ++speechRevision_;speaking_=false;speechL
 void OfflineServices::toggleSpeechPause() { if(speaking_){speechPaused_.store(!speechPaused_.load());emit speechChanged();} }
 void OfflineServices::setSpeechRate(double rate) { if(std::isfinite(rate)){speechRate_.store(std::clamp(rate,.5,2.0));emit speechChanged();} }
 void OfflineServices::setSpeechLocale(QString locale) { if(speechLocale_!=locale){stopSpeaking();speechLocale_=std::move(locale);speechVoice_.clear();emit speechChanged();} }
-void OfflineServices::setSpeechVoice(QString voice) { if(speechVoice_!=voice){stopSpeaking();speechVoice_=std::move(voice);emit speechChanged();} }
+void OfflineServices::setSpeechVoice(QString voice) {
+    if(speechVoice_==voice)return;
+    stopSpeaking();
+    if(voice==QLatin1String("natural:fr:male") || voice==QLatin1String("natural:fr:female"))frenchVoice_=voice.mid(11);
+    speechVoice_=std::move(voice);emit speechChanged();
+}
+void OfflineServices::setFrenchVoice(QString voice) {
+    voice=voice==QLatin1String("female")?QStringLiteral("female"):QStringLiteral("male");
+    if(frenchVoice_==voice)return;
+    stopSpeaking();frenchVoice_=std::move(voice);
+    if(speechVoice_.startsWith(QLatin1String("natural:fr:")))speechVoice_=QStringLiteral("natural:fr:")+frenchVoice_;
+    emit speechChanged();
+}
 void OfflineServices::speak(QString text,QString locale) {
     if(text.trimmed().isEmpty())return;
     if(text.size()>1024*1024){status_=tr("朗读选区过长，请分段选择。");emit changed();return;}
@@ -252,30 +267,33 @@ void OfflineServices::speak(QString text,QString locale) {
     if(locale.isEmpty())locale=speechLocale_;
     QString voiceId;
     const auto target=QLocale(locale);
+    // Explicit choice first, then the preferred bundled French voice, then the first voice of the locale.
+    auto preferred=locale==speechLocale_?speechVoice_:QString{};
+    if(preferred.isEmpty() && target.language()==QLocale::French)preferred=QStringLiteral("natural:fr:")+frenchVoice_;
     for(const auto& entry:speechVoices_) {
-        const auto v=entry.toMap();
-        const auto selectedVoice=locale==speechLocale_?speechVoice_:QString{};
-        if(!selectedVoice.isEmpty() && v["id"].toString()==selectedVoice){voiceId=selectedVoice;break;}
-        if(selectedVoice.isEmpty() && QLocale(v["locale"].toString()).name()==target.name()){voiceId=v["id"].toString();break;}
+        const auto id=entry.toMap()["id"].toString();
+        if(id==preferred){voiceId=id;break;}
+        if(voiceId.isEmpty() && QLocale(entry.toMap()["locale"].toString()).name()==target.name())voiceId=id;
     }
-    speechLoading_=voiceId=="pocket:fr:estelle";emit speechChanged();
-    QMetaObject::invokeMethod(speechWorker_,[this,text,locale,voiceId,revision] {
+    const bool natural=voiceId.startsWith(QLatin1String("natural:fr:"));
+    speechLoading_=natural;emit speechChanged();
+    QMetaObject::invokeMethod(speechWorker_,[this,text,locale,voiceId,natural,revision] {
         if(revision!=speechRevision_)return;
         QString error;
 #ifdef Q_OS_WIN
-        if(voiceId=="pocket:fr:estelle") {
-            if(!pocket_)pocket_=std::make_unique<PocketSpeech>();
+        if(natural) {
+            if(!natural_)natural_=std::make_unique<NaturalSpeech>();
             SpeechMetrics metrics;
             const SpeechControl control{speechRevision_,revision,speechPaused_,speechRate_,[this,revision]{
                 QMetaObject::invokeMethod(this,[this,revision]{if(revision==speechRevision_){speechLoading_=false;emit speechChanged();}},Qt::QueuedConnection);
             }};
-            error=pocket_->speak(text,control,metrics);
-            qInfo("speech_pocket request=%llu load_ms=%.3f first_pcm_ms=%.3f generation_ms=%.3f audio_s=%.3f played_samples=%llu queue_peak_bytes=%llu canceled=%d",
-                revision,metrics.loadMs,metrics.firstPcmMs,metrics.generationMs,metrics.audioSeconds,metrics.playedSamples,metrics.peakQueueBytes,metrics.canceled);
+            error=natural_->speak(text,voiceId.endsWith(QLatin1String(":female"))?QString::fromLatin1(NaturalVoices::female):QString::fromLatin1(NaturalVoices::male),control,metrics);
+            qInfo("speech_natural request=%llu voice=%s load_ms=%.3f first_pcm_ms=%.3f generation_ms=%.3f audio_s=%.3f played_samples=%llu queue_peak_bytes=%llu canceled=%d",
+                revision,qPrintable(voiceId),metrics.loadMs,metrics.firstPcmMs,metrics.generationMs,metrics.audioSeconds,metrics.playedSamples,metrics.peakQueueBytes,metrics.canceled);
             QMetaObject::invokeMethod(this,[this,error,revision]{
                 if(revision!=speechRevision_)return;
                 speaking_=false;speechLoading_=false;speechPaused_.store(false);speechIdleTimer_.start();emit speechChanged();
-                if(!error.isEmpty()){status_=tr("Estelle 朗读失败：%1").arg(error);emit changed();}
+                if(!error.isEmpty()){status_=tr("自然法语朗读失败：%1").arg(error);emit changed();}
             },Qt::QueuedConnection);
             return;
         }
