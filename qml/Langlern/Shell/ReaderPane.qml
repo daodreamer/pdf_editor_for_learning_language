@@ -100,7 +100,7 @@ Item {
                     const map = {0: 0, 2: 2, 3: 1, 4: 5}
                     if (inputMode in map && !(pane.tool === 3 && inputMode === 0)) pane.tool = map[inputMode]
                 }
-                onWordRequested: function(text, context) { pane.services.lookup(text); lookup.draft = pane.services.lookupWord; lookup.context = context; lookup.open() }
+                onWordRequested: function(text, context) { lookup.show(text, context, lookupPoint) }
             }
             Rectangle {
                 anchors.top: parent.top; anchors.topMargin: 12; anchors.horizontalCenter: parent.horizontalCenter
@@ -194,7 +194,7 @@ Item {
             DesignButton { theme: pane.theme; text: "↶"; implicitHeight: 28; enabled: pane.shell.annotations.canUndo; focusPolicy: Qt.NoFocus; onClicked: { pane.shell.finishTextEditing(); pane.shell.annotations.undo() } Accessible.name: qsTr("撤销") }
             DesignButton { theme: pane.theme; text: "↷"; implicitHeight: 28; enabled: pane.shell.annotations.canRedo; focusPolicy: Qt.NoFocus; onClicked: pane.shell.annotations.redo(); Accessible.name: qsTr("重做") }
             DesignButton { theme: pane.theme; text: qsTr("复制"); implicitHeight: 28; enabled: pane.shell.textSelection.ready; onClicked: pane.shell.textSelection.copy() }
-            DesignButton { theme: pane.theme; text: qsTr("查词 / 摘录"); implicitHeight: 28; enabled: pane.shell.textSelection.ready; onClicked: { lookup.draft = pane.shell.textSelection.text; pane.services.lookup(lookup.draft); lookup.context = pane.shell.textSelection.context; lookup.open() } }
+            DesignButton { objectName: "toolbarLookup"; theme: pane.theme; text: qsTr("查词"); implicitHeight: 28; enabled: pane.shell.textSelection.ready; onClicked: lookup.show(pane.shell.textSelection.text, pane.shell.textSelection.context, Qt.point(lookup.parent.width / 2, 80)) }
             Label { objectName: "storageStatusLabel"; text: pane.shell.textSelection.status.length > 0 ? pane.shell.textSelection.status : pane.shell.ocrBusy ? pane.shell.ocrStatus : pane.shell.storageStatus; Layout.fillWidth: true; elide: Text.ElideRight; color: pane.theme.muted; font.pixelSize: 11; textFormat: Text.PlainText }
             Label { text: pane.shell.exportStatus; visible: text.length > 0 && pane.width > 1000; Layout.maximumWidth: 240; elide: Text.ElideRight; color: pane.theme.muted; font.pixelSize: 11; textFormat: Text.PlainText }
             DesignButton { objectName: "doublePageButton"; theme: pane.theme; text: qsTr("双页"); selected: pane.shell.doublePage; visible: pane.width > 750; implicitHeight: 28; onClicked: pane.shell.doublePage = !pane.shell.doublePage; Accessible.name: qsTr("横向双页布局") }
@@ -320,25 +320,13 @@ Item {
             ToolButton { text: qsTr("停止"); focusPolicy: Qt.NoFocus; onClicked: pane.services.stopSpeaking() }
         }
     }
-    Popup {
+    LookupCard {
         id: lookup
-        property string draft: ""
-        property string context: ""
-        parent: Overlay.overlay; anchors.centerIn: parent; width: 360; modal: false; padding: 22
-        background: Rectangle { readonly property bool blocksInkInput: true; radius: 16; color: pane.theme.card; border.color: pane.theme.line }
-        contentItem: ColumnLayout {
-            spacing: 12
-            Label { text: lookup.draft; Layout.fillWidth: true; wrapMode: Text.Wrap; color: pane.theme.text; font.pixelSize: 24; font.bold: true; textFormat: Text.PlainText }
-            Label { text: pane.shell.selectedName + " · p." + pane.shell.currentPage; color: pane.theme.muted; font.pixelSize: 11; Layout.fillWidth: true; elide: Text.ElideMiddle; textFormat: Text.PlainText }
-            Label { text: pane.services.phonetic; color: pane.theme.muted; visible: text.length > 0 }
-            Label { text: pane.services.meaning; Layout.fillWidth: true; wrapMode: Text.Wrap; color: pane.theme.text; textFormat: Text.PlainText }
-            RowLayout {
-                DesignButton { theme: pane.theme; text: "▶ UK"; selected: true; onClicked: pane.services.speak(lookup.draft, "en-GB") }
-                DesignButton { theme: pane.theme; text: "▶ US"; selected: true; onClicked: pane.services.speak(lookup.draft, "en-US") }
-                DesignButton { theme: pane.theme; text: qsTr("朗读原文"); onClicked: pane.services.speak(lookup.context || lookup.draft) }
-            }
-            TextArea { id: meaning; textFormat: TextEdit.PlainText; Layout.fillWidth: true; placeholderText: qsTr("填写释义或学习笔记"); wrapMode: TextEdit.Wrap; color: pane.theme.text; background: Rectangle { color: pane.theme.fill; radius: 8 } }
-            DesignButton { theme: pane.theme; text: qsTr("加入生词本"); primary: true; Layout.fillWidth: true; onClicked: { pane.workspace.addWord(lookup.draft, meaning.text.length ? meaning.text : (pane.services.lookupFound ? pane.services.meaning : ""), lookup.context, pane.shell.selectedName, pane.shell.currentPage); meaning.clear(); lookup.close() } }
-        }
+        theme: pane.theme
+        services: pane.services
+        onAddRequested: function(word, meaning, context) { pane.workspace.addWord(word, meaning, context, pane.shell.selectedName, pane.shell.currentPage) }
     }
+    // The lookup language is a saved preference; the service only holds the live value.
+    Component.onCompleted: services.lookupLanguage = workspace.lookupLanguage
+    Connections { target: pane.services; function onLookupLanguageChanged(): void { pane.workspace.lookupLanguage = pane.services.lookupLanguage } }
 }

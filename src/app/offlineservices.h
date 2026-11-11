@@ -25,6 +25,9 @@ class OfflineServices : public QObject {
     Q_PROPERTY(QString phonetic READ phonetic NOTIFY lookupChanged)
     Q_PROPERTY(QString lookupWord READ lookupWord NOTIFY lookupChanged)
     Q_PROPERTY(bool lookupFound READ lookupFound NOTIFY lookupChanged)
+    Q_PROPERTY(bool lookupBusy READ lookupBusy NOTIFY lookupChanged)
+    Q_PROPERTY(QVariantList lookupEntries READ lookupEntries NOTIFY lookupChanged)
+    Q_PROPERTY(QString lookupLanguage READ lookupLanguage WRITE setLookupLanguage NOTIFY lookupLanguageChanged)
     Q_PROPERTY(bool playing READ playing NOTIFY audioChanged)
     Q_PROPERTY(double position READ position NOTIFY audioChanged)
     Q_PROPERTY(double duration READ duration NOTIFY audioChanged)
@@ -53,6 +56,10 @@ public:
     QString phonetic() const { return phonetic_; }
     QString lookupWord() const { return lookupWord_; }
     bool lookupFound() const { return lookupFound_; }
+    bool lookupBusy() const { return lookupBusy_; }
+    QVariantList lookupEntries() const { return lookupEntries_; }
+    QString lookupLanguage() const { return lookupLanguage_; }
+    void setLookupLanguage(QString language);
     bool playing() const { return playing_; }
     double position() const { return position_; }
     double duration() const { return duration_; }
@@ -76,6 +83,8 @@ public:
     Q_INVOKABLE void recognize(QImage image, QString document, int page, QString language);
     Q_INVOKABLE void invalidate();
     Q_INVOKABLE void lookup(QString word);
+    // Online deep link for the lemma (French: 法语助手). Empty when the language has none.
+    Q_INVOKABLE QUrl externalDictionaryUrl(const QString& lemma) const;
     Q_INVOKABLE void speak(QString text,QString locale=QString());
     Q_INVOKABLE void stopSpeaking();
     Q_INVOKABLE void openAudio(QUrl file);
@@ -87,6 +96,7 @@ signals:
     void speechChanged();
     void changed();
     void lookupChanged();
+    void lookupLanguageChanged();
     void audioChanged();
     void previewChanged();
     void languageChanged();
@@ -96,12 +106,16 @@ private:
     std::shared_ptr<Native> native_;
     QThread thread_;
     QThread speechThread_;
+    QThread lookupThread_;  // own thread so lookups never queue behind OCR on worker_
+    QObject* lookupWorker_=nullptr;
     QObject* worker_=nullptr;
     QObject* speechWorker_=nullptr;
     QTimer audioTimer_;
     std::atomic<quint64> ocrRevision_{0},speechRevision_{0},lookupRevision_{0};
     bool busy_=false,playing_=false;
-    bool lookupFound_=false;
+    bool lookupFound_=false,lookupBusy_=false;
+    QVariantList lookupEntries_;
+    QString lookupLanguage_=QStringLiteral("fr");
     int page_=0;
     QString status_,text_,document_,meaning_,phonetic_,lookupWord_,audioName_;
     QStringList languages_;

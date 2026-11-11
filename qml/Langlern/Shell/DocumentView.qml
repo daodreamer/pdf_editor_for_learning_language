@@ -49,6 +49,8 @@ ColumnLayout {
     Connections { target: view.shell; function onAnswerLinesChanged(): void { view.updateAnswerHint() } function onSelectionChanged(): void { view.updateAnswerHint() } }
     Connections { target: view.shell.annotations; function onContentChanged(): void { view.answerHint = Qt.rect(0, 0, 0, 0) } function onSelectionChanged(): void { view.answerHint = Qt.rect(0, 0, 0, 0) } }
     signal wordRequested(string text, string context)
+    // Where the lookup card should attach, in Overlay.overlay coordinates; set before wordRequested.
+    property point lookupPoint: Qt.point(width / 2, height / 3)
     spacing: 0
     ComboBox {
         id: inkColors; objectName: "inkColors"; visible: false
@@ -142,7 +144,7 @@ ColumnLayout {
                         color: wordHover.hovered ? "#69287df0" : "#10007aff"
                         border.color: wordHover.hovered ? "transparent" : "#30007aff"; radius: 2
                         HoverHandler { id: wordHover; cursorShape: Qt.PointingHandCursor }
-                        TapHandler { onTapped: view.wordRequested(ocrWord.modelData.word, ocrWord.modelData.context) }
+                        TapHandler { onTapped: { view.lookupPoint = ocrWord.mapToItem(Overlay.overlay, ocrWord.width / 2, ocrWord.height); view.wordRequested(ocrWord.modelData.word, ocrWord.modelData.context) } }
                         Accessible.role: Accessible.Button; Accessible.name: modelData.word
                     }
                 }
@@ -362,7 +364,7 @@ ColumnLayout {
                 if (view.inputMode !== 0) return
                 if (view.shell.beginTextSelection(position.x + viewport.contentX, position.y + viewport.contentY)) {
                     view.shell.textSelection.expandWord()
-                    if (view.shell.textSelection.ready) view.wordRequested(view.shell.textSelection.text, view.shell.textSelection.context)
+                    if (view.shell.textSelection.ready) { view.lookupPoint = mapToItem(Overlay.overlay, position.x, position.y); view.wordRequested(view.shell.textSelection.text, view.shell.textSelection.context) }
                 }
             }
             contentX: viewport.contentX
@@ -419,6 +421,6 @@ ColumnLayout {
         selection: view.shell.textSelection
         active: view.visible && view.Window.window.active && !inkInput.selectingText && !selectionMouse.pressed
             && (selectionMouse.activeFocus || inkInput.activeFocus) && !viewport.moving
-        onLookupRequested: view.wordRequested(view.shell.textSelection.text, view.shell.textSelection.context)
+        onLookupRequested: { view.lookupPoint = Qt.point(anchorPoint.x, anchorPoint.y - 16); view.wordRequested(view.shell.textSelection.text, view.shell.textSelection.context) }
     }
 }

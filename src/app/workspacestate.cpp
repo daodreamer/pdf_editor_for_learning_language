@@ -26,6 +26,7 @@ WorkspaceState::WorkspaceState(QObject* parent):QObject(parent) {
                 layout_=qBound(0,data.value("layout").toInt(),2); toolbar_=qBound(0,data.value("toolbar").toInt(),2);
                 paper_=data.value("paper").toBool();
                 english_=data.value("english").toBool();
+                lookupLanguage_=data.value("lookupLanguage").toString()==QLatin1String("en")?QStringLiteral("en"):QStringLiteral("fr");
             } else error_=tr("书架数据无法读取，原文件已保留。本次不自动覆盖。");
         } else error_=tr("书架数据无法读取，原文件已保留。本次不自动覆盖。");
     }
@@ -57,14 +58,14 @@ void WorkspaceState::save() {
     },Qt::QueuedConnection);
 }
 QVariantMap WorkspaceState::snapshot() const {
-    return {{"version",1},{"books",books_},{"words",words_},{"bookmarks",bookmarks_},{"layout",layout_},{"toolbar",toolbar_},{"paper",paper_},{"english",english_}};
+    return {{"version",1},{"books",books_},{"words",words_},{"bookmarks",bookmarks_},{"layout",layout_},{"toolbar",toolbar_},{"paper",paper_},{"english",english_},{"lookupLanguage",lookupLanguage_}};
 }
 void WorkspaceState::scheduleSave() {
     const auto candidate=snapshot();
     if(QJsonDocument::fromVariant(candidate).toJson(QJsonDocument::Compact).size()>8*1024*1024) {
         books_=accepted_.value("books").toList();words_=accepted_.value("words").toList();bookmarks_=accepted_.value("bookmarks").toMap();
         layout_=accepted_.value("layout").toInt();toolbar_=accepted_.value("toolbar").toInt();paper_=accepted_.value("paper").toBool();
-        english_=accepted_.value("english").toBool();
+        english_=accepted_.value("english").toBool();lookupLanguage_=accepted_.value("lookupLanguage",QStringLiteral("fr")).toString();
         error_=tr("书架数据已达到 8 MiB 上限，本次修改未保存。请删除不再需要的生词或笔记。");emit changed();emit preferencesChanged();return;
     }
     accepted_=candidate;if(!loadBlocked_)error_.clear();timer_.start();
@@ -77,6 +78,7 @@ void WorkspaceState::setLayout(int v) { v=qBound(0,v,2); if(layout_==v)return;la
 void WorkspaceState::setToolbar(int v) { v=qBound(0,v,2);if(toolbar_==v)return;toolbar_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setPaper(bool v) { if(paper_==v)return;paper_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setEnglish(bool v) { if(english_==v)return;english_=v;emit preferencesChanged();scheduleSave(); }
+void WorkspaceState::setLookupLanguage(QString v) { v=v==QLatin1String("en")?QStringLiteral("en"):QStringLiteral("fr");if(lookupLanguage_==v)return;lookupLanguage_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::remember(const QUrl& file,const QString& title,int pages,int page) {
     if(!file.isLocalFile() || pages<1)return;
     const auto url=file.toString();

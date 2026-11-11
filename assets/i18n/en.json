@@ -199,5 +199,19 @@
   "Estelle 自然语音包未安装或不完整。": "The Estelle voice pack is missing or incomplete.",
   "自然语音包文件缺失或损坏：%1": "Voice pack file is missing or damaged: %1",
   "自然语音包校验失败：%1": "Voice pack verification failed: %1",
-  "自然语音未生成有效音频。": "The voice did not generate valid audio."
+  "自然语音未生成有效音频。": "The voice did not generate valid audio.",
+  "查词": "Look up",
+  "助动词 %1": "auxiliary %1",
+  "朗读": "Read aloud",
+  "在法语助手中查看「%1」": "Open “%1” in Frdic (online)",
+  "关闭": "Close",
+  "释义": "Meaning",
+  "变位": "Conjugation",
+  "查询中…": "Looking up…",
+  "笔记（可选，替代默认释义）": "Note (optional, replaces the default meaning)",
+  "查法语词典": "French dictionary",
+  "查英语词典": "English dictionary",
+  "法语离线词库未安装。可手动填写释义，或在法语助手中查看。": "The offline French dictionary is not installed. Add a meaning yourself or open Frdic.",
+  "离线词库未收录此词，可手动填写释义，或在法语助手中查看。": "Not in the offline dictionary. Add a meaning yourself or open Frdic.",
+  "在阅读页选择原文，点击“查词”加入生词本。": "Select original text in the reader and use “Look up” to add words."
 }

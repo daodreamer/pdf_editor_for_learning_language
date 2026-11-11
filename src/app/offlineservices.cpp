@@ -1,6 +1,7 @@
 #include "offlineservices.h"
 #include "pocketspeech.h"
 #include "scancleanup.h"
+#include "frenchdictionary.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
@@ -60,6 +61,9 @@ OfflineServices::OfflineServices(QObject* parent):QObject(parent),native_(std::m
     speechWorker_=new QObject;speechWorker_->moveToThread(&speechThread_);
     connect(&speechThread_,&QThread::finished,speechWorker_,&QObject::deleteLater);
     speechThread_.setObjectName("Offline speech");speechThread_.start();
+    lookupWorker_=new QObject;lookupWorker_->moveToThread(&lookupThread_);
+    connect(&lookupThread_,&QThread::finished,lookupWorker_,&QObject::deleteLater);
+    lookupThread_.setObjectName("Offline dictionary");lookupThread_.start();
     QMetaObject::invokeMethod(speechWorker_,[this]{
 #ifdef Q_OS_WIN
         CoInitializeEx(nullptr,COINIT_MULTITHREADED);
@@ -116,6 +120,7 @@ OfflineServices::~OfflineServices() {
 #endif
     },Qt::BlockingQueuedConnection);
     speechThread_.quit();speechThread_.wait();
+    lookupThread_.quit();lookupThread_.wait();
     QMetaObject::invokeMethod(worker_,[state=native_] {
 #ifdef Q_OS_WIN
         if(state->audio)mciSendCommandW(state->audio,MCI_CLOSE,0,0);
@@ -178,28 +183,60 @@ void OfflineServices::recognize(QImage image,QString document,int page,QString l
         },Qt::QueuedConnection);
     },Qt::QueuedConnection);
 }
+namespace {
+QString dictionaryPath(const char* variable, const QString& name) {
+    auto path=qEnvironmentVariable(variable);
+    return path.isEmpty()?QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("dictionary/")+name):path;
+}
+}
+void OfflineServices::setLookupLanguage(QString language) {
+    language=language==QLatin1String("en")?QStringLiteral("en"):QStringLiteral("fr");
+    if(lookupLanguage_==language)return;
+    lookupLanguage_=std::move(language);emit lookupLanguageChanged();
+    if(!lookupWord_.isEmpty())lookup(lookupWord_);
+}
+QUrl OfflineServices::externalDictionaryUrl(const QString& lemma) const {
+    const auto word=lemma.trimmed();
+    if(word.isEmpty()||lookupLanguage_!=QLatin1String("fr"))return {};
+    return QUrl(QStringLiteral("https://www.frdic.com/dicts/fr/")+QString::fromLatin1(QUrl::toPercentEncoding(word)));
+}
 void OfflineServices::lookup(QString word) {
     word=word.trimmed().left(200);word.remove(QRegularExpression("^[^\\p{L}]+|[^\\p{L}]+$"));
-    lookupWord_=word;meaning_.clear();phonetic_.clear();lookupFound_=false;emit lookupChanged();const auto revision=++lookupRevision_;
-    QMetaObject::invokeMethod(worker_,[this,word,revision] {
+    lookupWord_=word;meaning_.clear();phonetic_.clear();lookupEntries_.clear();lookupFound_=false;lookupBusy_=!word.isEmpty();emit lookupChanged();
+    if(word.isEmpty())return;
+    const auto revision=++lookupRevision_;
+    QMetaObject::invokeMethod(lookupWorker_,[this,word,revision,french=lookupLanguage_==QLatin1String("fr")] {
         if(revision!=lookupRevision_)return;
-        auto path=qEnvironmentVariable("LANGLERN_DICTIONARY");
-        if(path.isEmpty())path=QDir(QCoreApplication::applicationDirPath()).filePath("dictionary/ecdict.sqlite");
-        QString meaning,phonetic;bool found=false;
-        if(!QFileInfo::exists(path))meaning=tr("离线词库未安装。可手动填写释义。");
+        const auto path=french?dictionaryPath("LANGLERN_FR_DICTIONARY",QStringLiteral("fr-wiktionary.sqlite")):dictionaryPath("LANGLERN_DICTIONARY",QStringLiteral("ecdict.sqlite"));
+        QString meaning,phonetic;QVariantList entries;
+        if(!QFileInfo::exists(path))meaning=french?tr("法语离线词库未安装。可手动填写释义，或在法语助手中查看。"):tr("离线词库未安装。可手动填写释义。");
         else {
             const auto name=QUuid::createUuid().toString();
             {
                 auto db=QSqlDatabase::addDatabase("QSQLITE",name);db.setConnectOptions("QSQLITE_OPEN_READONLY");db.setDatabaseName(path);
-                if(db.open()) {
+                if(!db.open())meaning=tr("离线词库无法读取：%1").arg(db.lastError().text());
+                else if(french) {
+                    entries=FrenchDictionary::lookup(db,word);
+                    if(entries.isEmpty())meaning=tr("离线词库未收录此词，可手动填写释义，或在法语助手中查看。");
+                } else {
                     QSqlQuery query(db);query.prepare("SELECT phonetic,meaning,definition FROM words WHERE word=? COLLATE NOCASE LIMIT 1");query.addBindValue(word);
-                    if(query.exec()&&query.next()) {found=true;phonetic=query.value(0).toString();meaning=query.value(1).toString();if(meaning.isEmpty())meaning=query.value(2).toString();}
-                    else meaning=tr("离线词库未收录此词，可手动填写释义。");
-                } else meaning=tr("离线词库无法读取：%1").arg(db.lastError().text());
+                    if(query.exec()&&query.next()) {
+                        phonetic=query.value(0).toString();meaning=query.value(1).toString();if(meaning.isEmpty())meaning=query.value(2).toString();
+                        entries.append(QVariantMap{{"lemma",word},{"ipa",phonetic},{"glosses",meaning.split(u'\n',Qt::SkipEmptyParts)},{"posLabel",QString()},{"analyses",QStringList()}});
+                    } else meaning=tr("离线词库未收录此词，可手动填写释义。");
+                }
             }
             QSqlDatabase::removeDatabase(name);
         }
-        QMetaObject::invokeMethod(this,[this,revision,meaning,phonetic,found] {if(revision!=lookupRevision_)return;meaning_=meaning;phonetic_=phonetic;lookupFound_=found;emit lookupChanged();},Qt::QueuedConnection);
+        if(french&&!entries.isEmpty()) {
+            const auto first=entries.first().toMap();
+            phonetic=first.value("ipa").toString();
+            meaning=first.value("glosses").toStringList().mid(0,4).join(u'\n');
+        }
+        QMetaObject::invokeMethod(this,[this,revision,meaning,phonetic,entries] {
+            if(revision!=lookupRevision_)return;
+            meaning_=meaning;phonetic_=phonetic;lookupEntries_=entries;lookupFound_=!entries.isEmpty();lookupBusy_=false;emit lookupChanged();
+        },Qt::QueuedConnection);
     },Qt::QueuedConnection);
 }
 void OfflineServices::stopSpeaking() { ++speechRevision_;speaking_=false;speechLoading_=false;speechPaused_.store(false);speechIdleTimer_.start();emit speechChanged(); }

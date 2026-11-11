@@ -103,6 +103,7 @@ def package(build, out, vs):
     shutil.copy2(ROOT/'third_party/qt-sbom-evidence.json', licenses)
     shutil.copy2(ROOT/'third_party/dependencies.lock.json', licenses)
     shutil.copy2(ROOT/'third_party/dictionary.lock.json', licenses)
+    shutil.copy2(ROOT/'third_party/dictionary-fr.lock.json', licenses)
     shutil.copy2(ROOT/'third_party/ocr.lock.json', licenses)
     shutil.copy2(ROOT/'third_party/pocket.lock.json', licenses)
     shutil.copy2(vs/'Licenses/1033/Redist.txt', licenses/'Microsoft-Redist.txt')

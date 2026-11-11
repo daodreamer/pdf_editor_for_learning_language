@@ -4,6 +4,8 @@
 #include "offlineservices.h"
 #include <QClipboard>
 #include <QCryptographicHash>
+#include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -284,6 +286,72 @@ private slots:
         shell.recognizeCurrentPage();shell.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/text.pdf"));
         QTRY_VERIFY_WITH_TIMEOUT(shell.textSelection()->snapshot(0),30000);QTest::qWait(1000);
         QVERIFY(!shell.textSelection()->snapshot(0)->ocr);QVERIFY(!shell.textSelection()->snapshot(33));QCOMPARE(fileHash(path),hash);
+        QVERIFY2(warnings.isEmpty(),qPrintable(warnings.join('\n')));window->close();QTRY_VERIFY(shell.shutdownComplete());
+    }
+    void realTextbookFrenchLookupCard() {
+        auto path=qEnvironmentVariable("LANGLERN_REAL_PDF");if(path.isEmpty())path=QStringLiteral("C:/Users/jiong/Desktop/法语/你好法语3学生用书第二版.pdf");
+        if(!QFileInfo::exists(path))QSKIP("Fixed real textbook unavailable; real textbook lookup validation NOT executed");
+        if(qEnvironmentVariable("LANGLERN_FR_DICTIONARY").isEmpty()&&!QFileInfo::exists(QDir(QCoreApplication::applicationDirPath()).filePath("dictionary/fr-wiktionary.sqlite")))
+            QSKIP("French dictionary not installed; real textbook lookup validation NOT executed");
+        const auto hash=fileHash(path);QVERIFY(!hash.isEmpty());
+        ShellState shell;QQmlApplicationEngine engine;QStringList warnings;
+        connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError>& errors){for(const auto& e:errors)warnings.append(e.toString());});
+        engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}});engine.loadFromModule("Langlern.Shell","Main");
+        auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));QVERIFY(window);window->show();QVERIFY(QTest::qWaitForWindowExposed(window));
+        auto* service=window->findChild<OfflineServices*>();QVERIFY(service);service->setLookupLanguage("fr");
+        shell.selectFile(QUrl::fromLocalFile(path));QTRY_VERIFY_WITH_TIMEOUT(shell.storageReady(),30000);QTRY_VERIFY_WITH_TIMEOUT(shell.pageCount()>34,30000);
+        shell.goToPage(34);QTRY_VERIFY_WITH_TIMEOUT(!shell.busy(),30000);
+        shell.recognizeCurrentPage();
+        QTRY_VERIFY_WITH_TIMEOUT(shell.textSelection()->snapshot(33) && shell.textSelection()->snapshot(33)->ocr && !shell.textSelection()->snapshot(33)->pending,60000);
+        const auto data=shell.textSelection()->snapshot(33);QVERIFY2(data->error.isEmpty(),qPrintable(data->error));
+        auto* viewport=find(window->contentItem(),"pdfViewport");QVERIFY(viewport);
+        // "rentrera" (future of rentrer) on the real page: double-click selects the word, the book icon looks it up.
+        // Selection actions only appear in the active window; a desktop in use elsewhere can keep it inactive.
+        window->requestActivate();QVERIFY2(QTest::qWaitForWindowActive(window),"Test window could not become active (desktop focus held elsewhere)");
+        const int word=indexOf(data,"rentrera");QVERIFY(word>=0);
+        const auto inWord=pagePoint(viewport,shell,33,data->characters[word+3].box.center());
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,inWord,1);QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,inWord,1);
+        QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,inWord);
+        QTRY_COMPARE(shell.textSelection()->text(),QStringLiteral("rentrera"));
+        // Popups are QObjects (not items) parented to the declaring item; overlay coordinates equal scene coordinates.
+        auto* card=window->findChild<QObject*>("lookupCard");QVERIFY(card);
+        if(!card->property("visible").toBool()) {
+            auto* icon=find(window->contentItem(),"lookupPageSelection");QVERIFY(icon);QTRY_VERIFY(icon->isVisible());
+            QVERIFY(icon->width()<=36);  // compact entry point
+            QElapsedTimer latency;latency.start();
+            QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,middle(icon));
+            QTRY_VERIFY(service->lookupFound());qInfo("real_textbook_lookup_ms=%lld",latency.elapsed());
+        }
+        QTRY_VERIFY(service->lookupFound());
+        const auto entry=service->lookupEntries().first().toMap();
+        QCOMPARE(entry["lemma"].toString(),QStringLiteral("rentrer"));
+        QVERIFY2(entry["analyses"].toStringList().contains(QStringLiteral("直陈式 简单将来时 · il/elle")),qPrintable(entry["analyses"].toStringList().join('|')));
+        QTRY_VERIFY(card->property("visible").toBool());
+        auto* lemma=find(window->contentItem(),"lookupLemma");QVERIFY(lemma);QTRY_COMPARE(lemma->property("text").toString(),QStringLiteral("rentrer"));
+        auto* analysis=find(window->contentItem(),"lookupAnalysis");QVERIFY(analysis);QVERIFY(analysis->isVisible());
+        QVERIFY(analysis->property("text").toString().startsWith(QStringLiteral("rentrera")));
+        auto* external=find(window->contentItem(),"lookupExternal");QVERIFY(external);QVERIFY(external->isVisible());
+        QCOMPARE(card->property("externalUrl").toUrl(),QUrl("https://www.frdic.com/dicts/fr/rentrer"));
+        // The card stays inside the window and does not cover the selected word.
+        const QRectF cardRect(card->property("x").toDouble(),card->property("y").toDouble(),card->property("width").toDouble(),card->property("height").toDouble());
+        qInfo("lookup_card_rect=%.0f,%.0f %.0fx%.0f word=%d,%d",cardRect.x(),cardRect.y(),cardRect.width(),cardRect.height(),inWord.x(),inWord.y());
+        QVERIFY(QRectF(0,0,window->width(),window->height()).contains(cardRect));QVERIFY(!cardRect.contains(inWord));
+        const auto out=qEnvironmentVariable("LANGLERN_OCR_ARTIFACT_DIR");
+        if(!out.isEmpty())QVERIFY(window->grabWindow().save(out+"/real-textbook-lookup-meaning.png"));
+        auto* tab=find(window->contentItem(),"lookupConjugationTab");QVERIFY(tab);QVERIFY(tab->isVisible());
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,middle(tab));
+        auto* grid=find(window->contentItem(),"lookupConjugationGrid");QVERIFY(grid);QTRY_VERIFY(grid->isVisible());
+        QTRY_COMPARE(card->property("tenseIndex").toInt(),5);  // opens on 简单将来时, the tense containing "rentrera"
+        if(!out.isEmpty())QVERIFY(window->grabWindow().save(out+"/real-textbook-lookup-conjugation.png"));
+        // rentrer takes avoir or être: the passé composé shows both auxiliaries, each with its own elision.
+        const auto composed=entry["conjugation"].toList().value(1).toMap();QCOMPARE(composed["name"].toString(),QStringLiteral("passé composé"));
+        const auto firstRow=composed["rows"].toList().value(0).toMap();
+        QCOMPARE(firstRow["person"].toString(),QStringLiteral("j'/je"));QCOMPARE(firstRow["form"].toString(),QStringLiteral("ai rentré / suis rentré(e)"));
+        card->setProperty("tenseIndex",1);
+        auto* tenseName=find(window->contentItem(),"lookupTenseName");QVERIFY(tenseName);QTRY_COMPARE(tenseName->property("text").toString(),QStringLiteral("passé composé"));
+        if(!out.isEmpty())QVERIFY(window->grabWindow().save(out+"/real-textbook-lookup-passe-compose.png"));
+        QTest::keyClick(window,Qt::Key_Escape);QTRY_VERIFY(!card->property("visible").toBool());
+        QCOMPARE(fileHash(path),hash);
         QVERIFY2(warnings.isEmpty(),qPrintable(warnings.join('\n')));window->close();QTRY_VERIFY(shell.shutdownComplete());
     }
 };

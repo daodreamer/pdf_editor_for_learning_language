@@ -17,6 +17,9 @@ jobs:
           .tools/venv/Scripts/python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 -O .deps/Qt --archives qtbase qtdeclarative qttools
           .tools/venv/Scripts/python tools/bootstrap.py --platform windows --pdfium-only
           .tools/venv/Scripts/python tools/bootstrap-dictionary.py
+          # The full French database is ~593 MB upstream; CI tests lookup against real sample lines instead.
+          .tools/venv/Scripts/python tools/bootstrap-french-dictionary.py --source tests/fixtures/fr-wiktionary-sample.jsonl --output-dir build/fr-sample
+          $env:LANGLERN_FR_DICTIONARY = "$PWD/build/fr-sample/fr-wiktionary.sqlite"
           ./tools/build-windows.ps1 -BuildDir build/windows -Test -Lint
           ./tools/package-windows.ps1 -BuildDir build/windows -OutputDir build/packages/windows-x64
           .tools/venv/Scripts/python -X utf8 tools/validate-windows-package.py --package build/packages/windows-x64 --out benchmarks/results/ci-package

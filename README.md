@@ -18,11 +18,14 @@
 
 ```powershell
 .tools/venv/Scripts/python tools/bootstrap-dictionary.py
+.tools/venv/Scripts/python tools/bootstrap-french-dictionary.py
 ./tools/build-windows.ps1 -Test -Lint
 ./tools/run-windows.ps1
 ```
 
-词库约 80 MB，按固定源数据转换为只读 SQLite 索引，不在启动时全量载入内存。未安装时查词会说明缺少词库，不阻断阅读。
+英文词库约 80 MB，法语词库约 52 MB，均按固定散列的源数据转换为只读 SQLite 索引，不在启动时全量载入内存。未安装时查词会说明缺少词库，不阻断阅读。
+
+查词：选中单词后点浮动条上的书本图标，或在阅读模式双击原文单词。查词卡片贴在单词旁边，显示原形、IPA、词性和英文释义。变位或变形的词会标出它与原形的关系，例如 `allions → 直陈式 未完成过去时 · nous`、`yeux → œil`。动词可以切换到“变位”页，变位表只收录日常、大学和工作中常用的 13 个时态：现在时、复合过去时、未完成过去时、愈过去时、最近将来时、简单将来时、先将来时、最近过去时、条件式现在时/过去时、虚拟式现在时/过去时、命令式，另加分词。打开时直接定位到选中词所在的时态并高亮，每个时态下方标注法语名称。复合时态按词典记录的助动词生成：用 être 时过去分词标出配合（allé(e)s）；avoir 和 être 都可用的动词（passer、rentrer）两种都列出。简单过去时等书面语时态不进变位表，但查到这类形式时仍会标注“简单过去时（书面语）”。卡片底部 FR/EN 切换词典语言（会保存），右上角 ↗ 在系统浏览器打开法语助手的原形页面（需联网，属于可选功能）。
 
 面向 Windows / macOS 的离线 PDF 阅读与语言练习工具。固定技术栈为 C++20、Qt Quick、PDFium、CMake。
 

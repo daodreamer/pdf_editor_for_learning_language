@@ -3,6 +3,7 @@
 #include "workspacestate.h"
 #include "offlineservices.h"
 #include "scancleanup.h"
+#include "frenchdictionary.h"
 #include <QTemporaryDir>
 #include <QFile>
 #include <QDir>
@@ -36,11 +37,12 @@ private slots:
             state.addWord("weekend","周末","What did you do last weekend?","练习册",3);
             state.addWord("WEEKEND","ignored","","",1);QCOMPARE(state.words().size(),1);QCOMPARE(state.dueCount(),1);
             state.grade(0,3);QCOMPARE(state.dueCount(),0);state.setLayout(2);state.setToolbar(1);state.setPaper(true);
+            QCOMPARE(state.lookupLanguage(),QStringLiteral("fr"));state.setLookupLanguage("en");
         }
         WorkspaceState restored;restored.setDocument(url.toString());
         QCOMPARE(restored.books().size(),1);QCOMPARE(restored.books()[0].toMap()["page"].toInt(),3);
         QCOMPARE(restored.bookmarks(),QVariantList({1,3}));QCOMPARE(restored.words()[0].toMap()["meaning"].toString(),QStringLiteral("周末"));
-        QCOMPARE(restored.dueCount(),0);QCOMPARE(restored.layout(),2);QCOMPARE(restored.toolbar(),1);QVERIFY(restored.paper());
+        QCOMPARE(restored.dueCount(),0);QCOMPARE(restored.lookupLanguage(),QStringLiteral("en"));QCOMPARE(restored.layout(),2);QCOMPARE(restored.toolbar(),1);QVERIFY(restored.paper());
         restored.toggleBookmark(3);QVERIFY(!restored.bookmarked(3));
         restored.forget(url);restored.updateProgress(url,8,4);QVERIFY(restored.books().isEmpty());
     }
@@ -59,11 +61,88 @@ private slots:
     }
     void realDictionaryAndStaleLookup() {
         if(qEnvironmentVariable("LANGLERN_DICTIONARY").isEmpty()&&!QFileInfo::exists(QDir(QCoreApplication::applicationDirPath()).filePath("dictionary/ecdict.sqlite")))QSKIP("Run tools/bootstrap-dictionary.py and reconfigure to test the optional dictionary");
-        OfflineServices service;service.lookup("not-a-word-zzzzz");service.lookup("weekend");
+        OfflineServices service;service.setLookupLanguage("en");service.lookup("not-a-word-zzzzz");service.lookup("weekend");
         QTRY_VERIFY_WITH_TIMEOUT(!service.meaning().isEmpty(),10000);
         QCOMPARE(service.lookupWord(),QString("weekend"));
         QVERIFY2(service.meaning().contains(QStringLiteral("周末")),qPrintable(service.meaning()));
         QVERIFY(!service.phonetic().isEmpty());
+        QVERIFY(service.lookupFound());QCOMPARE(service.lookupEntries().size(),1);
+        QVERIFY(service.externalDictionaryUrl("weekend").isEmpty());
+    }
+    void frenchWordNormalization() {
+        QCOMPARE(FrenchDictionary::candidates(QStringLiteral("  L’homme, ")),QStringList({"l'homme","homme"}));
+        QVERIFY(FrenchDictionary::candidates(QStringLiteral("Qu'il")).contains("il"));
+        QVERIFY(FrenchDictionary::candidates(QStringLiteral("va-t-il ?")).contains("va"));
+        QVERIFY(FrenchDictionary::candidates(QStringLiteral("me lève")).contains(QStringLiteral("lève")));
+        QVERIFY(FrenchDictionary::candidates(QStringLiteral("…")).isEmpty());
+        QCOMPARE(FrenchDictionary::describe("first-person imperfect indicative plural","verb"),QStringLiteral("直陈式 未完成过去时 · nous"));
+        QCOMPARE(FrenchDictionary::describe("first-person future plural","verb"),QStringLiteral("直陈式 简单将来时 · nous"));
+        QCOMPARE(FrenchDictionary::describe("present singular subjunctive third-person","verb"),QStringLiteral("虚拟式 现在时 · il/elle"));
+        QCOMPARE(FrenchDictionary::describe("feminine participle past plural","verb"),QStringLiteral("过去分词 · 阴性 复数"));
+        QCOMPARE(FrenchDictionary::describe("feminine plural","adj"),QStringLiteral("阴性 复数"));
+        OfflineServices service;
+        QCOMPARE(service.externalDictionaryUrl(QStringLiteral("œil")),QUrl("https://www.frdic.com/dicts/fr/%C5%93il"));
+        QCOMPARE(service.externalDictionaryUrl(QStringLiteral("a/b?c")),QUrl("https://www.frdic.com/dicts/fr/a%2Fb%3Fc"));
+    }
+    void frenchLemmaGlossesAndConjugation() {
+        // CI points LANGLERN_FR_DICTIONARY at a database built from tests/fixtures/fr-wiktionary-sample.jsonl
+        // (real Wiktionary lines); local builds use the full database copied next to the executable.
+        if(qEnvironmentVariable("LANGLERN_FR_DICTIONARY").isEmpty()&&!QFileInfo::exists(QDir(QCoreApplication::applicationDirPath()).filePath("dictionary/fr-wiktionary.sqlite")))
+            QSKIP("Run tools/bootstrap-french-dictionary.py (or set LANGLERN_FR_DICTIONARY) to test French lookup");
+        OfflineServices service;QCOMPARE(service.lookupLanguage(),QStringLiteral("fr"));
+        const auto first=[&service](const QString& word){
+            service.lookup(word);
+            if(!QTest::qWaitFor([&service]{return !service.lookupBusy();},10000))return QVariantMap{};
+            return service.lookupEntries().isEmpty()?QVariantMap{}:service.lookupEntries().first().toMap();
+        };
+        auto entry=first("allions");
+        QCOMPARE(entry["lemma"].toString(),QStringLiteral("aller"));QCOMPARE(entry["aux"].toString(),QStringLiteral("être"));
+        QVERIFY2(entry["analyses"].toStringList().contains(QStringLiteral("直陈式 未完成过去时 · nous")),qPrintable(entry["analyses"].toStringList().join('|')));
+        QVERIFY(entry["glosses"].toStringList().contains(QStringLiteral("to go")));
+        QVERIFY(service.meaning().contains(QStringLiteral("to go")));
+        // Only the tenses in everyday/university/work use, in textbook order; no literary tenses.
+        QStringList titles;QHash<QString,QStringList> table;
+        for(const auto& group:entry["conjugation"].toList()) {
+            const auto map=group.toMap();titles<<map["title"].toString();QVERIFY(!map["name"].toString().isEmpty());
+            for(const auto& row:map["rows"].toList())table[map["title"].toString()]<<row.toMap()["person"].toString()+' '+row.toMap()["form"].toString();
+        }
+        QCOMPARE(titles,QStringList({"现在时","复合过去时","未完成过去时","愈过去时","最近将来时","简单将来时","先将来时","最近过去时",
+            "条件式现在时","条件式过去时","虚拟式现在时","虚拟式过去时","命令式","分词"}));
+        QCOMPARE(table["简单将来时"],QStringList({"j' irai","tu iras","il/elle ira","nous irons","vous irez","ils/elles iront"}));
+        // aller takes être: the participle agrees with the subject.
+        QCOMPARE(table["复合过去时"],QStringList({"je suis allé(e)","tu es allé(e)","il/elle est allé(e)","nous sommes allé(e)s","vous êtes allé(e)s","ils/elles sont allé(e)s"}));
+        QCOMPARE(table["愈过去时"].first(),QStringLiteral("j' étais allé(e)"));
+        QCOMPARE(table["先将来时"].at(3),QStringLiteral("nous serons allé(e)s"));
+        QCOMPARE(table["条件式过去时"].at(1),QStringLiteral("tu serais allé(e)"));
+        QCOMPARE(table["虚拟式过去时"].at(2),QStringLiteral("qu'il/elle soit allé(e)"));
+        QCOMPARE(table["最近将来时"].first(),QStringLiteral("je vais aller"));
+        QCOMPARE(table["最近过去时"].at(3),QStringLiteral("nous venons d'aller"));
+        QVERIFY(table["命令式"].contains(QStringLiteral("(tu) va")));
+        QVERIFY(table["分词"].contains(QStringLiteral("过去分词 allé")));
+        entry=first(QStringLiteral("lève"));QCOMPARE(entry["lemma"].toString(),QStringLiteral("lever"));
+        for(const auto& group:entry["conjugation"].toList()) if(group.toMap()["title"]==QStringLiteral("复合过去时"))
+            QCOMPARE(group.toMap()["rows"].toList().first().toMap()["form"].toString(),QStringLiteral("ai levé"));
+        // A passé simple form is still recognised, labelled as literary, though not tabulated.
+        entry=first(QStringLiteral("alla"));QCOMPARE(entry["lemma"].toString(),QStringLiteral("aller"));
+        QVERIFY2(entry["analyses"].toStringList().contains(QStringLiteral("简单过去时（书面语） · il/elle")),qPrintable(entry["analyses"].toStringList().join('|')));
+        QCOMPARE(service.externalDictionaryUrl(entry["lemma"].toString()),QUrl("https://www.frdic.com/dicts/fr/aller"));
+        entry=first(QStringLiteral("yeux"));QCOMPARE(entry["lemma"].toString(),QStringLiteral("œil"));QVERIFY(entry["conjugation"].toList().isEmpty());
+        entry=first(QStringLiteral("est"));QCOMPARE(entry["lemma"].toString(),QStringLiteral("être"));
+        QVERIFY(service.lookupEntries().size()>1);  // "est" (east) stays available as an alternative
+        entry=first(QStringLiteral("L’homme"));QCOMPARE(entry["lemma"].toString(),QStringLiteral("homme"));QVERIFY(entry["analyses"].toStringList().isEmpty());
+        entry=first(QStringLiteral("me lève"));QCOMPARE(entry["lemma"].toString(),QStringLiteral("lever"));
+        // Participle forms chain through the participle to the infinitive.
+        entry=first(QStringLiteral("organisés"));QCOMPARE(entry["lemma"].toString(),QStringLiteral("organiser"));
+        QVERIFY2(entry["analyses"].toStringList().join('|').contains(QStringLiteral("过去分词")),qPrintable(entry["analyses"].toStringList().join('|')));
+        entry=first(QStringLiteral("été"));QCOMPARE(entry["lemma"].toString(),QStringLiteral("être"));
+        // A newer request supersedes an older one; the stale result must never be published.
+        service.lookup("yeux");service.lookup("belles");
+        QTRY_VERIFY_WITH_TIMEOUT(!service.lookupBusy(),10000);
+        QCOMPARE(service.lookupWord(),QStringLiteral("belles"));
+        entry=service.lookupEntries().first().toMap();QCOMPARE(entry["lemma"].toString(),QStringLiteral("beau"));
+        QVERIFY(entry["analyses"].toStringList().contains(QStringLiteral("阴性 复数")));
+        first(QStringLiteral("zzzzqx"));QVERIFY(!service.lookupFound());QVERIFY(!service.meaning().isEmpty());
+        service.setLookupLanguage("en");QCOMPARE(service.lookupLanguage(),QStringLiteral("en"));QVERIFY(service.externalDictionaryUrl("aller").isEmpty());
     }
     void realLocalAudioPlaybackAndSeeking() {
 #ifndef Q_OS_WIN

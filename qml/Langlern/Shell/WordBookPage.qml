@@ -95,7 +95,7 @@ ColumnLayout {
                         id: details; anchors.fill: parent; anchors.margins: 30; spacing: 22
                         Label { text: page.card ? page.card.word : page.workspace.words.length ? qsTr("今天的复习完成了") : qsTr("从阅读中积累生词"); font.pixelSize: page.width > 900 ? 36 : 25; font.bold: true; color: page.theme.text; Layout.fillWidth: true; wrapMode: Text.Wrap; textFormat: Text.PlainText }
                         DesignButton { theme: page.theme; visible: page.card !== null; text: qsTr("▶  离线发音"); selected: true; onClicked: page.services.speak(page.card.word) }
-                        Label { visible: !page.card; text: qsTr("在阅读页选择原文，点击“查词 / 摘录”加入生词本。"); color: page.theme.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
+                        Label { visible: !page.card; text: qsTr("在阅读页选择原文，点击“查词”加入生词本。"); color: page.theme.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
                         Label { visible: page.card !== null; text: qsTr("原文"); color: page.theme.faint; font.pixelSize: 12 }
                         Label {
                             visible: page.card !== null; Layout.fillWidth: true; padding: 16

@@ -3,9 +3,10 @@ qt_add_qml_module(shell_ui STATIC
     VERSION 1.0
     CLASS_NAME LanglernShellPlugin
     DEPENDENCIES QtQuick QtQuick.Shapes QtQuick.Controls QtQuick.Layouts QtQuick.Dialogs
-    QML_FILES Main.qml Theme.qml DocumentView.qml TextNote.qml TextFormatPopover.qml SelectionActions.qml ActionButton.qml LineIcon.qml DesignButton.qml StudyTools.qml WorkspaceFrame.qml LibraryPage.qml BookCover.qml ReaderPane.qml PageSidebar.qml WordBookPage.qml ImportPage.qml AudioStrip.qml StudyProgress.qml DesignSwitch.qml
+    QML_FILES Main.qml Theme.qml DocumentView.qml TextNote.qml TextFormatPopover.qml SelectionActions.qml ActionButton.qml LineIcon.qml DesignButton.qml StudyTools.qml WorkspaceFrame.qml LibraryPage.qml BookCover.qml ReaderPane.qml PageSidebar.qml WordBookPage.qml ImportPage.qml AudioStrip.qml StudyProgress.qml DesignSwitch.qml LookupCard.qml
     SOURCES ../../../src/app/offlineservices.h ../../../src/app/offlineservices.cpp
         ../../../src/app/pocketspeech.h ../../../src/app/pocketspeech.cpp
+        ../../../src/app/frenchdictionary.h ../../../src/app/frenchdictionary.cpp
         ../../../src/app/annotationtext.h ../../../src/app/annotationtext.cpp
         ../../../src/app/workspacestate.h ../../../src/app/workspacestate.cpp
         ../../../src/app/storageworker.h ../../../src/app/storageworker.cpp
