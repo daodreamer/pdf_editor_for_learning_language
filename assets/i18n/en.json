@@ -215,5 +215,12 @@
   "查英语词典": "English dictionary",
   "法语离线词库未安装。可手动填写释义，或在法语助手中查看。": "The offline French dictionary is not installed. Add a meaning yourself or open Frdic.",
   "离线词库未收录此词，可手动填写释义，或在法语助手中查看。": "Not in the offline dictionary. Add a meaning yourself or open Frdic.",
-  "在阅读页选择原文，点击“查词”加入生词本。": "Select original text in the reader and use “Look up” to add words."
+  "在阅读页选择原文，点击“查词”加入生词本。": "Select original text in the reader and use “Look up” to add words.",
+  "拖入或选择 PDF": "Drop or choose a PDF",
+  "原文件保持不变": "The original stays unchanged",
+  "返回资料库": "Back to library",
+  "离线发音": "Offline pronunciation",
+  "主题": "Theme",
+  "暖纸色（浅色模式）": "Warm paper (light mode)",
+  "夜读柔光（深色模式柔化页面亮度）": "Soft night pages (dim pages in dark mode)"
 }

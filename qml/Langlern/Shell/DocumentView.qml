@@ -28,6 +28,8 @@ ColumnLayout {
     property bool marking: false
     property bool reading: false
     property bool regionSelection: false
+    property bool nightDim: true
+    function wash(alpha: real): color { return Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, alpha) }
     function startRegionRecognition(): void {
         shell.finishTextEditing()
         shell.annotations.cancelGesture()
@@ -67,8 +69,8 @@ ColumnLayout {
         contentWidth: Math.max(width, view.shell.contentWidth)
         contentHeight: view.shell.contentHeight
         boundsBehavior: Flickable.StopAtBounds
-        ScrollBar.vertical: ScrollBar {}
-        ScrollBar.horizontal: ScrollBar {}
+        ScrollBar.vertical: ScrollBar { id: verticalBar; contentItem: Rectangle { implicitWidth: 6; radius: 3; color: view.theme.faint; opacity: verticalBar.active ? 0.75 : 0.0; Behavior on opacity { NumberAnimation { duration: 200 } } } }
+        ScrollBar.horizontal: ScrollBar { id: horizontalBar; contentItem: Rectangle { implicitHeight: 6; radius: 3; color: view.theme.faint; opacity: horizontalBar.active ? 0.75 : 0.0; Behavior on opacity { NumberAnimation { duration: 200 } } } }
         readonly property real renderDpr: Screen.devicePixelRatio
         onRenderDprChanged: viewportTimer.restart()
         function report(): void {
@@ -109,12 +111,15 @@ ColumnLayout {
                 width: sheet.pageWidth
                 height: sheet.pageHeight
                 color: view.theme.dark ? "black" : "white"
-                Rectangle { x: 3; y: 5; width: parent.width; height: parent.height; z: -1; color: "#18000000" }
+                // Soft two-step lift instead of one hard offset shadow; plain rectangles, no blur.
+                Rectangle { x: -1; y: 1; width: parent.width + 2; height: parent.height + 2; z: -1; radius: 3; color: view.theme.dark ? "#33000000" : "#0c1e2a26" }
+                Rectangle { x: 0; y: 5; width: parent.width; height: parent.height; z: -2; radius: 6; color: view.theme.dark ? "#40000000" : "#101e2a26" }
                 PageItem {
                     objectName: "pdfPage"
                     anchors.fill: parent
                     image: sheet.pixels
-                    opacity: view.theme.dark ? 0.88 : 1
+                    // 夜读柔光: in the dark theme the white page is dimmed over the black sheet.
+                    opacity: view.theme.dark && view.nightDim ? 0.88 : 1
                     Accessible.role: Accessible.Graphic
                     Accessible.name: qsTr("PDF 第 %1 页").arg(sheet.pageNumber)
                 }
@@ -141,8 +146,8 @@ ColumnLayout {
                         x: modelData.x * sheet.width; y: modelData.y * sheet.height
                         width: modelData.w * sheet.width; height: modelData.h * sheet.height
                         // Hovered word uses the same fill as a text selection.
-                        color: wordHover.hovered ? "#69287df0" : "#10007aff"
-                        border.color: wordHover.hovered ? "transparent" : "#30007aff"; radius: 2
+                        color: wordHover.hovered ? view.wash(0.38) : view.wash(0.07)
+                        border.color: wordHover.hovered ? "transparent" : view.wash(0.22); radius: 3
                         HoverHandler { id: wordHover; cursorShape: Qt.PointingHandCursor }
                         TapHandler { onTapped: { view.lookupPoint = ocrWord.mapToItem(Overlay.overlay, ocrWord.width / 2, ocrWord.height); view.wordRequested(ocrWord.modelData.word, ocrWord.modelData.context) } }
                         Accessible.role: Accessible.Button; Accessible.name: modelData.word
@@ -314,7 +319,7 @@ ColumnLayout {
             y: Math.min(selectionMouse.regionStart.y, selectionMouse.regionEnd.y)
             width: Math.abs(selectionMouse.regionEnd.x - selectionMouse.regionStart.x)
             height: Math.abs(selectionMouse.regionEnd.y - selectionMouse.regionStart.y)
-            color: "#20007aff"; border.color: "#007aff"
+            color: view.wash(0.12); border.color: view.theme.accent; radius: 6
         }
         TapHandler {
             acceptedButtons: Qt.LeftButton
@@ -389,7 +394,7 @@ ColumnLayout {
             x: view.answerHint.x; y: view.answerHint.y
             width: view.answerHint.width; height: view.answerHint.height
             visible: view.answerHintsEnabled && width > 0 && height > 0
-            color: "#16007aff"; border.color: "#70007aff"; radius: 3
+            color: view.wash(0.09); border.color: view.wash(0.45); radius: 4
             readonly property bool blocksInkInput: true
             MouseArea {
                 anchors.fill: parent

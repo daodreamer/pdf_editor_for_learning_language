@@ -18,6 +18,7 @@ class WorkspaceState : public QObject {
     Q_PROPERTY(int layout READ layout WRITE setLayout NOTIFY preferencesChanged)
     Q_PROPERTY(int toolbar READ toolbar WRITE setToolbar NOTIFY preferencesChanged)
     Q_PROPERTY(bool paper READ paper WRITE setPaper NOTIFY preferencesChanged)
+    Q_PROPERTY(bool nightDim READ nightDim WRITE setNightDim NOTIFY preferencesChanged)
     Q_PROPERTY(bool english READ english WRITE setEnglish NOTIFY preferencesChanged)
     Q_PROPERTY(QString lookupLanguage READ lookupLanguage WRITE setLookupLanguage NOTIFY preferencesChanged)
     Q_PROPERTY(QString frenchVoice READ frenchVoice WRITE setFrenchVoice NOTIFY preferencesChanged)
@@ -33,6 +34,7 @@ public:
     int layout() const { return layout_; }
     int toolbar() const { return toolbar_; }
     bool paper() const { return paper_; }
+    bool nightDim() const { return nightDim_; }
     bool english() const { return english_; }
     QString lookupLanguage() const { return lookupLanguage_; }
     QString frenchVoice() const { return frenchVoice_; }
@@ -40,6 +42,7 @@ public:
     void setLayout(int value);
     void setToolbar(int value);
     void setPaper(bool value);
+    void setNightDim(bool value);
     void setEnglish(bool value);
     void setLookupLanguage(QString value);
     void setFrenchVoice(QString value);
@@ -64,6 +67,7 @@ private:
     QString document_, error_, path_;
     int layout_=0, toolbar_=0;
     bool paper_=false;
+    bool nightDim_=true;
     bool english_=false;
     QString lookupLanguage_=QStringLiteral("fr");
     QString frenchVoice_=QStringLiteral("male");

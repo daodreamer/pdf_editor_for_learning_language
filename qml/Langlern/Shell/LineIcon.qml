@@ -38,6 +38,9 @@ Shape {
         "next": "M9 18l6-6-6-6", // chevron-right
         "open": "M6 14l1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2", // folder-open
         "previous": "M15 18l-6-6 6-6", // chevron-left
+        "down": "M6 9l6 6 6-6", // chevron-down
+        "search": "M3 11a8 8 0 1 0 16 0a8 8 0 1 0 -16 0 M21 21l-4.3-4.3", // search
+        "wave": "M3 9.5c3-3 6-3 9 0s6 3 9 0 M3 15.5c3-3 6-3 9 0s6 3 9 0", // project mark (not Lucide): two flowing lines
         "redo": "M15 14l5-5-5-5 M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13", // redo-2
         "save": "M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7 M7 3v4a1 1 0 0 0 1 1h7", // save
         "theme": "M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z", // moon

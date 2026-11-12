@@ -16,8 +16,9 @@ Popup {
         if (formatRevision < 0) return ({})
         return formatter.selectionStyle(editor.selectionStart, editor.selectionEnd)
     }
-    readonly property color foreground: dark ? "#f5f5f7" : "#1d1d1f"
-    readonly property color tint: dark ? "#303d52" : "#e7f0ff"
+    readonly property color foreground: dark ? "#e6ede9" : "#1e2a26"
+    readonly property color tint: dark ? "#297ccfb7" : "#dcebe5"
+    readonly property color accent: dark ? "#7ccfb7" : "#1f5c4e"
     readonly property color selectedColor: current.color || "#1e468c"
     property point selectionTop: Qt.point(0, 0)
     property point selectionBottom: Qt.point(0, 0)
@@ -62,8 +63,8 @@ Popup {
     Connections { target: popover.formatter; function onChanged(): void { ++popover.formatRevision } }
     background: Item {
         readonly property bool blocksInkInput: true
-        Rectangle { anchors.fill: parent; anchors.topMargin: 3; anchors.bottomMargin: -3; radius: 16; color: popover.dark ? "#40000000" : "#18000000" }
-        Rectangle { anchors.fill: parent; radius: 16; color: popover.dark ? "#f02c2c2e" : "#fcfafafa"; border.color: popover.dark ? "#35ffffff" : "#16000000" }
+        Rectangle { anchors.fill: parent; anchors.topMargin: 4; anchors.bottomMargin: -4; radius: 22; color: popover.dark ? "#59000000" : "#141e2a26" }
+        Rectangle { anchors.fill: parent; radius: 22; color: popover.dark ? "#f2222b28" : "#fcffffff"; border.color: popover.dark ? "#17e6ede9" : "#1a1e2a26" }
     }
     contentItem: Flow {
         id: tools
@@ -80,14 +81,14 @@ Popup {
             onClicked: popover.services.speak(popover.editor.selectedText)
             Accessible.name: qsTr("朗读文本框选中文字")
         }
-        Item { width: 1; height: 32; Rectangle { anchors.centerIn: parent; width: 1; height: 22; color: popover.dark ? "#35ffffff" : "#1c000000" } }
+        Item { width: 1; height: 32; Rectangle { anchors.centerIn: parent; width: 1; height: 22; color: popover.dark ? "#17e6ede9" : "#1a1e2a26" } }
         ToolButton {
             id: boldButton
             objectName: "formatBold"
             width: 32; height: 32; text: "B"; font.bold: true; font.pixelSize: 16
             focusPolicy: Qt.NoFocus
-            background: Rectangle { radius: 9; color: popover.current.bold ? popover.tint : boldButton.hovered ? (popover.dark ? "#3a3a3c" : "#eeeeef") : "transparent" }
-            contentItem: Text { text: boldButton.text; font: boldButton.font; color: popover.current.bold ? "#007aff" : popover.foreground; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+            background: Rectangle { radius: 16; color: popover.current.bold ? popover.tint : boldButton.hovered ? (popover.dark ? "#2a3431" : "#e6ece8") : "transparent" }
+            contentItem: Text { text: boldButton.text; font: boldButton.font; color: popover.current.bold ? popover.accent : popover.foreground; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
             onClicked: popover.apply("bold", !popover.current.bold)
             Accessible.name: qsTr("加粗选中文字")
         }
@@ -96,19 +97,19 @@ Popup {
             objectName: "formatItalic"
             width: 32; height: 32; text: "I"; font.italic: true; font.pixelSize: 17
             focusPolicy: Qt.NoFocus
-            background: Rectangle { radius: 9; color: popover.current.italic ? popover.tint : italicButton.hovered ? (popover.dark ? "#3a3a3c" : "#eeeeef") : "transparent" }
-            contentItem: Text { text: italicButton.text; font: italicButton.font; color: popover.current.italic ? "#007aff" : popover.foreground; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+            background: Rectangle { radius: 16; color: popover.current.italic ? popover.tint : italicButton.hovered ? (popover.dark ? "#2a3431" : "#e6ece8") : "transparent" }
+            contentItem: Text { text: italicButton.text; font: italicButton.font; color: popover.current.italic ? popover.accent : popover.foreground; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
             onClicked: popover.apply("italic", !popover.current.italic)
             Accessible.name: qsTr("倾斜选中文字")
         }
-        Item { width: 1; height: 32; Rectangle { anchors.centerIn: parent; width: 1; height: 22; color: popover.dark ? "#35ffffff" : "#1c000000" } }
+        Item { width: 1; height: 32; Rectangle { anchors.centerIn: parent; width: 1; height: 22; color: popover.dark ? "#17e6ede9" : "#1a1e2a26" } }
         ToolButton {
             id: smallerButton
             objectName: "formatSmaller"
             width: 30; height: 32; text: "A−"; font.pixelSize: 13; focusPolicy: Qt.NoFocus
             onClicked: popover.apply("size", Math.max(8, (popover.current.size || 14) - 1))
             contentItem: Text { text: smallerButton.text; font: smallerButton.font; color: popover.foreground; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-            background: Rectangle { radius: 9; color: smallerButton.hovered ? popover.tint : "transparent" }
+            background: Rectangle { radius: 16; color: smallerButton.hovered ? popover.tint : "transparent" }
             Accessible.name: qsTr("减小字号")
         }
         Text { width: 26; height: 32; text: popover.current.size || 14; font.pixelSize: 12; color: popover.foreground; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
@@ -118,10 +119,10 @@ Popup {
             width: 30; height: 32; text: "A+"; font.pixelSize: 15; focusPolicy: Qt.NoFocus
             onClicked: popover.apply("size", Math.min(72, (popover.current.size || 14) + 1))
             contentItem: Text { text: largerButton.text; font: largerButton.font; color: popover.foreground; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-            background: Rectangle { radius: 9; color: largerButton.hovered ? popover.tint : "transparent" }
+            background: Rectangle { radius: 16; color: largerButton.hovered ? popover.tint : "transparent" }
             Accessible.name: qsTr("增大字号")
         }
-        Item { width: 1; height: 32; Rectangle { anchors.centerIn: parent; width: 1; height: 22; color: popover.dark ? "#35ffffff" : "#1c000000" } }
+        Item { width: 1; height: 32; Rectangle { anchors.centerIn: parent; width: 1; height: 22; color: popover.dark ? "#17e6ede9" : "#1a1e2a26" } }
         Repeater {
             model: ["#1e468c", "#1d1d1f", "#e5484d", "#e69819", "#30a46c", "#8e4ec6"]
             delegate: ToolButton {
@@ -131,7 +132,7 @@ Popup {
                 readonly property color swatchColor: modelData
                 objectName: "formatColor" + index
                 width: 26; height: 32; focusPolicy: Qt.NoFocus
-                background: Rectangle { radius: 9; color: swatch.hovered ? popover.tint : "transparent" }
+                background: Rectangle { radius: 16; color: swatch.hovered ? popover.tint : "transparent" }
                 contentItem: Item {
                     Rectangle { anchors.centerIn: parent; width: 20; height: 20; radius: 10; color: "transparent"; border.width: popover.selectedColor === swatch.swatchColor ? 1.5 : 0; border.color: swatch.modelData }
                     Rectangle { anchors.centerIn: parent; width: 14; height: 14; radius: 7; color: swatch.modelData }

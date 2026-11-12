@@ -50,7 +50,7 @@ Popup {
     modal: false
     focus: true
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-    padding: 16
+    padding: 18
     width: Math.min(360, (parent ? parent.width : 400) - 16)
     readonly property real gap: 18
     x: Math.max(8, Math.min((parent ? parent.width : 800) - width - 8, anchorPoint.x - width / 2))
@@ -61,34 +61,41 @@ Popup {
     }
     background: Rectangle {
         readonly property bool blocksInkInput: true
-        radius: 14; color: card.theme.card; border.color: card.theme.line
+        radius: 22; color: card.theme.card; border.color: card.theme.line
+        Rectangle { z: -1; anchors.fill: parent; anchors.topMargin: 4; anchors.bottomMargin: -4; radius: parent.radius; color: card.theme.shadow }
     }
 
     component IconButton: ToolButton {
         id: iconButton
         required property string symbol
         property string tip
-        implicitWidth: 28; implicitHeight: 28; padding: 4
+        implicitWidth: 32; implicitHeight: 32; padding: 7
         focusPolicy: Qt.NoFocus
         contentItem: LineIcon { symbol: iconButton.symbol; size: 18; ink: iconButton.enabled ? card.theme.muted : card.theme.faint }
-        background: Rectangle { radius: 7; color: iconButton.hovered || iconButton.down ? card.theme.fill : "transparent" }
+        background: Rectangle { radius: height / 2; color: iconButton.hovered || iconButton.down ? card.theme.fill : "transparent" }
         Accessible.name: tip
-        ToolTip.visible: hovered && tip.length > 0
-        ToolTip.delay: 500
-        ToolTip.text: tip
+        Loader {
+            active: iconButton.hovered && (iconButton.tip).length > 0
+            sourceComponent: HoverTip { parent: iconButton; theme: card.theme; text: iconButton.tip; delay: 500; visible: true }
+        }
     }
     component Chip: AbstractButton {
         id: chip
         property bool active: false
-        implicitHeight: 24
-        implicitWidth: chipLabel.implicitWidth + 16
+        property string tip: ""
+        Loader {
+            active: chip.hovered && (chip.tip).length > 0
+            sourceComponent: HoverTip { parent: chip; theme: card.theme; text: chip.tip; delay: 500; visible: true }
+        }
+        implicitHeight: 26
+        implicitWidth: chipLabel.implicitWidth + 20
         focusPolicy: Qt.NoFocus
         contentItem: Text {
             id: chipLabel
-            text: chip.text; font.pixelSize: 11; color: chip.active ? card.theme.accent : card.theme.muted
+            text: chip.text; font.pixelSize: 11; color: chip.active ? card.theme.accentText : card.theme.muted
             horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter; textFormat: Text.PlainText
         }
-        background: Rectangle { radius: 12; color: chip.active ? card.theme.tint : chip.hovered ? card.theme.fill : "transparent"; border.color: chip.active ? "transparent" : card.theme.line }
+        background: Rectangle { radius: height / 2; color: chip.active ? card.theme.tint : chip.hovered ? card.theme.fill : "transparent"; border.color: chip.active ? "transparent" : card.theme.line }
     }
 
     contentItem: ColumnLayout {
@@ -130,7 +137,7 @@ Popup {
         Rectangle {
             Layout.fillWidth: true
             visible: card.entry !== null && card.entry.analyses.length > 0
-            implicitHeight: analysis.implicitHeight + 12; radius: 8; color: card.theme.tint
+            implicitHeight: analysis.implicitHeight + 14; radius: 12; color: card.theme.tint
             Text {
                 id: analysis
                 objectName: "lookupAnalysis"
@@ -211,9 +218,7 @@ Popup {
                             text: modelData.title
                             active: index === card.tenseIndex
                             onClicked: card.tenseIndex = index
-                            ToolTip.visible: hovered
-                            ToolTip.delay: 500
-                            ToolTip.text: modelData.name
+                            tip: modelData.name
                         }
                     }
                 }
@@ -256,7 +261,7 @@ Popup {
             Layout.fillWidth: true
             placeholderText: qsTr("笔记（可选，替代默认释义）")
             font.pixelSize: 12; color: card.theme.text
-            background: Rectangle { radius: 8; color: card.theme.fill }
+            background: Rectangle { radius: 12; color: card.theme.fill }
         }
 
         RowLayout {

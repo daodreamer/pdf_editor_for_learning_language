@@ -20,7 +20,7 @@ Rectangle {
     property bool recentOnly: false
     property bool readerLoaded: shell.pageCount > 0
     property bool initialZoomSet: false
-    color: theme.surface
+    color: theme.canvas
     function openBook(book: var): void {
         resumePage = book.page || 1
         if (String(shell.selectedUrl) === book.url && shell.pageCount > 0) {
@@ -65,30 +65,56 @@ Rectangle {
         interval: 1200; repeat: true; running: frame.shell.pageCount > 0
         onTriggered: frame.workspace.updateProgress(frame.shell.selectedUrl, frame.shell.pageCount, frame.shell.currentPage)
     }
+    component NavItem: AbstractButton {
+        id: nav
+        property string symbol
+        property string count: ""
+        property bool active: false
+        Layout.fillWidth: true
+        implicitHeight: 42
+        leftPadding: 14; rightPadding: 14
+        font.pixelSize: 14
+        contentItem: RowLayout {
+            spacing: 10
+            LineIcon { visible: nav.symbol.length > 0; symbol: nav.symbol; size: 18; ink: nav.active ? frame.theme.accentText : frame.theme.text }
+            Text { text: nav.text; font.pixelSize: nav.font.pixelSize; font.weight: nav.active ? Font.DemiBold : Font.Normal; color: nav.active ? frame.theme.accentText : nav.symbol.length ? frame.theme.text : frame.theme.muted; Layout.fillWidth: true; elide: Text.ElideRight }
+            Text { visible: nav.count.length > 0; text: nav.count; font.pixelSize: 12; color: frame.theme.muted }
+        }
+        background: Rectangle { radius: height / 2; color: nav.active ? frame.theme.card : nav.hovered ? frame.theme.fill : "transparent" }
+        Accessible.name: text
+    }
     RowLayout {
         anchors.fill: parent
         spacing: 0
-        Rectangle {
-            Layout.preferredWidth: frame.width < 850 ? 170 : 220
+        ColumnLayout {
+            Layout.preferredWidth: frame.width < 850 ? 176 : 224
+            Layout.maximumWidth: Layout.preferredWidth
+            Layout.fillWidth: false
             Layout.fillHeight: true
+            Layout.margins: 12; Layout.topMargin: 18; Layout.rightMargin: 4
             visible: frame.screen !== "reader" && frame.screen !== "import"
-            color: frame.theme.sidebar
-            ColumnLayout {
-                anchors.fill: parent; anchors.margins: 10; spacing: 4
-                Label { text: "LinguaPDF"; font.pixelSize: 21; font.weight: Font.Bold; color: frame.theme.text; Layout.margins: 14 }
-                Label { text: qsTr("资料库"); color: frame.theme.faint; font.pixelSize: 11; Layout.leftMargin: 12; Layout.topMargin: 12 }
-                DesignButton { theme: frame.theme; text: qsTr("全部练习册 · %1").arg(frame.workspace.books.length); glyph: "▦"; selected: frame.screen === "library" && !frame.recentOnly; Layout.fillWidth: true; onClicked: { frame.recentOnly = false; frame.screen = "library" } }
-                DesignButton { theme: frame.theme; text: qsTr("最近阅读"); glyph: "◷"; selected: frame.screen === "library" && frame.recentOnly; Layout.fillWidth: true; onClicked: { frame.recentOnly = true; frame.screen = "library" } }
-                DesignButton { theme: frame.theme; text: qsTr("生词本 · %1").arg(frame.workspace.words.length); glyph: "✎"; selected: frame.screen === "words"; Layout.fillWidth: true; onClicked: frame.screen = "words" }
-                Item { Layout.fillHeight: true }
-                Label { text: qsTr("全部离线 · 保存在本机"); color: frame.theme.faint; font.pixelSize: 11; Layout.leftMargin: 12 }
-                DesignButton { theme: frame.theme; text: qsTr("外观与布局"); Layout.fillWidth: true; onClicked: settings.open() }
-                DesignButton { theme: frame.theme; text: qsTr("快捷键"); Layout.fillWidth: true; onClicked: frame.helpRequested() }
+            spacing: 4
+            RowLayout {
+                Layout.leftMargin: 10; Layout.bottomMargin: 18; spacing: 10
+                Rectangle {
+                    implicitWidth: 30; implicitHeight: 30; radius: 10; color: frame.theme.accent
+                    LineIcon { anchors.centerIn: parent; size: 20; symbol: "wave"; ink: frame.theme.accentInk }
+                }
+                Label { text: "LinguaPDF"; font.pixelSize: 18; font.weight: Font.Bold; color: frame.theme.text }
             }
-            Rectangle { width: 1; height: parent.height; anchors.right: parent.right; color: frame.theme.line }
+            NavItem { text: qsTr("全部练习册"); symbol: "library"; count: String(frame.workspace.books.length); active: frame.screen === "library" && !frame.recentOnly; onClicked: { frame.recentOnly = false; frame.screen = "library" } }
+            NavItem { text: qsTr("最近阅读"); symbol: "recent"; active: frame.screen === "library" && frame.recentOnly; onClicked: { frame.recentOnly = true; frame.screen = "library" } }
+            NavItem { text: qsTr("生词本"); symbol: "book"; count: String(frame.workspace.words.length); active: frame.screen === "words"; onClicked: frame.screen = "words" }
+            Item { Layout.fillHeight: true }
+            NavItem { text: qsTr("外观与布局"); implicitHeight: 38; font.pixelSize: 13; onClicked: settings.open() }
+            NavItem { text: qsTr("快捷键"); implicitHeight: 38; font.pixelSize: 13; onClicked: frame.helpRequested() }
+            Label { text: qsTr("全部离线 · 保存在本机"); color: frame.theme.faint; font.pixelSize: 11; Layout.leftMargin: 14; Layout.topMargin: 6 }
         }
         Item {
             Layout.fillWidth: true; Layout.fillHeight: true
+            // Non-reading screens sit on one large rounded sheet above the ground.
+            Layout.margins: frame.screen === "reader" ? 0 : 12
+            Rectangle { anchors.fill: parent; visible: frame.screen !== "reader"; radius: 26; color: frame.theme.surface }
             LibraryPage {
                 anchors.fill: parent
                 visible: frame.screen === "library"
@@ -139,24 +165,50 @@ Rectangle {
         width: Math.min(parent.width - 32, 700); padding: 8
         visible: text.length > 0
         text: frame.workspace.error.length ? frame.workspace.error : frame.shell.errorCode.length ? frame.shell.statusText : ""
-        wrapMode: Text.WordWrap; color: "#ff3b30"; textFormat: Text.PlainText
-        background: Rectangle { radius: 8; color: frame.theme.card }
+        anchors.bottomMargin: 18; leftPadding: 18; rightPadding: 18; topPadding: 10; bottomPadding: 10
+        wrapMode: Text.WordWrap; color: frame.theme.danger; textFormat: Text.PlainText
+        background: Rectangle { radius: Math.min(height / 2, 20); color: frame.theme.card; border.color: frame.theme.line }
     }
     Popup {
         id: settings
         parent: Overlay.overlay; anchors.centerIn: parent
-        modal: true; padding: 24; width: 380
-        background: Rectangle { radius: 16; color: frame.theme.card; border.color: frame.theme.line }
+        modal: true; padding: 26; width: 400
+        background: Rectangle {
+            radius: 26; color: frame.theme.card; border.color: frame.theme.line
+            Rectangle { z: -1; anchors.fill: parent; anchors.topMargin: 4; anchors.bottomMargin: -4; radius: parent.radius; color: frame.theme.shadow }
+        }
         contentItem: ColumnLayout {
             spacing: 14
-            Label { text: qsTr("外观与布局"); font.pixelSize: 20; font.bold: true; color: frame.theme.text }
-            Label { text: qsTr("阅读界面"); color: frame.theme.muted }
-            ComboBox { Layout.fillWidth: true; model: [qsTr("侧栏"), qsTr("专注"), qsTr("练习面板")]; currentIndex: frame.workspace.layout; onActivated: frame.workspace.layout = currentIndex }
+            Label { text: qsTr("外观与布局"); font.pixelSize: 20; font.weight: Font.Bold; color: frame.theme.text }
+            Label { text: qsTr("主题"); color: frame.theme.muted }
+            Rectangle {
+                Layout.fillWidth: true; Layout.preferredHeight: 38; radius: height / 2; color: frame.theme.fill
+                Row {
+                    anchors.fill: parent; anchors.margins: 3
+                    Repeater {
+                        model: [qsTr("跟随系统"), qsTr("浅色"), qsTr("深色")]
+                        AbstractButton {
+                            id: themeOption
+                            required property int index
+                            required property string modelData
+                            readonly property bool active: frame.shell.themeMode === index
+                            width: parent.width / 3; height: parent.height; text: modelData
+                            contentItem: Text { text: themeOption.text; font.pixelSize: 13; font.weight: themeOption.active ? Font.DemiBold : Font.Normal; color: themeOption.active ? frame.theme.accentText : frame.theme.muted; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                            background: Rectangle { radius: height / 2; color: themeOption.active ? frame.theme.card : "transparent" }
+                            // ShellState only exposes cycling; at most two steps reach any mode.
+                            onClicked: { for (let i = 0; i < 3 && frame.shell.themeMode !== index; ++i) frame.shell.cycleTheme() }
+                            Accessible.name: text
+                        }
+                    }
+                }
+            }
+            DesignSwitch { theme: frame.theme; text: qsTr("暖纸色（浅色模式）"); checked: frame.workspace.paper; onToggled: frame.workspace.paper = checked }
+            DesignSwitch { theme: frame.theme; text: qsTr("夜读柔光（深色模式柔化页面亮度）"); checked: frame.workspace.nightDim; onToggled: frame.workspace.nightDim = checked }
+            Label { text: qsTr("阅读界面"); color: frame.theme.muted; Layout.topMargin: 4 }
+            DesignCombo { theme: frame.theme; Layout.fillWidth: true; model: [qsTr("侧栏"), qsTr("专注"), qsTr("练习面板")]; currentIndex: frame.workspace.layout; onActivated: frame.workspace.layout = currentIndex }
             Label { text: qsTr("工具栏"); color: frame.theme.muted }
-            ComboBox { Layout.fillWidth: true; model: [qsTr("顶部"), qsTr("悬浮"), qsTr("侧边")]; currentIndex: frame.workspace.toolbar; onActivated: frame.workspace.toolbar = currentIndex }
-            DesignButton { theme: frame.theme; text: qsTr("切换系统 / 浅色 / 深色"); Layout.fillWidth: true; onClicked: frame.shell.cycleTheme() }
-            CheckBox { text: qsTr("纸张色（浅色模式）"); checked: frame.workspace.paper; onToggled: frame.workspace.paper = checked }
-            CheckBox { text: "English / 中文"; checked: frame.services.english; onToggled: { frame.workspace.english = checked; frame.services.english = checked } }
+            DesignCombo { theme: frame.theme; Layout.fillWidth: true; model: [qsTr("顶部"), qsTr("悬浮"), qsTr("侧边")]; currentIndex: frame.workspace.toolbar; onActivated: frame.workspace.toolbar = currentIndex }
+            DesignSwitch { theme: frame.theme; text: "English / 中文"; checked: frame.services.english; onToggled: { frame.workspace.english = checked; frame.services.english = checked } }
             DesignButton { theme: frame.theme; text: qsTr("完成"); primary: true; Layout.alignment: Qt.AlignRight; onClicked: settings.close() }
         }
     }

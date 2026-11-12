@@ -17,11 +17,14 @@ Popup {
     modal: false
     closePolicy: Popup.NoAutoClose
     padding: 4
-    width: buttons.implicitWidth + 8
+    width: buttons.implicitWidth + 10
     height: 40
     x: Math.max(8, Math.min((parent ? parent.width : 800) - width - 8, anchorPoint.x - width / 2))
     y: Math.max(8, Math.min((parent ? parent.height : 600) - height - 8, anchorPoint.y + 16))
-    background: Rectangle { readonly property bool blocksInkInput: true; radius: 10; color: actions.theme.card; border.color: actions.theme.line }
+    background: Rectangle {
+        readonly property bool blocksInkInput: true; radius: height / 2; color: actions.theme.card; border.color: actions.theme.line
+        Rectangle { z: -1; anchors.fill: parent; anchors.topMargin: 3; anchors.bottomMargin: -3; radius: parent.radius; color: actions.theme.shadow }
+    }
     component IconAction: ToolButton {
         id: action
         required property string symbol
@@ -29,11 +32,12 @@ Popup {
         implicitWidth: 32; implicitHeight: 32; padding: 6
         focusPolicy: Qt.NoFocus
         contentItem: LineIcon { symbol: action.symbol; size: 18; ink: actions.theme.text }
-        background: Rectangle { radius: 7; color: action.hovered || action.down ? actions.theme.fill : "transparent" }
+        background: Rectangle { radius: height / 2; color: action.hovered || action.down ? actions.theme.fill : "transparent" }
         Accessible.name: tip
-        ToolTip.visible: hovered
-        ToolTip.delay: 400
-        ToolTip.text: tip
+        Loader {
+            active: action.hovered && (action.tip).length > 0
+            sourceComponent: HoverTip { parent: action; theme: actions.theme; text: action.tip; delay: 400; visible: true }
+        }
     }
     contentItem: Row {
         id: buttons

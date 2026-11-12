@@ -133,6 +133,8 @@ ApplicationWindow {
                 standardButtons: Dialog.Ok
                 Component.onCompleted: open()
                 onClosed: helpLoader.active = false
+                padding: 24
+                background: Rectangle { radius: 24; color: shellTheme.card; border.color: shellTheme.line }
                 contentItem: ScrollView {
                     implicitHeight: Math.min(400, window.height - 180)
                     clip: true

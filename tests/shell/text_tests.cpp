@@ -84,6 +84,9 @@ private slots:
             ++changedPixels;
             bool inside=false;
             for(const auto& r:expected) inside|=r.contains(QPointF(x,y));
+            // The floating status capsule overlays the viewport and reports the selection in text.
+            if(auto* status=window->findChild<QQuickItem*>("readerStatusIsland"))
+                inside|=QRectF(status->mapToScene(QPointF(-4,-4))*dpr,QSizeF((status->width()+8)*dpr,(status->height()+8)*dpr)).contains(QPointF(x,y));
             if(auto* actions=window->findChild<QObject*>("pageSelectionActions")) {
                 if(auto* item=actions->property("contentItem").value<QQuickItem*>())
                     inside|=QRectF(item->mapToScene(QPointF(-8,-8))*dpr,QSizeF((item->width()+16)*dpr,(item->height()+16)*dpr)).contains(QPointF(x,y));

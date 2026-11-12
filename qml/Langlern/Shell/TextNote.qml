@@ -113,8 +113,9 @@ Item {
         objectName: "annotationFrame"
         anchors.fill: parent
         color: "transparent"
-        border.color: "#397bd2"
+        border.color: "#3a8f7b"
         border.width: 1
+        radius: 4
         opacity: note.showFrame ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: 140 } }
         Accessible.ignored: true
@@ -304,9 +305,9 @@ Item {
             width: 10
             height: 10
             color: "white"
-            border.color: "#397bd2"
-            border.width: 1
-            radius: 2
+            border.color: "#3a8f7b"
+            border.width: 1.5
+            radius: width / 2
             opacity: frame.opacity
             visible: (note.showFrame || opacity > 0) && !note.marking && editor.text.length > 0
             MouseArea {

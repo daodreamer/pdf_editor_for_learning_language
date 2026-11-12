@@ -1,3 +1,4 @@
+#include <functional>
 #include "testapplication.h"
 #include "shellstate.h"
 #include "workspacestate.h"
@@ -37,14 +38,21 @@ private slots:
             state.addWord("weekend","周末","What did you do last weekend?","练习册",3);
             state.addWord("WEEKEND","ignored","","",1);QCOMPARE(state.words().size(),1);QCOMPARE(state.dueCount(),1);
             state.grade(0,3);QCOMPARE(state.dueCount(),0);state.setLayout(2);state.setToolbar(1);state.setPaper(true);
+            QVERIFY(state.nightDim());state.setNightDim(false);
             QCOMPARE(state.lookupLanguage(),QStringLiteral("fr"));state.setLookupLanguage("en");
         }
         WorkspaceState restored;restored.setDocument(url.toString());
         QCOMPARE(restored.books().size(),1);QCOMPARE(restored.books()[0].toMap()["page"].toInt(),3);
         QCOMPARE(restored.bookmarks(),QVariantList({1,3}));QCOMPARE(restored.words()[0].toMap()["meaning"].toString(),QStringLiteral("周末"));
-        QCOMPARE(restored.dueCount(),0);QCOMPARE(restored.lookupLanguage(),QStringLiteral("en"));QCOMPARE(restored.layout(),2);QCOMPARE(restored.toolbar(),1);QVERIFY(restored.paper());
+        QCOMPARE(restored.dueCount(),0);QCOMPARE(restored.lookupLanguage(),QStringLiteral("en"));QCOMPARE(restored.layout(),2);QCOMPARE(restored.toolbar(),1);QVERIFY(restored.paper());QVERIFY(!restored.nightDim());
         restored.toggleBookmark(3);QVERIFY(!restored.bookmarked(3));
         restored.forget(url);restored.updateProgress(url,8,4);QVERIFY(restored.books().isEmpty());
+    }
+    void nightDimDefaultsOnForEarlierLibraries() {
+        // Library files written before the preference existed keep the dimmed dark pages.
+        QFile file(QDir(root_->path()).filePath("library-v1.json"));QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(R"({"version":1,"paper":true})");file.close();
+        WorkspaceState state;QVERIFY(state.error().isEmpty());QVERIFY(state.paper());QVERIFY(state.nightDim());
     }
     void corruptLibraryIsPreserved() {
         QFile file(root_->filePath("library-v1.json"));QVERIFY(file.open(QIODevice::WriteOnly));file.write("broken");file.close();
@@ -354,7 +362,30 @@ private slots:
         QCOMPARE(workspace->words()[0].toMap()["meaning"].toString(),QStringLiteral("edited meaning"));
         frame->setProperty("screen","reader");workspace->setLayout(1);workspace->setToolbar(1);snap("focus-float");
         workspace->setLayout(2);workspace->setToolbar(2);snap("panel-rail");
+        // Hover tips use the shell's rounded card style and name the action, not the button glyph.
+        const auto hoverTip=[&](const QString& name){
+            auto* button=window->findChild<QQuickItem*>("documentMenuButton");QVERIFY(button);
+            // Start elsewhere: an earlier test clicks this same spot, and a move to the
+            // unchanged position would not produce a fresh hover.
+            QTest::mouseMove(window,QPoint(window->width()/2,window->height()/2));QTest::qWait(50);
+            QTest::mouseMove(window,button->mapToScene(QPointF(button->width()/2,button->height()/2)).toPoint());
+            QTRY_VERIFY2(button->property("hovered").toBool(),"hover did not reach the document menu button");
+            QQuickItem* label=nullptr;
+            // Popup items hang off the overlay in the visual tree, not the QObject tree.
+            const std::function<QQuickItem*(QQuickItem*)> findTip=[&](QQuickItem* item)->QQuickItem*{
+                if(item->isVisible()&&item->inherits("QQuickText")&&item->property("text").toString()==QStringLiteral("文档菜单"))return item;
+                for(auto* child:item->childItems())if(auto* hit=findTip(child))return hit;
+                return nullptr;};
+            QTRY_VERIFY_WITH_TIMEOUT((label=findTip(window->contentItem()))!=nullptr,3000);
+            bool rounded=false;
+            for(auto* sibling:label->parentItem()->childItems())rounded|=sibling->property("radius").toDouble()>=10;
+            QVERIFY2(rounded,"tooltip background is not the rounded shell style");
+            snap(name);
+            QTest::mouseMove(window,QPoint(window->width()/2,window->height()/2));QTest::qWait(150);
+        };
+        hoverTip("tooltip");
         workspace->setPaper(true);snap("paper");workspace->setPaper(false);shell.cycleTheme();shell.cycleTheme();snap("dark");
+        hoverTip("tooltip-dark");
         auto* services=window->findChild<OfflineServices*>();QVERIFY(services);services->setEnglish(true);
         QCOMPARE(QCoreApplication::translate("LibraryPage","练习册"),QStringLiteral("Workbooks"));snap("english");services->setEnglish(false);
         window->resize(700,580);snap("compact");

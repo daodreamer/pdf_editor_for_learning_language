@@ -25,6 +25,7 @@ WorkspaceState::WorkspaceState(QObject* parent):QObject(parent) {
                 bookmarks_=data.value("bookmarks").toMap();
                 layout_=qBound(0,data.value("layout").toInt(),2); toolbar_=qBound(0,data.value("toolbar").toInt(),2);
                 paper_=data.value("paper").toBool();
+                nightDim_=data.value("nightDim",true).toBool();
                 english_=data.value("english").toBool();
                 lookupLanguage_=data.value("lookupLanguage").toString()==QLatin1String("en")?QStringLiteral("en"):QStringLiteral("fr");
                 frenchVoice_=data.value("frenchVoice").toString()==QLatin1String("female")?QStringLiteral("female"):QStringLiteral("male");
@@ -59,13 +60,13 @@ void WorkspaceState::save() {
     },Qt::QueuedConnection);
 }
 QVariantMap WorkspaceState::snapshot() const {
-    return {{"version",1},{"books",books_},{"words",words_},{"bookmarks",bookmarks_},{"layout",layout_},{"toolbar",toolbar_},{"paper",paper_},{"english",english_},{"lookupLanguage",lookupLanguage_},{"frenchVoice",frenchVoice_}};
+    return {{"version",1},{"books",books_},{"words",words_},{"bookmarks",bookmarks_},{"layout",layout_},{"toolbar",toolbar_},{"paper",paper_},{"nightDim",nightDim_},{"english",english_},{"lookupLanguage",lookupLanguage_},{"frenchVoice",frenchVoice_}};
 }
 void WorkspaceState::scheduleSave() {
     const auto candidate=snapshot();
     if(QJsonDocument::fromVariant(candidate).toJson(QJsonDocument::Compact).size()>8*1024*1024) {
         books_=accepted_.value("books").toList();words_=accepted_.value("words").toList();bookmarks_=accepted_.value("bookmarks").toMap();
-        layout_=accepted_.value("layout").toInt();toolbar_=accepted_.value("toolbar").toInt();paper_=accepted_.value("paper").toBool();
+        layout_=accepted_.value("layout").toInt();toolbar_=accepted_.value("toolbar").toInt();paper_=accepted_.value("paper").toBool();nightDim_=accepted_.value("nightDim",true).toBool();
         english_=accepted_.value("english").toBool();lookupLanguage_=accepted_.value("lookupLanguage",QStringLiteral("fr")).toString();
         frenchVoice_=accepted_.value("frenchVoice",QStringLiteral("male")).toString();
         error_=tr("书架数据已达到 8 MiB 上限，本次修改未保存。请删除不再需要的生词或笔记。");emit changed();emit preferencesChanged();return;
@@ -79,6 +80,7 @@ void WorkspaceState::setDocument(QString path) { if(document_==path)return; docu
 void WorkspaceState::setLayout(int v) { v=qBound(0,v,2); if(layout_==v)return;layout_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setToolbar(int v) { v=qBound(0,v,2);if(toolbar_==v)return;toolbar_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setPaper(bool v) { if(paper_==v)return;paper_=v;emit preferencesChanged();scheduleSave(); }
+void WorkspaceState::setNightDim(bool v) { if(nightDim_==v)return;nightDim_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setEnglish(bool v) { if(english_==v)return;english_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setFrenchVoice(QString v) { v=v==QLatin1String("female")?QStringLiteral("female"):QStringLiteral("male");if(frenchVoice_==v)return;frenchVoice_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setLookupLanguage(QString v) { v=v==QLatin1String("en")?QStringLiteral("en"):QStringLiteral("fr");if(lookupLanguage_==v)return;lookupLanguage_=v;emit preferencesChanged();scheduleSave(); }
