@@ -166,6 +166,5 @@ ApplicationWindow {
         services: offline
         onOpenRequested: window.chooseFile()
         onExportRequested: exportLoader.active = true
-        onHelpRequested: helpLoader.active = true
     }
 }

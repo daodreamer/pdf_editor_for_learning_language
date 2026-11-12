@@ -12,7 +12,6 @@ Rectangle {
     required property OfflineServices services
     signal openRequested()
     signal exportRequested()
-    signal helpRequested()
     property string screen: "library"
     property string observed: ""
     property real observedSession: -1
@@ -107,8 +106,6 @@ Rectangle {
             NavItem { text: qsTr("生词本"); symbol: "book"; count: String(frame.workspace.words.length); active: frame.screen === "words"; onClicked: frame.screen = "words" }
             Item { Layout.fillHeight: true }
             NavItem { text: qsTr("外观与布局"); implicitHeight: 38; font.pixelSize: 13; onClicked: settings.open() }
-            NavItem { text: qsTr("快捷键"); implicitHeight: 38; font.pixelSize: 13; onClicked: frame.helpRequested() }
-            Label { text: qsTr("全部离线 · 保存在本机"); color: frame.theme.faint; font.pixelSize: 11; Layout.leftMargin: 14; Layout.topMargin: 6 }
         }
         Item {
             Layout.fillWidth: true; Layout.fillHeight: true

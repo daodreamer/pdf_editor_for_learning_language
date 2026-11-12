@@ -35,6 +35,8 @@ ColumnLayout {
     ScrollView {
         Layout.fillWidth: true; Layout.fillHeight: true; clip: true
         contentWidth: availableWidth
+        // The shelf only scrolls vertically; a transient overflow must not flash a horizontal bar.
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
         ColumnLayout {
             width: parent.width; spacing: 26
             // Continue-learning band: the shelf's only tinted surface, with a few faint flowing lines.

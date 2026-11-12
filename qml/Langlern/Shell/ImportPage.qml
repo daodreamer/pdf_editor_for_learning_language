@@ -79,7 +79,6 @@ ColumnLayout {
                 DesignButton { theme: page.theme; text: page.shell.scanning ? qsTr("取消优化") : qsTr("优化全部页并另存 PDF…"); primary: !page.shell.scanning; selected: page.shell.scanning; implicitHeight: 42; enabled: page.shell.storageReady; Layout.fillWidth: true; onClicked: page.shell.scanning ? page.shell.cancelScan() : optimizedFile.open() }
                 DesignButton { theme: page.theme; text: qsTr("重新选择 PDF…"); enabled: !page.shell.scanning; Layout.fillWidth: true; onClicked: page.chooseRequested() }
                 Item { Layout.fillHeight: true }
-                Label { text: qsTr("完全离线 · 无需账号"); color: page.theme.faint; font.pixelSize: 12 }
             }
         }
     }
