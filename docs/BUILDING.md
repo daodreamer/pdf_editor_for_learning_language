@@ -1,5 +1,28 @@
 # 构建与复现
 
+## 测试组织（2026-11-13 起）
+
+所有 Qt Test 套件编译为同一个可执行文件 `build/windows/langlern_tests.exe`，第一个参数选择套件，其余参数原样交给 Qt Test：
+
+```
+build/windows/langlern_tests.exe <shell|reading|text|annotation|ink|storage|design|ocr|speech|all> [QtTest 参数与用例名]
+```
+
+例如 `langlern_tests.exe annotation realTextbookAnswerFields -o annotations.log,txt`（需 Qt bin 在 PATH）。CTest 仍按套件分进程运行，名称不变：`shell_interactions`、`reading_invariants`、`text_selection`、`text_annotations`、`ink_annotations`、`storage_export`、`design_workflows`、`ocr_selection`、`natural_speech`，外加 `shell_startup`。下文较早记录中的 `<套件>_tests.exe` 对应现在的 `langlern_tests.exe <套件>`；历史数字保持当时记录。
+
+本次整理只删除重复和无断言内容，保留各项检查：
+
+- 真实教材标注：第 34 页虚线、地址长线与第 39/47/67/88 页长线端点合并为 `realTextbookAnswerFields`，只打开一次教材；删除只写日志、没有断言的第 7 页样本和练习册块分组诊断循环。
+- 真实教材 OCR、法语查词卡与自然语音按钮合并为 `ocr` 套件的 `realTextbookOcrLookupAndSpeech`，同一次第 34 页 OCR 驱动全部检查；缺词库或语音包时该部分记录 “NOT executed”，其余继续执行。
+- 修正等待：`QTRY_COMPARE(height,14.0)` 轮询时用精确 `==` 比较浮点，排版结果带舍入误差，永远等到超时（含 Qt 的 2 倍诊断等待，约 18 s）后才由最终模糊比较通过；改为 `qFuzzyCompare`。
+- 真实教材滚动连续性保留“适合宽度”与 40% 两种配置，各 400 步；文档菜单定位只用扫描样本（与文档无关）；“先打开原文件”在有真实教材时用教材、否则用扫描样本，并改用大小与修改时间确认源文件未变（完整内容散列由 OCR 真实页用例负责）。
+- 开关文档循环 50→10 次、会话失效循环 25→10 次；自然语音短句默认 1 轮 3 次请求（`benchmarks/run-speech.py` 设置 `LANGLERN_SPEECH_ROUNDS=3`）。
+- 删除未接入任何流程的 `tests/artifact-safety.py`（阶段 0 原型的历史检查）。
+- CI：`Phase 0 probes` 只运行 `^phase0_` 测试（完整 GUI 套件由桌面工作流运行，不再重复）；SDK 隔离包验证运行 `shell`、`storage`、`design`、`ocr`、`speech` 五个套件，覆盖 Qt Quick、PDFium 渲染/导出、SQLite 词库插件、Tesseract 与自然语音运行时。`tools/build-windows.ps1 -Test -TestRegex <正则>` 可筛选 CTest。
+
+文件对话框自动化统一使用 `AA_DontUseNativeDialogs`；`design` 套件中资料库“导入”会打开 Qt Quick 文件对话框，用例随即取消。
+
+
 ## 2026-11-11 Supertonic 3 法语语音构建
 
 `tools/build-windows.ps1` 先运行 `tools/bootstrap-speech.py`：按 `third_party/speech.lock.json` 下载 ONNX Runtime 1.23.2、SoundTouch 2.3.3 和 Supertone/supertonic-3 固定提交 `3cadd1ee6394adea1bd021217a0e650ede09a323` 的 fp32 图、M1/F3 声线，校验字节数与 SHA-256。随后在隔离的 `.tools/speech-venv`（按 `tools/requirements-speech.lock.txt` 固定 onnx 1.19.1、onnxruntime 1.23.2 等）运行 `tools/derive-speech-models.py` 派生随包图，派生结果必须与锁文件散列逐字节一致，否则构建失败；本机两次独立派生结果一致。首次开发构建需联网（上游 fp32 约 383 MiB 缓存在 `.deps/supertonic3-upstream`），应用运行不下载。DLL、模型、声线与许可证复制到 `build/windows/voices/supertonic3-fr`（约 136 MiB），窗口启动时不加载；`LANGLERN_SPEECH_DIR` 可指定同结构目录。详见 [NATURAL_SPEECH.md](NATURAL_SPEECH.md)。
@@ -46,7 +69,7 @@ macOS 待验证：在原文后述 macOS 工具链环境设置 PATH 后，先运�
 阅读/切换/标注/保存恢复 30 分钟组合压力：
 
 ```powershell
-.tools/venv/Scripts/python -X utf8 benchmarks/run-reading.py --exe build/windows/reading_tests.exe --pdf .deps/samples/synthetic-800.pdf --run benchmarks/results/my-workflow --seconds 1800 --repeat 1 --workflow
+.tools/venv/Scripts/python -X utf8 benchmarks/run-reading.py --exe build/windows/langlern_tests.exe --pdf .deps/samples/synthetic-800.pdf --run benchmarks/results/my-workflow --seconds 1800 --repeat 1 --workflow
 ```
 
 普通重复阅读基线不加 --workflow，使用 --seconds 65 --repeat 5。帧数据是 Qt 提交代理，系统内存与受管预算分开。最终执行结果和未达到的目标见 [PHASE8_REPORT.md](PHASE8_REPORT.md)；候选包操作见 [WINDOWS_PACKAGE.md](WINDOWS_PACKAGE.md)。
@@ -63,7 +86,7 @@ CTest 共 7 项，新增 `storage_export`。CMake 将仓库 `assets/fonts/NotoSa
 
 自动保存位置、格式和故障恢复见 [STORAGE_FORMAT.md](STORAGE_FORMAT.md)。Ctrl+S 可立即调度保存；写失败时关闭/切换不会继续，修复空间/目录权限后再保存或关闭即可重试。导出选择尚不存在的新 PDF 名称；已有目标一律拒绝。
 
-独立文件验证：先将 `LANGLERN_PHASE7_ARTIFACT_DIR` 设为全新、已存在的目录，再于 Qt SDK PATH 下运行 `build/windows/storage_tests.exe -o <日志>,txt`，然后用开发环境 `.tools/venv/Scripts/python -X utf8 tools/verify-phase7-export.py <该目录>`。该脚本仅用现有开发用 MuPDF，不进入产品。失败运行应保留证据并换新目录重试。最终执行结果见 [PHASE7_REPORT.md](PHASE7_REPORT.md)。
+独立文件验证：先将 `LANGLERN_PHASE7_ARTIFACT_DIR` 设为全新、已存在的目录，再于 Qt SDK PATH 下运行 `build/windows/langlern_tests.exe storage -o <日志>,txt`，然后用开发环境 `.tools/venv/Scripts/python -X utf8 tools/verify-phase7-export.py <该目录>`。该脚本仅用现有开发用 MuPDF，不进入产品。失败运行应保留证据并换新目录重试。最终执行结果见 [PHASE7_REPORT.md](PHASE7_REPORT.md)。
 
 
 ## 阶段 5 文字答案
@@ -73,7 +96,7 @@ CTest 共 7 项，新增 `storage_export`。CMake 将仓库 `assets/fonts/NotoSa
 ./tools/run-windows.ps1 -BuildDir build/phase5
 ```
 
-默认 `build/windows` 同步更新。CTest 共 5 项，新增 `text_annotations`。SDK PATH 下可运行 `build/windows/annotation_tests.exe -o annotations.log,txt` 获取详细结果；高 DPI 附加设置 `QT_SCALE_FACTOR=2`，不是物理跨屏验证。`LANGLERN_SCREENSHOT_DIR` 指向已存在的新目录可生成文字答案截图，拒绝覆盖。实际结果见 [PHASE5_REPORT.md](PHASE5_REPORT.md)。
+默认 `build/windows` 同步更新。CTest 共 5 项，新增 `text_annotations`。SDK PATH 下可运行 `build/windows/langlern_tests.exe annotation -o annotations.log,txt` 获取详细结果；高 DPI 附加设置 `QT_SCALE_FACTOR=2`，不是物理跨屏验证。`LANGLERN_SCREENSHOT_DIR` 指向已存在的新目录可生成文字答案截图，拒绝覆盖。实际结果见 [PHASE5_REPORT.md](PHASE5_REPORT.md)。
 
 自动模式：空白单击建框并直接输入，原生文字拖动选择，空白拖动滚动；可切换选择/输入模式，输入模式允许覆盖原文处建框。单击已有答案编辑；选中后拖“移动”柄。Esc / Ctrl+Enter / 完成编辑结束事务；Ctrl+Delete 或删除按钮删除整框，普通 Delete 删除文字。Ctrl+Shift+A/S/T 切换自动/选择/输入。编辑器内 Ctrl+Z/Y 使用局部文字撤销，结束编辑后 Ctrl+Z/Y 及标注撤销/重做按钮使用事务历史。未选中不画边框或背景。答案仅存在当前会话，关闭/换文件后丢失；保存恢复和导出留在阶段 7。macOS 的快捷键前缀已按 Meta 路由，但构建/运行尚未验证。
 
@@ -90,7 +113,7 @@ CTest 共 7 项，新增 `storage_export`。CMake 将仓库 `assets/fonts/NotoSa
 
 普通文字测试 PDF 由 `tools/make-text-fixture.py` 用 stdlib 生成；其 ToUnicode 映射测试不代表 Helvetica 能绘制中文/emoji。`chinese.pdf` 则使用已锁定的 Noto Sans SC 子集嵌入字体，重建用开发环境 `.tools/venv/Scripts/python tools/make-cjk-fixture.py`；字体依据见 `third_party/DEPENDENCIES.md` 和 `notices/Noto-OFL.txt`。运行和测试只需提交的 PDF，不要求安装 Python 字体工具。
 
-附加 DPI 回归：在 SDK PATH 下设置 `QT_SCALE_FACTOR=2` 并运行 `build/windows/text_tests.exe`；本机实际 DPR 为 3。设置 `LANGLERN_SCREENSHOT_DIR` 到已存在的新目录可保存英文和中文选区截图，拒绝覆盖。测试运行结果见 [PHASE4_REPORT.md](PHASE4_REPORT.md)。该阶段当时未进入阶段 5；现阶段增量见本页开头。
+附加 DPI 回归：在 SDK PATH 下设置 `QT_SCALE_FACTOR=2` 并运行 `build/windows/langlern_tests.exe text`；本机实际 DPR 为 3。设置 `LANGLERN_SCREENSHOT_DIR` 到已存在的新目录可保存英文和中文选区截图，拒绝覆盖。测试运行结果见 [PHASE4_REPORT.md](PHASE4_REPORT.md)。该阶段当时未进入阶段 5；现阶段增量见本页开头。
 
 ## 阶段 3 连续阅读与缓存
 
@@ -115,7 +138,7 @@ CTest 共 7 项，新增 `storage_export`。CMake 将仓库 `assets/fonts/NotoSa
 可选系统 GPU 采样：在压力进程运行时取其准确 PID，另开开发终端运行以下命令；输出文件必须不存在。
 
 ```powershell
-./benchmarks/sample-gpu-windows.ps1 -TargetProcessId <reading_tests_PID> -OutputPath <新的绝对JSONL路径>
+./benchmarks/sample-gpu-windows.ps1 -TargetProcessId <langlern_tests_PID> -OutputPath <新的绝对JSONL路径>
 ```
 
 计数器不可用时保留错误/空值；不以 GPU 像素估算代替系统 GPU 数据。无需该脚本即可运行正式阅读器与测试。计数器和大量诊断输出不用于无扰动基线。
@@ -139,7 +162,7 @@ CTest 共 7 项，新增 `storage_export`。CMake 将仓库 `assets/fonts/NotoSa
 ./tools/run-windows.ps1
 ```
 
-两个脚本的默认目录均为 `build/windows`。指定另一目录时，两处都传入相同 `-BuildDir`。正式目标 `langlern.exe`，自动化目标 `shell_tests.exe`。开发启动脚本为子进程补充 Qt bin PATH；发行部署留阶段 8。
+两个脚本的默认目录均为 `build/windows`。指定另一目录时，两处都传入相同 `-BuildDir`。正式目标 `langlern.exe`，自动化目标 `langlern_tests.exe`。开发启动脚本为子进程补充 Qt bin PATH；发行部署留阶段 8。
 
 阶段 2 新目录 `build/phase2` 和默认 `build/windows` 的实际构建/回归见 PHASE2_REPORT。启动采样（必须使用新输出目录）：
 
@@ -228,7 +251,7 @@ $env:PATH = "$pwd/.tools/venv/Scripts;" + $env:PATH
 ```powershell
 ./tools/build-windows.ps1 -Test
 $env:PATH = "$pwd/.deps/Qt/6.8.3/msvc2022_64/bin;" + $env:PATH
-./build/windows/ink_tests.exe -o benchmarks/results/my-new-ink-tests.log,txt
+./build/windows/langlern_tests.exe ink -o benchmarks/results/my-new-ink-tests.log,txt
 .tools/venv/Scripts/python benchmarks/run-ink.py --run benchmarks/results/my-new-ink-run --repeat 3
 ```
 
@@ -250,7 +273,7 @@ run-ink.py 要求全新的目录，记录二进制/源码/样本散列、三个�
 
 新增design_tests使用Windows实际OCR语言包，缺引擎/英文包时明确skipped；本机实际识别已通过。语音以本机SAPI离线包为准，UK/US包缺失时明确报错。音频测试使用临时生成的静音WAV，不用假进度。上述本机Windows后端不代表macOS已支持。
 
-截图复现（输出目录先创建且保持独立）：在Qt bin PATH下设置 LANGLERN_SCREENSHOT_DIR，运行 `build/windows/design_tests.exe screenLayoutsAndScreenshots`。整套验证 `build/windows/design_tests.exe` 包括词库、OCR和真实导出；CTest的design_workflows默认包含这些检查。
+截图复现（输出目录先创建且保持独立）：在Qt bin PATH下设置 LANGLERN_SCREENSHOT_DIR，运行 `build/windows/langlern_tests.exe design screenLayoutsAndScreenshots`。整套验证 `build/windows/design_tests.exe` 包括词库、OCR和真实导出；CTest的design_workflows默认包含这些检查。
 ## GitHub Actions 故障修复（2026-10-16）
 
 `43707cc` 的 Windows CI 详情确认三处问题：首次生成词库时 SQLite 事务上下文不负责关闭连接，导致 `.pending` 重命名报 WinError 32；无 WinMM 输出设备的 runner 无法执行真实播放；文字框手柄在渐显首帧前被 `visible: opacity > 0` 禁用。词库连接现以 `closing` 显式释放，支持 `--output-dir` 隔离验证；手柄在需要显示时立即参与命中；音频测试仅在系统枚举不到输出设备时明确 QSKIP，有设备时仍要求真实播放、定位与循环。

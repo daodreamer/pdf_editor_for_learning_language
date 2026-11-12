@@ -8,7 +8,7 @@ import platform
 import subprocess
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--exe', type=Path, default=Path('build/windows/ink_tests.exe'))
+parser.add_argument('--exe', type=Path, default=Path('build/windows/langlern_tests.exe'))
 parser.add_argument('--run', type=Path, required=True)
 parser.add_argument('--repeat', type=int, default=3)
 args = parser.parse_args()
@@ -47,7 +47,7 @@ results = []
 for index in range(args.repeat):
     trace, log = run / f'ink-{index + 1}.json', run / f'ink-{index + 1}.log'
     env['LANGLERN_INK_TRACE'] = str(trace)
-    result = subprocess.run([str(exe), 'longStrokeTrace', '-o', f'{log},txt'],
+    result = subprocess.run([str(exe), 'ink', 'longStrokeTrace', '-o', f'{log},txt'],
                             cwd=root, env=env, capture_output=True, text=True)
     (run / f'ink-{index + 1}.stderr.txt').write_text(result.stderr, encoding='utf-8')
     if result.returncode:

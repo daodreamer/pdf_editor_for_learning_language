@@ -1,4 +1,4 @@
-param([string]$BuildDir = 'build/windows', [switch]$Test, [switch]$Phase0, [switch]$Lint)
+param([string]$BuildDir = 'build/windows', [switch]$Test, [string]$TestRegex = '', [switch]$Phase0, [switch]$Lint)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 Push-Location $root
@@ -22,7 +22,8 @@ try {
     cmake --build $BuildDir --parallel 6
     if ($LASTEXITCODE) { throw 'Build failed' }
     if ($Test) {
-        try { ctest --test-dir $BuildDir --output-on-failure }
+        $filter = @(); if ($TestRegex) { $filter = @('-R', $TestRegex) }
+        try { ctest --test-dir $BuildDir --output-on-failure @filter }
         finally {
             if ($LASTEXITCODE) {
                 Get-ChildItem -LiteralPath (Join-Path $BuildDir 'tests/shell') -Filter '*.txt' -ErrorAction SilentlyContinue | ForEach-Object {

@@ -1,4 +1,4 @@
-#include "testapplication.h"
+#include "testsupport.h"
 #include <QTemporaryDir>
 #include "shellstate.h"
 #include "annotationtext.h"
@@ -8,7 +8,6 @@
 #include <QRandomGenerator>
 #include <QFontMetrics>
 #include <QElapsedTimer>
-#include <QFontMetricsF>
 #include <QClipboard>
 #include <QLineF>
 #include <algorithm>
@@ -24,17 +23,44 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QtQml/QQmlExtensionPlugin>
-Q_IMPORT_QML_PLUGIN(LanglernShellPlugin)
+
+// A PDFium worker on its own thread, for detector checks that need no window.
+struct RenderWorker {
+    QThread thread;
+    PdfWorker* worker=new PdfWorker;
+    QList<PdfFrame> frames;
+    QObject delivery;
+    quint64 revision=0;
+    RenderWorker() {
+        worker->moveToThread(&thread);
+        QObject::connect(worker,&PdfWorker::stopped,&thread,&QThread::quit,Qt::DirectConnection);
+        QObject::connect(&thread,&QThread::finished,worker,&QObject::deleteLater);
+        QObject::connect(worker,&PdfWorker::frameReady,&delivery,[this](PdfFrame frame){frames.append(std::move(frame));},Qt::QueuedConnection);
+        thread.start();
+    }
+    // Returns the rendered frame, or a null-image frame after 30 s.
+    PdfFrame render(PdfRequest request) {
+        request.session=1; request.revision=++revision; worker->submit(request);
+        QElapsedTimer timer; timer.start();
+        while(timer.elapsed()<30000) {
+            for(const auto& frame:frames) if(frame.revision==request.revision && !frame.image.isNull()) return frame;
+            QTest::qWait(10);
+        }
+        return {};
+    }
+    bool stop() {
+        if(!thread.isRunning()) return true;
+        worker->shutdown();
+        QElapsedTimer timer; timer.start();
+        while(thread.isRunning() && timer.elapsed()<10000) QTest::qWait(10);
+        return thread.wait(1000);
+    }
+    ~RenderWorker() { stop(); }
+};
 
 class AnnotationTests : public QObject {
     Q_OBJECT
     const QString fixture=QStringLiteral(LANGLERN_FIXTURES)+"/text.pdf";
-    static QQuickItem* find(QQuickItem* root,const QString& name) {
-        if(root->objectName()==name) return root;
-        for(auto* child:root->childItems()) if(auto* item=find(child,name)) return item;
-        return nullptr;
-    }
     std::unique_ptr<QTemporaryDir> caseWorkspace;
 private slots:
     void init() { caseWorkspace=std::make_unique<QTemporaryDir>(); setTestEnvironment("LANGLERN_WORKSPACE_DIR",caseWorkspace->path()); }
@@ -180,36 +206,12 @@ private slots:
         QVERIFY(last.left()*1024<=32); QVERIFY(last.right()*1024>=980);
     }
     void previewKeepsFinalAnswerGeometry() {
-        QThread thread; auto* worker=new PdfWorker;
-        worker->moveToThread(&thread);
-        connect(worker,&PdfWorker::stopped,&thread,&QThread::quit,Qt::DirectConnection);
-        connect(&thread,&QThread::finished,worker,&QObject::deleteLater);
-        QList<PdfFrame> frames;
-        QObject deliveryContext;
-        connect(worker,&PdfWorker::frameReady,&deliveryContext,[&](PdfFrame frame){frames.append(std::move(frame));},Qt::QueuedConnection);
-        thread.start();
-        auto render=[&](quint64 revision,int width,bool previewOnly) {
-            PdfRequest request; request.session=1; request.revision=revision;
-            request.path=QStringLiteral(LANGLERN_FIXTURES)+"/answer-lines.pdf";
-            request.width=width; request.skipPreview=true; request.previewOnly=previewOnly;
-            worker->submit(request);
-            QElapsedTimer timer; timer.start();
-            while(timer.elapsed()<10000) {
-                for(const auto& frame:frames) {
-                    if(frame.revision==revision && !frame.image.isNull()) return frame;
-                }
-                QTest::qWait(10);
-            }
-            return PdfFrame();
-        };
-        const auto final=render(1,1200,false);
-        const auto preview=render(2,480,true);
-        const auto refreshed=render(3,1200,false);
-        // Clean up the PDFium thread even when a frame assertion below fails.
-        worker->shutdown();
-        QElapsedTimer timer; timer.start();
-        while(thread.isRunning() && timer.elapsed()<10000) QTest::qWait(10);
-        QVERIFY(thread.wait(1000));
+        RenderWorker worker;
+        PdfRequest request; request.path=LANGLERN_FIXTURE("answer-lines.pdf"); request.skipPreview=true;
+        request.width=1200; const auto final=worker.render(request);
+        request.width=480; request.previewOnly=true; const auto preview=worker.render(request);
+        request.width=1200; request.previewOnly=false; const auto refreshed=worker.render(request);
+        QVERIFY(worker.stop());
         QVERIFY(final.answerLinesReady); QVERIFY(!final.answerLines.isEmpty());
         QVERIFY(preview.preview); QVERIFY(!preview.image.isNull());
         QVERIFY(!preview.answerLinesReady); QVERIFY(preview.answerLines.isEmpty());
@@ -225,33 +227,9 @@ private slots:
         // The detector runs on the zoom-dependent final render. Before the chain
         // detector, page 34 lost "Âge" at 800 px and page 39 lost three name
         // fields; at 600 px many fields absorbed the preceding colon.
-        const auto path=qEnvironmentVariable("LANGLERN_REAL_PDF",QStringLiteral("C:/Users/jiong/Desktop/法语/你好法语3学生用书第二版.pdf"));
-        if(!QFileInfo::exists(path)) QSKIP("The configured real textbook is unavailable on this runner; real-PDF acceptance was not performed.");
-        QThread thread; auto* worker=new PdfWorker;
-        worker->moveToThread(&thread);
-        connect(worker,&PdfWorker::stopped,&thread,&QThread::quit,Qt::DirectConnection);
-        connect(&thread,&QThread::finished,worker,&QObject::deleteLater);
-        QList<PdfFrame> frames;
-        QObject deliveryContext;
-        connect(worker,&PdfWorker::frameReady,&deliveryContext,[&](PdfFrame frame){frames.append(std::move(frame));},Qt::QueuedConnection);
-        thread.start();
-        quint64 revision=0;
-        auto fields=[&](int page,int width) {
-            PdfRequest request; request.session=1; request.revision=++revision; request.page=page;
-            request.path=path; request.width=width; request.skipPreview=true;
-            worker->submit(request);
-            QElapsedTimer timer; timer.start();
-            while(timer.elapsed()<30000) {
-                for(const auto& frame:frames) if(frame.revision==request.revision && !frame.image.isNull()) {
-                    QList<QRectF> dotted;
-                    for(const auto& r:frame.answerLines)
-                        if(std::abs(r.height()*frame.geometry.units.height()-AnswerLines::dottedFieldHeight)<.01) dotted.append(r);
-                    return dotted;
-                }
-                QTest::qWait(10);
-            }
-            return QList<QRectF>{QRectF(-1,-1,0,0)};
-        };
+        const auto path=realTextbookPath();
+        if(path.isEmpty()) QSKIP("The configured real textbook is unavailable on this runner; real-PDF acceptance was not performed.");
+        RenderWorker worker;
         struct Expected { int page; QList<QPointF> spans; };
         // Endpoints read from the 2400 px rendering of each page.
         const QList<Expected> expected{
@@ -259,7 +237,11 @@ private slots:
             {38,{{.144,.460},{.167,.460},{.144,.188},{.297,.460},{.252,.460},{.403,.460},{.306,.460},{.187,.460},{.209,.460}}}};
         QStringList failures;
         for(const auto& e:expected) for(int width:{600,800,1200}) {
-            const auto found=fields(e.page,width);
+            PdfRequest request; request.page=e.page; request.path=path; request.width=width; request.skipPreview=true;
+            const auto frame=worker.render(request);
+            QList<QRectF> found;
+            for(const auto& r:frame.answerLines)
+                if(std::abs(r.height()*frame.geometry.units.height()-AnswerLines::dottedFieldHeight)<.01) found.append(r);
             qInfo()<<"stable_fields page"<<e.page+1<<"width"<<width<<found;
             if(found.size()!=e.spans.size()) failures<<QStringLiteral("page %1 width %2: %3 fields").arg(e.page+1).arg(width).arg(found.size());
             for(const auto& span:e.spans) {
@@ -268,36 +250,19 @@ private slots:
                 if(!match) failures<<QStringLiteral("page %1 width %2: missing %3-%4").arg(e.page+1).arg(width).arg(span.x()).arg(span.y());
             }
         }
-        worker->shutdown();
-        QElapsedTimer timer; timer.start();
-        while(thread.isRunning() && timer.elapsed()<10000) QTest::qWait(10);
-        QVERIFY(thread.wait(1000));
+        QVERIFY(worker.stop());
         QVERIFY2(failures.isEmpty(),qPrintable(failures.join(QStringLiteral("; "))));
     }
     void realWorkbookFaintFields() {
         // Workbook pages print blanks as very light, fine dots (~10-25 levels below
         // white). Before the faint-rule pass p.16's eleven inline blanks were all
         // missed and p.14's lines stopped where the print was lightest.
-        const auto path=qEnvironmentVariable("LANGLERN_REAL_WORKBOOK",QStringLiteral("C:/Users/jiong/Desktop/法语/你好法语3练习册第二版.pdf"));
-        if(!QFileInfo::exists(path)) QSKIP("The real workbook is unavailable on this runner; workbook acceptance was not performed.");
-        QThread thread; auto* worker=new PdfWorker;
-        worker->moveToThread(&thread);
-        connect(worker,&PdfWorker::stopped,&thread,&QThread::quit,Qt::DirectConnection);
-        connect(&thread,&QThread::finished,worker,&QObject::deleteLater);
-        QList<PdfFrame> frames; QObject deliveryContext;
-        connect(worker,&PdfWorker::frameReady,&deliveryContext,[&](PdfFrame frame){frames.append(std::move(frame));},Qt::QueuedConnection);
-        thread.start();
-        quint64 revision=0;
+        const auto path=realWorkbookPath();
+        if(path.isEmpty()) QSKIP("The real workbook is unavailable on this runner; workbook acceptance was not performed.");
+        RenderWorker worker;
         auto fields=[&](int page,int width) {
-            PdfRequest request; request.session=1; request.revision=++revision; request.page=page;
-            request.path=path; request.width=width; request.skipPreview=true;
-            worker->submit(request);
-            QElapsedTimer timer; timer.start();
-            while(timer.elapsed()<30000) {
-                for(const auto& frame:frames) if(frame.revision==request.revision && !frame.image.isNull()) return frame.answerLines;
-                QTest::qWait(10);
-            }
-            return QList<QRectF>{};
+            PdfRequest request; request.page=page; request.path=path; request.width=width; request.skipPreview=true;
+            return worker.render(request).answerLines;
         };
         QStringList failures;
         for(int width:{800,1200}) {
@@ -310,17 +275,14 @@ private slots:
             int inline_=0; for(const auto& r:p16) inline_+=r.top()>.31 && r.bottom()<.48 && r.width()>.06 && r.width()<.13;
             if(inline_<11) failures<<QStringLiteral("p16@%1: %2 of 11 inline blanks").arg(width).arg(inline_);
         }
-        worker->shutdown();
-        QElapsedTimer timer; timer.start();
-        while(thread.isRunning() && timer.elapsed()<10000) QTest::qWait(10);
-        QVERIFY(thread.wait(1000));
+        QVERIFY(worker.stop());
         QVERIFY2(failures.isEmpty(),qPrintable(failures.join(QStringLiteral("; "))));
     }
     void realWorkbookRuledBlockAnswer() {
         // Several stacked rules are one answer: it wraps at the rule ends, Enter goes to
         // the next rule, every text line sits on its rule, and it is deleted as a whole.
-        const auto path=qEnvironmentVariable("LANGLERN_REAL_WORKBOOK",QStringLiteral("C:/Users/jiong/Desktop/法语/你好法语3练习册第二版.pdf"));
-        if(!QFileInfo::exists(path)) QSKIP("The real workbook is unavailable on this runner; ruled-block acceptance was not performed.");
+        const auto path=realWorkbookPath();
+        if(path.isEmpty()) QSKIP("The real workbook is unavailable on this runner; ruled-block acceptance was not performed.");
         ShellState shell; QQmlApplicationEngine engine;
         engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}}); engine.loadFromModule("Langlern.Shell","Main");
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(window);
@@ -328,18 +290,6 @@ private slots:
         shell.selectFile(QUrl::fromLocalFile(path)); QTRY_VERIFY_WITH_TIMEOUT(shell.storageReady(),30000);
         QTRY_VERIFY_WITH_TIMEOUT(shell.pageCount()>0,30000);
         auto settled=[&] { for(int page:shell.model().priority()) if(!shell.model().ready(page,shell.model().targetWidth(page,window->devicePixelRatio()))) return false; return true; };
-        // Diagnostic: block grouping on a range of real pages (LANGLERN_BLOCK_SURVEY=1: all).
-        const bool survey=qEnvironmentVariableIntValue("LANGLERN_BLOCK_SURVEY")==1;
-        for(int page=survey?1:9;page<=(survey?shell.pageCount():16);++page) {
-            shell.goToPage(page); QTRY_VERIFY_WITH_TIMEOUT(settled(),30000);
-            QStringList blocks;
-            for(const auto& line:shell.model().answerLines(page-1)) {
-                const auto b=shell.answerBlockAt(page-1,line.center());
-                if(b.lines>1 && qFuzzyCompare(b.first.top(),line.top())) blocks<<QStringLiteral("%1 lines @%2").arg(b.lines).arg(line.top(),0,'f',3);
-            }
-            qInfo()<<"ruled_blocks page"<<page<<blocks;
-        }
-        if(survey) { window->close(); QTRY_VERIFY(shell.shutdownComplete()); return; }
         QCOMPARE(shell.pageCount(),66);
         shell.goToPage(14); QTRY_VERIFY_WITH_TIMEOUT(settled(),30000);
         const int page=13;
@@ -360,7 +310,7 @@ private slots:
         auto note=[&]{ return shell.annotations()->snapshot().first(); };
         QVERIFY(std::abs(note().lineSpacing-pitch)<.01);
         QVERIFY(std::abs(note().height-(top.height()*g.units.height()+6*pitch))<.01);
-        auto* editor=find(window->contentItem(),"annotationEditor"); QVERIFY(editor); QTRY_VERIFY(editor->hasActiveFocus());
+        auto* editor=findItem(window->contentItem(),"annotationEditor"); QVERIFY(editor); QTRY_VERIFY(editor->hasActiveFocus());
         const QString first=QStringLiteral("La série a duré dix ans et le dernier épisode a été regardé par des millions de téléspectateurs ");
         QGuiApplication::clipboard()->setText(first.repeated(2)); QTest::keyClick(window,Qt::Key_V,Qt::ControlModifier);
         QTest::keyClick(window,Qt::Key_Return);
@@ -415,49 +365,57 @@ private slots:
         QTRY_VERIFY(!shell.answerBlankAt(content(top.center()).x(),content(top.center()).y()).isEmpty());
         window->close(); QTRY_VERIFY(shell.shutdownComplete());
     }
-    void realTextbookDashedFields() {
-        const auto path=qEnvironmentVariable("LANGLERN_REAL_PDF",QStringLiteral("C:/Users/jiong/Desktop/法语/你好法语3学生用书第二版.pdf"));
-        if(!QFileInfo::exists(path)) QSKIP("The configured real textbook is unavailable on this runner; real-PDF acceptance was not performed.");
+    void realTextbookAnswerFields() {
+        // Page 34's dotted fields and four long rules (pages 39, 47, 67, 88; endpoints checked
+        // against the source pages, not detector output), answered through the hover hint,
+        // then saved and restored. One open of the real textbook covers all of them.
+        const auto path=realTextbookPath();
+        if(path.isEmpty()) QSKIP("The configured real textbook is unavailable on this runner; real-PDF acceptance was not performed.");
         ShellState shell; QQmlApplicationEngine engine;
         engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}}); engine.loadFromModule("Langlern.Shell","Main");
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(window);
         window->show(); QVERIFY(QTest::qWaitForWindowExposed(window));
         shell.selectFile(QUrl::fromLocalFile(path)); QTRY_VERIFY_WITH_TIMEOUT(shell.storageReady(),30000);
-        QTRY_COMPARE(shell.pageCount(),153); shell.goToPage(34); shell.setZoom(.65);
-        QTRY_VERIFY_WITH_TIMEOUT(!shell.busy(),30000);
-        QTRY_VERIFY_WITH_TIMEOUT(shell.model().ready(33,shell.model().targetWidth(33,window->devicePixelRatio())),30000);
+        QTRY_COMPARE(shell.pageCount(),153); shell.setZoom(.65);
         auto settled=[&] { for(int page:shell.model().priority()) if(!shell.model().ready(page,shell.model().targetWidth(page,window->devicePixelRatio()))) return false; return true; };
-        QTRY_VERIFY_WITH_TIMEOUT(settled(),30000);
-        QTRY_VERIFY_WITH_TIMEOUT(shell.model().nextUnknown()<0,30000);
-        qInfo()<<"real_textbook"<<QFileInfo(path).size()<<"page"<<34<<"candidates"<<shell.model().answerLines(33).size();
+        auto showPage=[&](int page) {
+            shell.goToPage(page);
+            return QTest::qWaitFor([&]{ return !shell.busy() && shell.model().ready(page-1,shell.model().targetWidth(page-1,window->devicePixelRatio()))
+                && settled() && shell.model().nextUnknown()<0; },30000);
+        };
+        const auto output=qEnvironmentVariable("LANGLERN_REAL_ARTIFACT_DIR");
+        auto saveOverlay=[&](int page) {
+            if(output.isEmpty()) return true;
+            const auto folder=output+QStringLiteral("/page-%1").arg(page);
+            auto overlay=shell.model().image(page-1).copy();
+            if(!QDir().mkpath(folder) || !overlay.save(folder+"/source.png")) return false;
+            QPainter p(&overlay); p.setPen(QPen(Qt::red,1));
+            for(const auto& r:shell.model().answerLines(page-1)) p.drawRect(QRectF(r.x()*overlay.width(),r.y()*overlay.height(),r.width()*overlay.width(),r.height()*overlay.height()));
+            p.end(); return overlay.save(folder+"/candidates.png");
+        };
+        QVERIFY(showPage(34));
         qInfo()<<"real_fields"<<shell.model().answerLines(33);
         QCOMPARE(shell.model().answerLines(33).size(),8);
-        const auto output=qEnvironmentVariable("LANGLERN_REAL_ARTIFACT_DIR");
-        if(!output.isEmpty()) {
-            auto overlay=shell.model().image(33).copy(); QVERIFY(overlay.save(output+"/pdfium-page-34.png"));
-            QPainter p(&overlay); p.setPen(QPen(Qt::red,1));
-            for(const auto& r:shell.model().answerLines(33)) p.drawRect(QRectF(r.x()*overlay.width(),r.y()*overlay.height(),r.width()*overlay.width(),r.height()*overlay.height()));
-            p.end(); QVERIFY(overlay.save(output+"/candidate-overlay.png"));
-        }
+        QVERIFY(saveOverlay(34));
         const QList<QPointF> targets{{.67,.14},{.843,.14},{.637,.157},{.824,.157},{.768,.175},{.777,.193},{.721,.229},{.871,.229}};
         QList<QRectF> areas;
         for(const auto& p:targets) {
             const auto area=shell.answerBlankAt(shell.pageLeft(33)+p.x()*shell.pageWidth(),shell.pageTop(33)+p.y()*shell.pageHeight(33));
-            qInfo()<<"real_target"<<p<<area; QVERIFY2(!area.isEmpty(),qPrintable(QStringLiteral("Missing real dotted field at %1,%2").arg(p.x()).arg(p.y())));
+            QVERIFY2(!area.isEmpty(),qPrintable(QStringLiteral("Missing real dotted field at %1,%2").arg(p.x()).arg(p.y())));
             areas.append(area);
         }
-        auto* viewport=find(window->contentItem(),"pdfViewport"); QVERIFY(viewport);
+        auto* viewport=findItem(window->contentItem(),"pdfViewport"); QVERIFY(viewport);
         QTRY_VERIFY(std::abs(viewport->property("contentY").toDouble()-shell.scrollOffset())<.5);
         auto scene=[&](QPointF p) { return viewport->mapToScene(p-QPointF(viewport->property("contentX").toDouble(),viewport->property("contentY").toDouble())).toPoint(); };
+        auto* hint=findItem(window->contentItem(),"answerLineHint"); QVERIFY(hint);
+        auto clickHint=[&] { QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,itemCenter(hint)); };
+        auto noteById=[&](const QString& id) { for(const auto& n:shell.annotations()->snapshot()) if(n.id==id) return n; return TextAnnotation(); };
         QTest::mouseMove(window,scene(areas.first().center()),30);
-        auto* hint=find(window->contentItem(),"answerLineHint"); QVERIFY(hint); QTRY_VERIFY(hint->isVisible());
+        QTRY_VERIFY(hint->isVisible());
         if(!output.isEmpty()) QVERIFY(window->grabWindow().save(output+"/real-hover.png"));
-        const auto click=hint->mapToScene(QPointF(hint->width()/2,hint->height()/2)).toPoint();
-        qInfo()<<"real_click"<<scene(areas.first().center())<<click<<shell.annotations()->snapshot().size();
-        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,click);
-        qInfo()<<"real_after_click"<<shell.annotations()->snapshot().size()<<shell.annotations()->selectedId();
+        clickHint();
         QTRY_COMPARE(shell.annotations()->snapshot().size(),1);
-        auto* editor=find(window->contentItem(),"annotationEditor"); QVERIFY(editor); QTRY_VERIFY(editor->hasActiveFocus());
+        auto* editor=findItem(window->contentItem(),"annotationEditor"); QVERIFY(editor); QTRY_VERIFY(editor->hasActiveFocus());
         QGuiApplication::clipboard()->setText(QStringLiteral("Marie Dupont avec une longue réponse")); QTest::keyClick(window,Qt::Key_V,Qt::ControlModifier);
         QTRY_VERIFY(shell.annotations()->snapshot().first().text.startsWith("Marie"));
         const auto expanded=shell.annotations()->snapshot().first();
@@ -471,106 +429,70 @@ private slots:
         const auto address=areas[4];
         const auto units=shell.annotations()->geometry(33).units;
         QVERIFY(address.width()/shell.pageWidth()>.24);
-        const double addressLeft=(address.left()-shell.pageLeft(33))/shell.pageWidth();
-        const double addressRight=(address.right()-shell.pageLeft(33))/shell.pageWidth();
         // Independently checked on the rendered source: the dots span .639 to .889.
-        QVERIFY(std::abs(addressLeft-.639)<.004); QVERIFY(std::abs(addressRight-.889)<.004);
+        QVERIFY(std::abs((address.left()-shell.pageLeft(33))/shell.pageWidth()-.639)<.004);
+        QVERIFY(std::abs((address.right()-shell.pageLeft(33))/shell.pageWidth()-.889)<.004);
         QTest::mouseMove(window,scene(address.center()),30);
         QTRY_VERIFY(hint->isVisible());
-        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,hint->mapToScene(QPointF(hint->width()/2,hint->height()/2)).toPoint());
+        clickHint();
         QTRY_COMPARE(shell.annotations()->snapshot().size(),2);
         const auto addressId=shell.annotations()->selectedId(); QVERIFY(!addressId.isEmpty());
         const QString longAnswer=QStringLiteral("12 rue de la Paix, 75002 Paris");
         QGuiApplication::clipboard()->setText(longAnswer); QTest::keyClick(window,Qt::Key_V,Qt::ControlModifier);
-        auto addressNote=[&] { for(const auto& n:shell.annotations()->snapshot()) if(n.id==addressId) return n; return TextAnnotation(); };
-        QTRY_COMPARE(addressNote().text,longAnswer);
-        QVERIFY(addressNote().maximumWidth>.24*units.width());
-        QTRY_COMPARE(addressNote().height,14.0);
+        QTRY_COMPARE(noteById(addressId).text,longAnswer);
+        QVERIFY(noteById(addressId).maximumWidth>.24*units.width());
+        // One line. Fuzzy: layout yields 14 plus rounding noise, which an exact == poll never matches.
+        QTRY_VERIFY(qFuzzyCompare(noteById(addressId).height,14.0));
         QTest::keyClick(window,Qt::Key_Return,Qt::ControlModifier);
         if(!output.isEmpty()) QVERIFY(window->grabWindow().save(output+"/real-answer.png"));
-        const auto notes=shell.annotations()->snapshot();
+        // Long rules are found end to end, at the expected source endpoints.
+        struct Rule { int page; double left,y,right; };
+        const QList<Rule> rules{{39,.144,.290,.460},{47,.121,.723,.874},{67,.123,.824,.875},{88,.124,.580,.875}};
+        for(const auto& rule:rules) {
+            QVERIFY2(showPage(rule.page),qPrintable(QStringLiteral("page %1 did not settle").arg(rule.page)));
+            const int index=rule.page-1;
+            qInfo()<<"sample_page"<<rule.page<<"fields"<<shell.model().answerLines(index);
+            QVERIFY(saveOverlay(rule.page));
+            const auto g=shell.annotations()->geometry(index);
+            const QPointF target((rule.left+rule.right)/2,rule.y-4/g.units.height());
+            const QPointF content(shell.pageLeft(index)+target.x()*shell.pageWidth(),shell.pageTop(index)+target.y()*shell.pageHeight(index));
+            const auto area=shell.answerBlankAt(content.x(),content.y());
+            QVERIFY2(!area.isEmpty(),qPrintable(QStringLiteral("Missing long rule on page %1").arg(rule.page)));
+            const double left=(area.left()-shell.pageLeft(index))/shell.pageWidth();
+            const double right=(area.right()-shell.pageLeft(index))/shell.pageWidth();
+            QVERIFY2(std::abs(left-rule.left)<.006,qPrintable(QStringLiteral("Page %1 left endpoint is incomplete: %2").arg(rule.page).arg(left)));
+            QVERIFY2(std::abs(right-rule.right)<.006,qPrintable(QStringLiteral("Page %1 right endpoint is incomplete: %2").arg(rule.page).arg(right)));
+            if(rule.page!=39) continue;
+            // Answer the name rule. Wait for this specific field after asynchronous
+            // viewport/frame changes, rather than clicking a still-visible neighbouring hint.
+            viewport->setProperty("contentY",std::max(0.0,area.center().y()-viewport->height()/2));
+            QTRY_VERIFY(std::abs(viewport->property("contentY").toDouble()-shell.scrollOffset())<.5);
+            auto hoverTarget=[&] {
+                const auto current=shell.answerBlankAt(content.x(),content.y());
+                if(current.isEmpty()) return false;
+                const auto point=scene(current.center());
+                QTest::mouseMove(window,point,1);
+                return hint->isVisible() && QLineF(QPointF(itemCenter(hint)),QPointF(point)).length()<2 && std::abs(hint->width()-current.width())<1;
+            };
+            QTRY_VERIFY_WITH_TIMEOUT(hoverTarget(),30000);
+            const auto before=shell.annotations()->snapshot().size();
+            clickHint();
+            QTRY_COMPARE(shell.annotations()->snapshot().size(),before+1);
+            const auto id=shell.annotations()->selectedId(); QVERIFY(!id.isEmpty());
+            QVERIFY(std::abs(noteById(id).maximumWidth-(rule.right-rule.left)*g.units.width())<.006*g.units.width());
+            editor=findItem(window->contentItem(),"annotationEditor"); QVERIFY(editor); QTRY_VERIFY(editor->hasActiveFocus());
+            const QString answer=QStringLiteral("Marie Dupont et Jean Martin à Paris");
+            QGuiApplication::clipboard()->setText(answer); QTest::keyClick(window,Qt::Key_V,Qt::ControlModifier);
+            QTRY_COMPARE(noteById(id).text,answer);
+            QTRY_VERIFY(qFuzzyCompare(noteById(id).height,14.0));
+            QTest::keyClick(window,Qt::Key_Return,Qt::ControlModifier);
+            if(!output.isEmpty()) QVERIFY(window->grabWindow().save(output+"/page-39/answer.png"));
+        }
+        const auto notes=shell.annotations()->snapshot(); QCOMPARE(notes.size(),3);
         shell.saveNow(); QTRY_VERIFY(shell.storageStatus().contains(QStringLiteral("已保存")));
         shell.clearSelection(); QTRY_COMPARE(shell.pageCount(),0); shell.selectFile(QUrl::fromLocalFile(path));
-        QTRY_VERIFY_WITH_TIMEOUT(shell.storageReady(),30000); QTRY_COMPARE(shell.annotations()->snapshot().size(),2);
+        QTRY_VERIFY_WITH_TIMEOUT(shell.storageReady(),30000); QTRY_COMPARE(shell.annotations()->snapshot().size(),3);
         QCOMPARE(shell.annotations()->snapshot(),notes);
-        window->close(); QTRY_VERIFY(shell.shutdownComplete());
-    }
-    void realTextbookLongLineSamples_data() {
-        QTest::addColumn<int>("page");
-        QTest::addColumn<QRectF>("expected");
-        QTest::newRow("page7-abbreviations")<<7<<QRectF();
-        // Endpoints checked against the source page, not detector output.
-        QTest::newRow("page39-name-answer")<<39<<QRectF(.144,.290,.316,0);
-        // Seed 20261020 sampled 88, 67, 47 from visually checked separator pages.
-        QTest::newRow("page88-separator")<<88<<QRectF(.124,.580,.751,0);
-        QTest::newRow("page67-separator")<<67<<QRectF(.123,.824,.752,0);
-        QTest::newRow("page47-separator")<<47<<QRectF(.121,.723,.753,0);
-    }
-    void realTextbookLongLineSamples() {
-        QFETCH(int,page); QFETCH(QRectF,expected);
-        const auto path=qEnvironmentVariable("LANGLERN_REAL_PDF",QStringLiteral("C:/Users/jiong/Desktop/法语/你好法语3学生用书第二版.pdf"));
-        if(!QFileInfo::exists(path)) QSKIP("The configured real textbook is unavailable; real-PDF sampling was not performed.");
-        ShellState shell; QQmlApplicationEngine engine;
-        engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}}); engine.loadFromModule("Langlern.Shell","Main");
-        auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(window);
-        window->show(); QVERIFY(QTest::qWaitForWindowExposed(window));
-        shell.selectFile(QUrl::fromLocalFile(path)); QTRY_VERIFY_WITH_TIMEOUT(shell.storageReady(),30000);
-        QTRY_COMPARE(shell.pageCount(),153); shell.goToPage(page); shell.setZoom(.65);
-        QTRY_VERIFY_WITH_TIMEOUT(shell.model().ready(page-1,shell.model().targetWidth(page-1,window->devicePixelRatio())),30000);
-        QTRY_VERIFY_WITH_TIMEOUT(shell.model().nextUnknown()<0,30000);
-        const auto lines=shell.model().answerLines(page-1);
-        qInfo()<<"sample_page"<<page<<"fields"<<lines;
-        const auto output=qEnvironmentVariable("LANGLERN_REAL_ARTIFACT_DIR");
-        if(!output.isEmpty()) {
-            const auto folder=output+QStringLiteral("/page-%1").arg(page); QVERIFY(QDir().mkpath(folder));
-            auto overlay=shell.model().image(page-1).copy(); QVERIFY(overlay.save(folder+"/source.png"));
-            QPainter painter(&overlay); painter.setPen(QPen(Qt::red,1));
-            for(const auto& r:lines) painter.drawRect(QRectF(r.x()*overlay.width(),r.y()*overlay.height(),r.width()*overlay.width(),r.height()*overlay.height()));
-            painter.end(); QVERIFY(overlay.save(folder+"/candidates.png"));
-        }
-        if(page==7) {
-            qInfo()<<"Page 7 is an abbreviations table with decorative solid rules; no long dashed answer field to accept.";
-        } else {
-            const auto g=shell.annotations()->geometry(page-1);
-            const QPointF target(expected.center().x(),expected.y()-4/g.units.height());
-            const auto area=shell.answerBlankAt(shell.pageLeft(page-1)+target.x()*shell.pageWidth(),shell.pageTop(page-1)+target.y()*shell.pageHeight(page-1));
-            QVERIFY2(!area.isEmpty(),qPrintable(QStringLiteral("Missing long rule on page %1").arg(page)));
-            const double left=(area.left()-shell.pageLeft(page-1))/shell.pageWidth();
-            const double right=(area.right()-shell.pageLeft(page-1))/shell.pageWidth();
-            qInfo()<<"sample_endpoints"<<page<<left<<right<<"expected"<<expected.left()<<expected.right();
-            QVERIFY2(std::abs(left-expected.left())<.006,qPrintable(QStringLiteral("Page %1 left endpoint is incomplete: %2").arg(page).arg(left)));
-            QVERIFY2(std::abs(right-expected.right())<.006,qPrintable(QStringLiteral("Page %1 right endpoint is incomplete: %2").arg(page).arg(right)));
-            if(page==39) {
-                auto* viewport=find(window->contentItem(),"pdfViewport"); QVERIFY(viewport);
-                viewport->setProperty("contentY",std::max(0.0,area.center().y()-viewport->height()/2));
-                QTRY_VERIFY(std::abs(viewport->property("contentY").toDouble()-shell.scrollOffset())<.5);
-                auto* hint=find(window->contentItem(),"answerLineHint"); QVERIFY(hint);
-                // Wait for this specific field after asynchronous viewport/frame
-                // changes, rather than clicking a still-visible neighbouring hint.
-                auto hoverTarget=[&] {
-                    const QPointF content(shell.pageLeft(page-1)+target.x()*shell.pageWidth(),shell.pageTop(page-1)+target.y()*shell.pageHeight(page-1));
-                    const auto current=shell.answerBlankAt(content.x(),content.y());
-                    if(current.isEmpty()) return false;
-                    const auto point=viewport->mapToScene(current.center()-QPointF(viewport->property("contentX").toDouble(),viewport->property("contentY").toDouble())).toPoint();
-                    QTest::mouseMove(window,point,1);
-                    const auto center=hint->mapToScene(QPointF(hint->width()/2,hint->height()/2));
-                    return hint->isVisible() && QLineF(center,point).length()<2 && std::abs(hint->width()-current.width())<1;
-                };
-                QTRY_VERIFY_WITH_TIMEOUT(hoverTarget(),30000);
-                QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,hint->mapToScene(QPointF(hint->width()/2,hint->height()/2)).toPoint());
-                QTRY_COMPARE(shell.annotations()->snapshot().size(),1);
-                QVERIFY(std::abs(shell.annotations()->snapshot().first().maximumWidth-expected.width()*g.units.width())<.006*g.units.width());
-                auto* editor=find(window->contentItem(),"annotationEditor"); QVERIFY(editor); QTRY_VERIFY(editor->hasActiveFocus());
-                const QString answer=QStringLiteral("Marie Dupont et Jean Martin à Paris");
-                QGuiApplication::clipboard()->setText(answer); QTest::keyClick(window,Qt::Key_V,Qt::ControlModifier);
-                QTRY_COMPARE(shell.annotations()->snapshot().first().text,answer);
-                const auto note=shell.annotations()->snapshot().first();
-                QFont font(note.family); font.setPixelSize(qRound(note.fontSize));
-                qInfo()<<"sample_text_layout"<<note.width<<note.maximumWidth<<note.fontSize<<QFontMetricsF(font).horizontalAdvance(answer)<<editor->property("contentWidth")<<editor->property("contentHeight")<<note.styles.size();
-                QTRY_COMPARE(shell.annotations()->snapshot().first().height,14.0);
-                if(!output.isEmpty()) QVERIFY(window->grabWindow().save(output+"/page-39/answer.png"));
-            }
-        }
         window->close(); QTRY_VERIFY(shell.shutdownComplete());
     }
     void hoverRuleReusesEditorAndShrinksAfterDeletion() {
@@ -582,7 +504,7 @@ private slots:
         shell.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/answer-lines.pdf"));
         QTRY_VERIFY(shell.storageReady()); QTRY_COMPARE(shell.pageCount(),4); QTRY_VERIFY(!shell.busy());
         shell.setZoom(.65); QTRY_VERIFY(!shell.busy());
-        auto* viewport=find(window->contentItem(),"pdfViewport"); QVERIFY(viewport);
+        auto* viewport=findItem(window->contentItem(),"pdfViewport"); QVERIFY(viewport);
         auto area=[&]() {
             for(int y=3;y<90;++y) {
                 auto rect=shell.answerBlankAt(shell.pageLeft(shell.currentPage()-1)+.3*shell.pageWidth(),shell.pageTop(shell.currentPage()-1)+y*.01*shell.pageHeight(shell.currentPage()-1));
@@ -606,13 +528,13 @@ private slots:
         QTest::mouseMove(window,scene(target.center()),30);
         auto* hover=engine.rootObjects().first()->findChild<QObject*>("answerHover"); QVERIFY(hover);
         qInfo()<<"answer_hover"<<target<<scene(target.center())<<viewport->property("contentY")<<hover->property("hovered")<<viewport->property("moving");
-        auto* hint=find(window->contentItem(),"answerLineHint"); QVERIFY(hint); QTRY_VERIFY(hint->isVisible());
+        auto* hint=findItem(window->contentItem(),"answerLineHint"); QVERIFY(hint); QTRY_VERIFY(hint->isVisible());
         const auto output=qEnvironmentVariable("LANGLERN_ANSWER_ARTIFACT_DIR");
         if(!output.isEmpty()) QVERIFY(window->grabWindow().save(output+"/hover-rule.png"));
         const auto jobs=shell.model().renderJobs;
         QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,scene(target.center()));
         QTRY_COMPARE(shell.annotations()->snapshot().size(),1);
-        auto* editor=find(window->contentItem(),"annotationEditor"); QVERIFY(editor); QTRY_VERIFY(editor->hasActiveFocus());
+        auto* editor=findItem(window->contentItem(),"annotationEditor"); QVERIFY(editor); QTRY_VERIFY(editor->hasActiveFocus());
         auto note=shell.annotations()->snapshot().first();
         QVERIFY(note.maximumWidth>150 && note.maximumWidth<190);
         QVERIFY(std::abs(note.width-note.maximumWidth)<.01);
@@ -660,7 +582,7 @@ private slots:
             QTRY_VERIFY(shell.annotations()->snapshot().isEmpty());
             QTest::keyClick(window,Qt::Key_Z,Qt::ControlModifier);
             QTRY_COMPARE(shell.annotations()->snapshot(),committed);
-            editor=find(window->contentItem(),"annotationEditor"); QVERIFY(editor);
+            editor=findItem(window->contentItem(),"annotationEditor"); QVERIFY(editor);
             QTest::mouseMove(window,scene(target.center()),20); QTRY_VERIFY(!hint->isVisible());
         }
         if(!output.isEmpty()) QVERIFY(window->grabWindow().save(output+"/answer-shrunk.png"));
@@ -761,16 +683,16 @@ private slots:
         QTRY_VERIFY(shell.storageReady()); QTRY_VERIFY(shell.annotations()->geometry(0).valid);
         shell.setZoom(.6); QTRY_VERIFY(!shell.busy()); QTest::qWait(100);
         const auto id=shell.annotations()->create(0,.3,.2);
-        auto* editor=find(window->contentItem(),"annotationEditor"); QVERIFY(editor); editor->forceActiveFocus();
+        auto* editor=findItem(window->contentItem(),"annotationEditor"); QVERIFY(editor); editor->forceActiveFocus();
         for(const char c:QByteArray("resize this answer")) QTest::keyClick(window,c);
         QTest::keyClick(window,Qt::Key_Escape);
-        auto* note=editor->parentItem()->parentItem(); auto* frame=find(note,"annotationFrame"); QVERIFY(frame);
+        auto* note=editor->parentItem()->parentItem(); auto* frame=findItem(note,"annotationFrame"); QVERIFY(frame);
         QTest::mouseMove(window,QPoint(2,2)); QTRY_COMPARE(frame->opacity(),0.0);
         QTest::mouseMove(window,note->mapToScene(QPointF(note->width()/2,8)).toPoint());
         QTRY_COMPARE(frame->opacity(),1.0); QVERIFY(shell.annotations()->selectedId().isEmpty());
         const auto jobs=shell.model().renderJobs;
         for(int i=0;i<4;++i) {
-            auto* handle=find(note,"annotationResizeHandle"+QString::number(i)); QVERIFY(handle);
+            auto* handle=findItem(note,"annotationResizeHandle"+QString::number(i)); QVERIFY(handle);
             const auto before=shell.annotations()->snapshot().first();
             const auto p=handle->mapToScene(QPointF(5,5)).toPoint();
             const QPoint delta(i%2==0?-24:24,i<2?-18:18);
@@ -784,7 +706,7 @@ private slots:
             shell.annotations()->undo(); QCOMPARE(shell.annotations()->snapshot().first(),before);
             shell.annotations()->redo(); QCOMPARE(shell.annotations()->snapshot().first(),after);
         }
-        auto* handle=find(note,"annotationResizeHandle3"); QVERIFY(handle);
+        auto* handle=findItem(note,"annotationResizeHandle3"); QVERIFY(handle);
         const auto before=shell.annotations()->snapshot().first(); const auto p=handle->mapToScene(QPointF(5,5)).toPoint();
         QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,p);
         QTest::mouseMove(window,p+QPoint(30,20),25);
@@ -793,8 +715,8 @@ private slots:
         QCOMPARE(shell.annotations()->snapshot().first(),before);
         QCOMPARE(shell.model().renderJobs,jobs);
         // No visible move tab: dragging an answer that is not being edited moves it.
-        QVERIFY(!find(note,"annotationMoveHandle"));
-        auto* moveArea=find(note,"annotationMoveArea"); QVERIFY(moveArea);
+        QVERIFY(!findItem(note,"annotationMoveHandle"));
+        auto* moveArea=findItem(note,"annotationMoveArea"); QVERIFY(moveArea);
         QVERIFY(shell.annotations()->selectedId().isEmpty());
         const auto moveStart=moveArea->mapToScene(QPointF(20,8)).toPoint();
         QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,moveStart);
@@ -835,14 +757,14 @@ private slots:
         shell.selectFile(QUrl::fromLocalFile(fixture)); QTRY_VERIFY(shell.storageReady()); QTRY_VERIFY(shell.annotations()->geometry(0).valid);
         shell.setZoom(.8); QTRY_VERIFY(!shell.busy()); QTest::qWait(100);
         const auto id=shell.annotations()->create(0,.3,.2);
-        auto* editor=find(window->contentItem(),"annotationEditor"); QVERIFY(editor); editor->forceActiveFocus();
+        auto* editor=findItem(window->contentItem(),"annotationEditor"); QVERIFY(editor); editor->forceActiveFocus();
         for(const char c:QByteArray("hello answer")) QTest::keyClick(window,c);
         QTest::keyClick(window,Qt::Key_Home);
         for(int i=0;i<5;++i) QTest::keyClick(window,Qt::Key_Right,Qt::ShiftModifier);
         auto* popup=editor->parentItem()->parentItem()->property("formatPopover").value<QObject*>(); QVERIFY(popup);
         QTRY_VERIFY(popup->property("visible").toBool());
         auto click=[&](const QString& name) {
-            auto* button=find(window->contentItem(),name); QVERIFY(button);
+            auto* button=findItem(window->contentItem(),name); QVERIFY(button);
             QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,button->mapToScene(QPointF(button->width()/2,button->height()/2)).toPoint());
         };
         click("formatBold");
@@ -878,7 +800,7 @@ private slots:
         const auto saved=shell.annotations()->snapshot();
         shell.annotations()->undo(); QVERIFY(shell.annotations()->snapshot().isEmpty());
         shell.annotations()->redo(); QCOMPARE(shell.annotations()->snapshot(),saved);
-        editor=find(window->contentItem(),"annotationEditor"); QVERIFY(editor); QTest::qWait(20);
+        editor=findItem(window->contentItem(),"annotationEditor"); QVERIFY(editor); QTest::qWait(20);
         controller=editor->parentItem()->parentItem()->findChild<AnnotationText*>(); QVERIFY(controller);
         QVERIFY(controller->selectionStyle(0,5)["bold"].toBool());
         shell.annotations()->select(id); editor->forceActiveFocus();
@@ -945,9 +867,9 @@ private slots:
         shell.selectFile(QUrl::fromLocalFile(fixture));
         QTRY_VERIFY(shell.storageReady()); QTRY_VERIFY(shell.annotations()->geometry(0).valid);
         shell.setZoom(.6); QTRY_VERIFY(!shell.busy()); QTest::qWait(100);
-        auto* viewport=find(window->contentItem(),"pdfViewport"); QVERIFY(viewport);
+        auto* viewport=findItem(window->contentItem(),"pdfViewport"); QVERIFY(viewport);
         const auto id=shell.annotations()->create(0,.2,.2);
-        auto* editor=find(window->contentItem(),"annotationEditor"); QVERIFY(editor);
+        auto* editor=findItem(window->contentItem(),"annotationEditor"); QVERIFY(editor);
         editor->forceActiveFocus();
         const QString text=QStringLiteral("a long answer with several words ").repeated(8);
         QGuiApplication::clipboard()->setText(text);
@@ -1003,7 +925,7 @@ private slots:
         QTRY_VERIFY(shell.annotations()->geometry(0).valid); QTRY_VERIFY(shell.textSelection()->snapshot(0));
         QTRY_VERIFY(shell.storageReady());
         QTRY_VERIFY(!shell.busy()); QTest::qWait(300);
-        auto* viewport=find(window->contentItem(),QStringLiteral("pdfViewport")); QVERIFY(viewport);
+        auto* viewport=findItem(window->contentItem(),QStringLiteral("pdfViewport")); QVERIFY(viewport);
         const auto posF=[&](double x,double y) {
             return viewport->mapToScene(QPointF((shell.contentWidth()-shell.pageWidth())/2+x*shell.pageWidth()-viewport->property("contentX").toDouble(),
                 shell.pageTop(0)+y*shell.pageHeight(0)-viewport->property("contentY").toDouble()));
@@ -1014,7 +936,7 @@ private slots:
         // The fixture's third text line is near y=.2; use blank paper for auto input.
         QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,pos(.25,.3));
         QTRY_COMPARE(shell.annotations()->snapshot().size(),1);
-        auto* editor=find(window->contentItem(),QStringLiteral("annotationEditor")); QVERIFY(editor);
+        auto* editor=findItem(window->contentItem(),QStringLiteral("annotationEditor")); QVERIFY(editor);
         QTRY_VERIFY(editor->hasActiveFocus());
         const double initialWidth=shell.annotations()->snapshot().first().width;
         QVERIFY(initialWidth<48);
@@ -1064,7 +986,7 @@ private slots:
         // Re-enter existing note; while editing, its edge moves it.
         QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,note->mapToScene(QPointF(8,8)).toPoint());
         QTRY_VERIFY(editor->hasActiveFocus());
-        auto* edge=find(note,QStringLiteral("annotationMoveEdge0")); QVERIFY(edge); QVERIFY(edge->isEnabled());
+        auto* edge=findItem(note,QStringLiteral("annotationMoveEdge0")); QVERIFY(edge); QVERIFY(edge->isEnabled());
         const auto start=edge->mapToScene(QPointF(note->width()/2,edge->height()/2)).toPoint();
         QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,start);
         QVERIFY2(note->property("moving").toBool(),"Move edge did not receive the press");
@@ -1076,7 +998,7 @@ private slots:
         // Leave virtualized range, reconstruct editor, preserve data.
         shell.goToPage(8); QTest::qWait(200); QCOMPARE(shell.annotations()->rowCount(),0);
         shell.goToPage(1); QTRY_COMPARE(shell.annotations()->rowCount(),1);
-        editor=find(window->contentItem(),QStringLiteral("annotationEditor")); QVERIFY(editor);
+        editor=findItem(window->contentItem(),QStringLiteral("annotationEditor")); QVERIFY(editor);
         QVERIFY(editor->property("text").toString().contains(QStringLiteral("多行答案")));
         const auto output=qEnvironmentVariable("LANGLERN_SCREENSHOT_DIR");
         if(!output.isEmpty()) {
@@ -1124,7 +1046,7 @@ private slots:
         QTRY_COMPARE(shell.annotations()->snapshot().size(),2);
         const auto secondId=shell.annotations()->selectedId(); QVERIFY(secondId!=originalId);
         QTest::keyClick(window,Qt::Key_B);
-        editor=find(window->contentItem(),QStringLiteral("annotationEditor"));
+        editor=findItem(window->contentItem(),QStringLiteral("annotationEditor"));
         // Find the original editor using its owning delegate ID, not UUID sort order.
         const auto originalAnchor=shell.annotations()->geometry(0).pdfToDisplay.map(anchor);
         QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,pos(originalAnchor.x()+.01,originalAnchor.y()+.01));
@@ -1153,10 +1075,5 @@ private slots:
         window->close(); QTRY_VERIFY(shell.shutdownComplete());
     }
 };
-int main(int argc,char** argv) {
-    QTemporaryDir workspace; setTestEnvironment("LANGLERN_WORKSPACE_DIR",workspace.path());
-
-    QGuiApplication app(argc,argv); configureTestApplication(app);
-    AnnotationTests tests; return QTest::qExec(&tests,argc,argv);
-}
+LANGLERN_TEST_SUITE(AnnotationTests,"annotation")
 #include "annotation_tests.moc"

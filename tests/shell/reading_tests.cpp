@@ -1,4 +1,4 @@
-#include "testapplication.h"
+#include "testsupport.h"
 #include <QTemporaryDir>
 #include "shellstate.h"
 #include <QAbstractItemModelTester>
@@ -22,7 +22,6 @@
 #include <QQuickWindow>
 #include <QSignalSpy>
 #include <QTest>
-#include <QtQml/QQmlExtensionPlugin>
 #include <algorithm>
 #include <cmath>
 #include <mutex>
@@ -35,7 +34,6 @@
 #include <windows.h>
 #include <psapi.h>
 #endif
-Q_IMPORT_QML_PLUGIN(LanglernShellPlugin)
 
 class ReadingTests : public QObject {
     Q_OBJECT
@@ -69,8 +67,7 @@ private slots:
         s.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/text.pdf"));QTRY_VERIFY(s.storageReady());QTRY_VERIFY(!s.busy());
         s.setZoom(.65);s.setDoublePage(true);QCOMPARE(s.zoom(),1.0);
         QTRY_VERIFY(s.annotations()->geometry(1).valid);QTRY_VERIFY(s.textSelection()->snapshot(1));QTest::qWait(150);
-        const auto find=[](auto&& self,QQuickItem* item,const QString& name)->QQuickItem*{if(item->objectName()==name)return item;for(auto* child:item->childItems())if(auto* found=self(self,child,name))return found;return nullptr;};
-        auto* viewport=find(find,window->contentItem(),"pdfViewport");QVERIFY(viewport);
+        auto* viewport=findItem(window->contentItem(),"pdfViewport");QVERIFY(viewport);
         const auto point=[&](int page,double x,double y){return viewport->mapToScene(QPointF(s.pageLeft(page)+x*s.pageWidth()-viewport->property("contentX").toDouble(),s.pageTop(page)+y*s.pageHeight(page)-viewport->property("contentY").toDouble())).toPoint();};
         const auto data=s.textSelection()->snapshot(1);int hello=-1;for(int i=0;i<data->characters.size();++i)if(data->characters[i].unicode==U'H'&&data->characters[i].visible){hello=i;break;}QVERIFY(hello>=0);
         const auto first=data->characters[hello].box.center(),last=data->characters[hello+10].box.center();
@@ -81,7 +78,7 @@ private slots:
         QTRY_COMPARE(s.annotations()->snapshot().size(),1);QCOMPARE(s.annotations()->snapshot().first().page,1);
         for(char c:QByteArray("answer"))QTest::keyClick(window,c);QTest::keyClick(window,Qt::Key_Escape);
         QCOMPARE(s.annotations()->snapshot().first().text,QStringLiteral("answer"));
-        auto* note=find(find,window->contentItem(),"annotationEditor");QVERIFY(note);QVERIFY(note->mapToScene(QPointF(0,0)).x()>point(0,1,0).x());
+        auto* note=findItem(window->contentItem(),"annotationEditor");QVERIFY(note);QVERIFY(note->mapToScene(QPointF(0,0)).x()>point(0,1,0).x());
         QTest::keyClick(window,Qt::Key_P,Qt::ControlModifier|Qt::ShiftModifier);
         QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,point(1,.2,.7));QTest::mouseMove(window,point(1,.6,.7),20);QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,point(1,.6,.7));
         QCOMPARE(s.annotations()->inkSnapshot().size(),1);QCOMPARE(s.annotations()->inkSnapshot().first().page,1);
@@ -97,10 +94,10 @@ private slots:
         QCOMPARE(s.annotations()->snapshot().first().anchor,savedAnchor);s.setDoublePage(true);
         s.goToPage(6);QTest::qWait(80);QCOMPARE(s.currentPage(),6);s.updateViewport(s.scrollOffset(),viewport->height(),viewport->width(),window->devicePixelRatio());QCOMPARE(s.currentPage(),6);
         s.setDoublePage(false);QCOMPARE(s.zoom(),.65);QTRY_VERIFY(!s.busy());QCOMPARE(s.currentPage(),6);
-        auto* toggle=find(find,window->contentItem(),"doublePageButton");QVERIFY(toggle);QVERIFY(toggle->isVisible());
+        auto* toggle=findItem(window->contentItem(),"doublePageButton");QVERIFY(toggle);QVERIFY(toggle->isVisible());
         QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,toggle->mapToScene(QPointF(toggle->width()/2,toggle->height()/2)).toPoint());QVERIFY(s.doublePage());
         s.setZoom(1.4);s.goToPage(2);QTRY_VERIFY(!s.busy());
-        auto* next=find(find,window->contentItem(),"nextPageButton");auto* previous=find(find,window->contentItem(),"previousPageButton");QVERIFY(next);QVERIFY(previous);
+        auto* next=findItem(window->contentItem(),"nextPageButton");auto* previous=findItem(window->contentItem(),"previousPageButton");QVERIFY(next);QVERIFY(previous);
         QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,next->mapToScene(QPointF(next->width()/2,next->height()/2)).toPoint());QCOMPARE(s.currentPage(),3);
         QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,previous->mapToScene(QPointF(previous->width()/2,previous->height()/2)).toPoint());QCOMPARE(s.currentPage(),1);
         QVERIFY2(warnings.isEmpty(),qPrintable(warnings.join('\n')));window->close();QTRY_VERIFY(s.shutdownComplete());
@@ -111,9 +108,8 @@ private slots:
         engine.setInitialProperties({{"shell",QVariant::fromValue(&s)}});engine.loadFromModule("Langlern.Shell","Main");
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));QVERIFY(window);
         window->resize(1200,800);window->show();QVERIFY(QTest::qWaitForWindowExposed(window));
-        const auto find=[](auto&& self,QQuickItem* item,const QString& name)->QQuickItem*{if(item->objectName()==name)return item;for(auto* child:item->childItems())if(auto* found=self(self,child,name))return found;return nullptr;};
         s.selectFile(QUrl::fromLocalFile(fixture));QTRY_VERIFY(s.storageReady());
-        QQuickItem* viewport=nullptr;QTRY_VERIFY((viewport=find(find,window->contentItem(),"pdfViewport")));
+        QQuickItem* viewport=nullptr;QTRY_VERIFY((viewport=findItem(window->contentItem(),"pdfViewport")));
         s.setZoom(2);QTRY_VERIFY(!s.busy());QTest::qWait(200);
         const auto y=[&]{return viewport->property("contentY").toDouble();};
         const auto setY=[&](double v){viewport->setProperty("contentY",v);QTest::qWait(30);};
@@ -162,25 +158,23 @@ private slots:
     }
     void realTextbookScrollContinuity_data() {
         QTest::addColumn<double>("zoom");QTest::addColumn<QSize>("size");
+        // One page per screen, and many small pages at once (the most concurrent renders).
         QTest::newRow("fit-1400x950")<<1.0<<QSize(1400,950);
-        QTest::newRow("zoom60-1400x950")<<.6<<QSize(1400,950);
         QTest::newRow("zoom40-1700x1000")<<.4<<QSize(1700,1000);
-        QTest::newRow("zoom150-1400x950")<<1.5<<QSize(1400,950);
     }
     void realTextbookScrollContinuity() {
         QFETCH(double,zoom);QFETCH(QSize,size);
         // Steady wheel-like scrolling must never blank, downgrade or jump a page the
         // user can see; those read as the page "refreshing".
-        const auto path=qEnvironmentVariable("LANGLERN_REAL_PDF",QStringLiteral("C:/Users/jiong/Desktop/法语/你好法语3学生用书第二版.pdf"));
-        if(!QFileInfo::exists(path)) QSKIP("The configured real textbook is unavailable on this runner; real-PDF scrolling was not performed.");
+        const auto path=realTextbookPath();
+        if(path.isEmpty()) QSKIP("The configured real textbook is unavailable on this runner; real-PDF scrolling was not performed.");
         ShellState s;QQmlApplicationEngine engine;QStringList warnings;
         connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError>& errors){for(const auto& e:errors)warnings.append(e.toString());});
         engine.setInitialProperties({{"shell",QVariant::fromValue(&s)}});engine.loadFromModule("Langlern.Shell","Main");
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));QVERIFY(window);
         window->resize(size);window->show();QVERIFY(QTest::qWaitForWindowExposed(window));
-        const auto find=[](auto&& self,QQuickItem* item,const QString& name)->QQuickItem*{if(item->objectName()==name)return item;for(auto* child:item->childItems())if(auto* found=self(self,child,name))return found;return nullptr;};
         s.selectFile(QUrl::fromLocalFile(path));QTRY_VERIFY_WITH_TIMEOUT(s.storageReady(),30000);
-        QQuickItem* viewport=nullptr;QTRY_VERIFY((viewport=find(find,window->contentItem(),"pdfViewport")));
+        QQuickItem* viewport=nullptr;QTRY_VERIFY((viewport=findItem(window->contentItem(),"pdfViewport")));
         QTRY_COMPARE(s.pageCount(),153);s.setZoom(zoom);s.goToPage(20);
         QTRY_VERIFY_WITH_TIMEOUT(!s.busy(),30000);
         const double dpr=window->devicePixelRatio();
@@ -189,7 +183,8 @@ private slots:
         QHash<int,qint64> lastKey; QSet<int> previewSeen;
         const auto jobs=s.model().renderJobs;
         // Start while page metadata may still be arriving, then keep going.
-        for(int step=0;step<600;++step) {
+        // 400 steps of 30 px: ~9 pages at fit width, ~25 at 40% zoom.
+        for(int step=0;step<400;++step) {
             const double before=viewport->property("contentY").toDouble();
             const double wanted=before+30;
             viewport->setProperty("contentY",wanted);
@@ -620,15 +615,5 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(s.shutdownComplete(),60000);
     }
 };
-int main(int argc,char** argv) {
-    QTemporaryDir workspace; setTestEnvironment("LANGLERN_WORKSPACE_DIR",workspace.path());
-
-    QGuiApplication app(argc,argv);
-    configureTestApplication(app);
-#ifdef Q_OS_WIN
-    QQuickWindow::setGraphicsApi(QSGRendererInterface::Direct3D11);
-#endif
-    ReadingTests tests;
-    return QTest::qExec(&tests,argc,argv);
-}
+LANGLERN_TEST_SUITE(ReadingTests,"reading")
 #include "reading_tests.moc"

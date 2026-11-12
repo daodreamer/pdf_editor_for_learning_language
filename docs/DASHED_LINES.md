@@ -8,7 +8,7 @@
 
 固定本机样本为用户指定的 `C:\Users\jiong\Desktop\法语\你好法语3学生用书第二版.pdf`，291516513 bytes，153 页。SHA-256：`c34e87b652e9c4247ef5eac4dfda5fb4efad62f4d2dec57c110f9ba01cf98d4b`。文件保持只读；测试练习数据写入 QTemporaryDir 隔离工作区，教材、提取页和截图不进入 Git。
 
-后续本机功能/交互/性能回归必须使用此教材，已写入 AGENTS.md。`realTextbookDashedFields` 默认直接打开该路径，其他设备可用 `LANGLERN_REAL_PDF` 指向同一文件；文件不可用时明确 QSKIP，不能将真实教材验证列为通过。合成样例仅用于补充算法、边界和既有功能回归。
+后续本机功能/交互/性能回归必须使用此教材，已写入 AGENTS.md。`realTextbookAnswerFields`（原 `realTextbookDashedFields`）默认直接打开该路径，其他设备可用 `LANGLERN_REAL_PDF` 指向同一文件；文件不可用时明确 QSKIP，不能将真实教材验证列为通过。合成样例仅用于补充算法、边界和既有功能回归。
 
 ```powershell
 ./tools/build-windows.ps1 -Test -Lint

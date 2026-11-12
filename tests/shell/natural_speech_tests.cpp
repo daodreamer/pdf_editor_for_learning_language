@@ -1,22 +1,16 @@
-#include "testapplication.h"
+#include "testsupport.h"
 #include "naturalspeech.h"
 #include "offlineservices.h"
-#include "shellstate.h"
 #include "workspacestate.h"
-#include <QClipboard>
-#include <QCryptographicHash>
 #include <QDataStream>
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QQmlApplicationEngine>
-#include <QQuickItem>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
-#include <QtQml/QQmlExtensionPlugin>
 #include <algorithm>
 #include <cmath>
 #include <future>
@@ -24,7 +18,6 @@
 #include <qt_windows.h>
 #include <mmsystem.h>
 #endif
-Q_IMPORT_QML_PLUGIN(LanglernShellPlugin)
 
 namespace {
 struct Result {QString error;SpeechMetrics metrics;std::vector<float> pcm;};
@@ -37,8 +30,6 @@ struct Run {
     SpeechControl control(){return {revision,1,paused,rate,[this]{first.store(true);},[this](quint64 count){played.store(count);}};}
     bool ready(){return future.wait_for(std::chrono::milliseconds(0))==std::future_status::ready;}
 };
-QQuickItem* find(QQuickItem* item,const QString& name){if(item->objectName()==name)return item;for(auto* c:item->childItems())if(auto* r=find(c,name))return r;return nullptr;}
-QPoint middle(QQuickItem* item){return item->mapToScene(QPointF(item->width()/2,item->height()/2)).toPoint();}
 void wave(const QString& path,const std::vector<float>& pcm,int rate) {
     QFile file(path);if(!file.open(QIODevice::WriteOnly|QIODevice::NewOnly))return;
     QDataStream data(&file);data.setByteOrder(QDataStream::LittleEndian);
@@ -47,7 +38,6 @@ void wave(const QString& path,const std::vector<float>& pcm,int rate) {
     data.writeRawData("data",4);data<<quint32(pcm.size()*2);
     for(float value:pcm)data<<qint16(std::round(std::clamp(value,-1.f,1.f)*32767.f));
 }
-QByteArray hash(const QString& path){QFile file(path);if(!file.open(QIODevice::ReadOnly))return {};QCryptographicHash hash(QCryptographicHash::Sha256);hash.addData(&file);return hash.result();}
 // Same gate as the backend's normalizer: mean energy of 20 ms frames above -45 dBFS.
 struct Loudness {double activeDbfs=-120,peakDbfs=-120;};
 Loudness loudness(const std::vector<float>& pcm,int rate) {
@@ -132,7 +122,9 @@ private slots:
         run.future=std::async(std::launch::async,[&]{
             NaturalSpeech speech;Result result;
             const QStringList sentences={QStringLiteral("Bonjour, je m'appelle Léa."),QStringLiteral("Merci beaucoup !"),QStringLiteral("Écoutez et répétez.")};
-            for(int round=0;round<3;++round)for(int index=0;index<sentences.size();++index) {
+            // Three requests on one engine cover reuse; benchmarks/run-speech.py asks for more rounds.
+            const int rounds=std::max(1,qEnvironmentVariableIntValue("LANGLERN_SPEECH_ROUNDS"));
+            for(int round=0;round<rounds;++round)for(int index=0;index<sentences.size();++index) {
                 const auto voice=QString::fromLatin1(index%2?NaturalVoices::female:NaturalVoices::male);
                 SpeechMetrics metrics;std::vector<float> pcm;
                 result.error=speech.generate(sentences[index],voice,run.control(),metrics,[&](const float* p,std::size_t n){pcm.insert(pcm.end(),p,p+n);return pcm.size()<=44100*20;});
@@ -153,48 +145,6 @@ private slots:
         service.setSpeechVoice(QStringLiteral("natural:fr:female"));QCOMPARE(service.frenchVoice(),QStringLiteral("female"));
         service.setFrenchVoice(QStringLiteral("male"));QCOMPARE(service.speechVoice(),QStringLiteral("natural:fr:male"));
     }
-    void realTextbookAndAnswerButtons() {
-#ifdef Q_OS_WIN
-        if(waveOutGetNumDevs()==0)QSKIP("No audio output device: real textbook speech button playback NOT executed");
-#endif
-        auto path=qEnvironmentVariable("LANGLERN_REAL_PDF");if(path.isEmpty())path=QStringLiteral("C:/Users/jiong/Desktop/法语/你好法语3学生用书第二版.pdf");
-        if(!QFileInfo::exists(path))QSKIP("Fixed real textbook unavailable: real textbook speech validation NOT executed");
-        const auto original=hash(path);QVERIFY(!original.isEmpty());
-        ShellState shell;QQmlApplicationEngine engine;QStringList warnings;
-        connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError>& errors){for(const auto& error:errors)warnings.append(error.toString());});
-        engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}});engine.loadFromModule("Langlern.Shell","Main");
-        auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));QVERIFY(window);window->show();QVERIFY(QTest::qWaitForWindowExposed(window));
-        auto* service=window->findChild<OfflineServices*>();QVERIFY(service);QTRY_VERIFY(!service->speechVoices().isEmpty());
-        QStringList natural;for(const auto& value:service->speechVoices())if(value.toMap()["id"].toString().startsWith("natural:fr:"))natural.append(value.toMap()["id"].toString());
-        QCOMPARE(natural,QStringList({QStringLiteral("natural:fr:male"),QStringLiteral("natural:fr:female")}));
-        QCOMPARE(service->frenchVoice(),QStringLiteral("male"));
-        shell.selectFile(QUrl::fromLocalFile(path));QTRY_VERIFY_WITH_TIMEOUT(shell.storageReady(),30000);QTRY_VERIFY(shell.pageCount()>34);shell.goToPage(34);QTRY_VERIFY(!shell.busy());
-        auto* voiceBox=window->findChild<QQuickItem*>(QStringLiteral("speechVoice"));QVERIFY(voiceBox);
-        QTRY_VERIFY(voiceBox->property("currentText").toString().contains(QStringLiteral("男声")));
-        shell.recognizeCurrentPage();QTRY_VERIFY_WITH_TIMEOUT(shell.textSelection()->snapshot(33) && shell.textSelection()->snapshot(33)->ocr && !shell.textSelection()->snapshot(33)->pending,60000);
-        const auto text=shell.textSelection()->snapshot(33);QVERIFY(text->error.isEmpty());QVERIFY(text->characters.size()>100);
-        int first=0;while(first<text->characters.size()&&!text->characters[first].visible)++first;const int last=std::min(first+75,int(text->characters.size())-1);
-        auto* viewport=find(window->contentItem(),"pdfViewport");QVERIFY(viewport);
-        const auto scene=[&](QPointF p){return viewport->mapToScene(QPointF(shell.pageLeft(33)+p.x()*shell.pageWidth()-viewport->property("contentX").toDouble(),shell.pageTop(33)+p.y()*shell.pageHeight(33)-viewport->property("contentY").toDouble())).toPoint();};
-        const auto a=scene(text->characters[first].box.center()),b=scene(text->characters[last].box.center());
-        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,a,1);QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,a,1);QTest::mouseMove(window,b,25);QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,b);
-        QTRY_VERIFY(shell.textSelection()->ready());const auto selected=shell.textSelection()->text();QVERIFY(selected.size()>20);
-        auto* button=find(window->contentItem(),"speakPageSelection");QVERIFY(button);QTRY_VERIFY(button->isVisible());QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,middle(button));
-        QTRY_VERIFY(service->speaking());QTRY_VERIFY_WITH_TIMEOUT(!service->speechLoading(),30000);QVERIFY2(service->speaking(),qPrintable(service->status()));QCOMPARE(shell.textSelection()->text(),selected);QTest::qWait(500);service->stopSpeaking();
-        // Switching to the female voice in settings updates the choice shown and the saved preference.
-        service->setFrenchVoice(QStringLiteral("female"));
-        QTRY_VERIFY(voiceBox->property("currentText").toString().contains(QStringLiteral("女声")));
-        auto* workspace=window->findChild<WorkspaceState*>();QVERIFY(workspace);QTRY_COMPARE(workspace->frenchVoice(),QStringLiteral("female"));
-        shell.createTextBox(shell.pageLeft(33)+.63*shell.pageWidth(),shell.pageTop(33)+.25*shell.pageHeight(33));
-        auto* editor=find(window->contentItem(),"annotationEditor");QVERIFY(editor);editor->forceActiveFocus();
-        QGuiApplication::clipboard()->setText(QStringLiteral("Bonjour, je parle français."));QTest::keyClick(window,Qt::Key_V,Qt::ControlModifier);
-        QTest::keyClick(window,Qt::Key_A,Qt::ControlModifier);QTRY_VERIFY(!editor->property("selectedText").toString().isEmpty());
-        button=find(window->contentItem(),"speakEditorSelection");QVERIFY(button);QTRY_VERIFY(button->isVisible());QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,middle(button));
-        QTRY_VERIFY(service->speaking());QTRY_VERIFY_WITH_TIMEOUT(!service->speechLoading(),30000);QVERIFY2(service->speaking(),qPrintable(service->status()));QVERIFY(editor->hasActiveFocus());QTest::qWait(500);
-        const auto out=qEnvironmentVariable("LANGLERN_SPEECH_ARTIFACT_DIR");if(!out.isEmpty())QVERIFY(window->grabWindow().save(out+"/real-textbook-speech.png"));
-        window->close();QTRY_VERIFY(!service->speaking());QTRY_VERIFY(shell.shutdownComplete());
-        QCOMPARE(hash(path),original);QVERIFY2(warnings.isEmpty(),qPrintable(warnings.join('\n')));
-    }
 };
-int main(int argc,char** argv){QGuiApplication app(argc,argv);configureTestApplication(app);NaturalSpeechTests tests;return QTest::qExec(&tests,argc,argv);}
+LANGLERN_TEST_SUITE(NaturalSpeechTests,"speech")
 #include "natural_speech_tests.moc"

@@ -16,7 +16,8 @@ jobs:
           .tools/venv/Scripts/python -m pip install -r tools/requirements-phase0.lock.txt
           .tools/venv/Scripts/python tools/bootstrap.py --platform windows
           .tools/venv/Scripts/python tools/bootstrap-dictionary.py
-          ./tools/build-windows.ps1 -Test -Phase0
+          # The full GUI suite runs in shell.yml; this workflow covers the retained phase 0 probes.
+          ./tools/build-windows.ps1 -Test -TestRegex '^phase0_' -Phase0
           .tools/venv/Scripts/python tools/make-fixtures.py
           $env:PATH = "$pwd/.deps/Qt/6.8.3/msvc2022_64/bin;" + $env:PATH
           .tools/venv/Scripts/python tests/integration.py --exe build/windows/phase0_pdf_probe.exe --font .deps/fonts/NotoSansSC-Regular.ttf --out benchmarks/results/ci-windows

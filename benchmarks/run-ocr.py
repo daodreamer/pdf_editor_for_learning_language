@@ -27,7 +27,7 @@ def main():
             sample={'bytes':sample_path.stat().st_size,'sha256':hashlib.file_digest(stream,'sha256').hexdigest()}
         with pymupdf.open(sample_path) as pdf:
             sample.update(pages=len(pdf),page_34_points=list(pdf[33].rect))
-    binary = ROOT / 'build/windows/ocr_selection_tests.exe'
+    binary = ROOT / 'build/windows/langlern_tests.exe'
     env = os.environ.copy()
     env['PATH'] = str(ROOT / '.deps/Qt/6.8.3/msvc2022_64/bin') + os.pathsep + env['PATH']
     results = []
@@ -38,7 +38,7 @@ def main():
         log = directory / 'test.txt'
         with (directory / 'stderr.txt').open('wb') as stderr:
             started = time.monotonic_ns()
-            process = subprocess.Popen([str(binary), 'realTextbookOcrCopyAndSessionInvalidation', '-o', str(log) + ',txt'],
+            process = subprocess.Popen([str(binary), 'ocr', 'realTextbookOcrLookupAndSpeech', '-o', str(log) + ',txt'],
                                        env=env, stdout=stderr, stderr=stderr)
             monitor = psutil.Process(process.pid)
             samples = []

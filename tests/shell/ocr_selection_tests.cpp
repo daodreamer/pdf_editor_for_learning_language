@@ -1,7 +1,9 @@
-#include "testapplication.h"
+#include "testsupport.h"
 #include "shellstate.h"
 #include "inkinput.h"
 #include "offlineservices.h"
+#include "naturalspeech.h"
+#include "workspacestate.h"
 #include <QClipboard>
 #include <QCryptographicHash>
 #include <QDir>
@@ -16,20 +18,13 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
-#include <QtQml/QQmlExtensionPlugin>
+#include <QTimer>
 #ifdef Q_OS_WIN
 #include <qt_windows.h>
 #include <mmsystem.h>
 #endif
-Q_IMPORT_QML_PLUGIN(LanglernShellPlugin)
 
 namespace {
-QQuickItem* find(QQuickItem* item,const QString& name) {
-    if(item->objectName()==name)return item;
-    for(auto* child:item->childItems())if(auto* result=find(child,name))return result;
-    return nullptr;
-}
-QPoint middle(QQuickItem* item) { return item->mapToScene(QPointF(item->width()/2,item->height()/2)).toPoint(); }
 QString content(const TextSnapshot& text) {
     QString result;for(const auto& c:text->characters)result+=QString::fromUcs4(&c.unicode,1);return result;
 }
@@ -132,8 +127,8 @@ private slots:
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));QVERIFY(window);window->show();QVERIFY(QTest::qWaitForWindowExposed(window));
         shell.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/text.pdf"));
         QTRY_VERIFY(shell.storageReady());QTRY_VERIFY(shell.textSelection()->snapshot(0));QTRY_VERIFY(!shell.busy());QTest::qWait(100);
-        auto* viewport=find(window->contentItem(),"pdfViewport");QVERIFY(viewport);
-        auto* input=qobject_cast<InkInput*>(find(window->contentItem(),"inkInput"));QVERIFY(input);
+        auto* viewport=findItem(window->contentItem(),"pdfViewport");QVERIFY(viewport);
+        auto* input=qobject_cast<InkInput*>(findItem(window->contentItem(),"inkInput"));QVERIFY(input);
         const auto data=shell.textSelection()->snapshot(0);const int h=indexOf(data,"Hello World");QVERIFY(h>=0);
         const auto start=pagePoint(viewport,shell,0,data->characters[h].box.center());
         const auto finish=pagePoint(viewport,shell,0,data->characters[h+10].box.center());
@@ -148,8 +143,8 @@ private slots:
         QTRY_VERIFY(!QGuiApplication::overrideCursor());
         QTRY_COMPARE(shell.textSelection()->text(),QStringLiteral("Hello World"));
         QVERIFY(shell.annotations()->inkSnapshot().isEmpty());QVERIFY(shell.annotations()->snapshot().isEmpty());
-        auto* copy=find(window->contentItem(),"copyPageSelection");QVERIFY(copy);QTRY_VERIFY(copy->isVisible());
-        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,middle(copy));
+        auto* copy=findItem(window->contentItem(),"copyPageSelection");QVERIFY(copy);QTRY_VERIFY(copy->isVisible());
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,itemCenter(copy));
         QTRY_COMPARE(QGuiApplication::clipboard()->text(),QStringLiteral("Hello World"));QCOMPARE(shell.textSelection()->text(),QStringLiteral("Hello World"));
         QTest::keyClick(window,Qt::Key_Escape);QVERIFY(!shell.textSelection()->ready());
         // A single press and drag over the same page text must still draw in automatic mode.
@@ -185,7 +180,7 @@ private slots:
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));QVERIFY(window);window->show();QVERIFY(QTest::qWaitForWindowExposed(window));
         shell.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/scan.pdf"));QTRY_VERIFY(shell.storageReady());QTRY_VERIFY(shell.annotations()->geometry(0).valid);QTRY_VERIFY(!shell.busy());
         shell.annotations()->create(0,.25,.25);
-        auto* editor=find(window->contentItem(),"annotationEditor");QVERIFY(editor);editor->forceActiveFocus();
+        auto* editor=findItem(window->contentItem(),"annotationEditor");QVERIFY(editor);editor->forceActiveFocus();
         const auto phrase=QStringLiteral("Bonjour été 中文 answer");QGuiApplication::clipboard()->setText(phrase);QTest::keyClick(window,Qt::Key_V,Qt::ControlModifier);
         QTRY_COMPARE(editor->property("text").toString(),phrase);QTest::qWait(60);
         QRectF first,last;
@@ -194,20 +189,20 @@ private slots:
         const auto start=editor->mapToScene(first.center()).toPoint(),end=editor->mapToScene(last.center()).toPoint();
         QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,start);QTest::mouseMove(window,end,30);QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,end);
         QTRY_COMPARE(editor->property("selectedText").toString(),QStringLiteral("onjou"));
-        auto* copy=find(window->contentItem(),"copyEditorSelection");auto* speak=find(window->contentItem(),"speakEditorSelection");QVERIFY(copy && speak);QTRY_VERIFY(copy->isVisible());
-        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,middle(copy));
+        auto* copy=findItem(window->contentItem(),"copyEditorSelection");auto* speak=findItem(window->contentItem(),"speakEditorSelection");QVERIFY(copy && speak);QTRY_VERIFY(copy->isVisible());
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,itemCenter(copy));
         QCOMPARE(QGuiApplication::clipboard()->text(),QStringLiteral("onjou"));QVERIFY(editor->hasActiveFocus());
-        QTest::mouseDClick(window,Qt::LeftButton,Qt::NoModifier,middle(copy));
+        QTest::mouseDClick(window,Qt::LeftButton,Qt::NoModifier,itemCenter(copy));
         QVERIFY(editor->hasActiveFocus());QVERIFY(!shell.textSelection()->ready());
         QCOMPARE(editor->property("selectedText").toString(),QStringLiteral("onjou"));
         auto* service=engine.rootObjects().first()->findChild<OfflineServices*>();QVERIFY(service);QSignalSpy speech(service,&OfflineServices::speechChanged);
-        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,middle(speak));QVERIFY(!speech.isEmpty());
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,itemCenter(speak));QVERIFY(!speech.isEmpty());
         QVERIFY(editor->hasActiveFocus());QCOMPARE(editor->property("selectedText").toString(),QStringLiteral("onjou"));
         service->stopSpeaking();
         const auto out=qEnvironmentVariable("LANGLERN_OCR_ARTIFACT_DIR");
         if(!out.isEmpty())QVERIFY(window->grabWindow().save(out+"/editor-selection.png"));
         window->setWidth(660);QTest::qWait(100);QTRY_VERIFY(copy->isVisible());
-        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,middle(copy));QVERIFY(editor->hasActiveFocus());
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,itemCenter(copy));QVERIFY(editor->hasActiveFocus());
         if(!out.isEmpty())QVERIFY(window->grabWindow().save(out+"/editor-selection-narrow.png"));
         QTest::keyClick(window,Qt::Key_X);QTRY_COMPARE(editor->property("text").toString(),QStringLiteral("Bx" "r été 中文 answer"));
         QTest::keyClick(window,Qt::Key_Z,Qt::ControlModifier);QTRY_COMPARE(editor->property("text").toString(),phrase);
@@ -239,14 +234,25 @@ private slots:
         service.setSpeechLocale("zz-ZZ");service.speak("no matching voice");QTRY_VERIFY(!service.speaking());
         QVERIFY2(service.status().contains(QStringLiteral("离线声音")),qPrintable(service.status()));
     }
-    void realTextbookOcrCopyAndSessionInvalidation() {
-        auto path=qEnvironmentVariable("LANGLERN_REAL_PDF");if(path.isEmpty())path=QStringLiteral("C:/Users/jiong/Desktop/法语/你好法语3学生用书第二版.pdf");
-        if(!QFileInfo::exists(path))QSKIP("Fixed real textbook unavailable; real textbook OCR validation NOT executed");
+    void realTextbookOcrLookupAndSpeech() {
+        // One open and one page OCR of the real textbook (page 34) drive every real-page
+        // check: OCR selection/copy, selection bands, word double-click, French lookup card,
+        // natural speech buttons, region OCR and session invalidation. Optional parts that
+        // depend on locally installed data report "NOT executed" instead of skipping it all.
+        const auto path=realTextbookPath();
+        if(path.isEmpty())QSKIP("Fixed real textbook unavailable; real textbook OCR validation NOT executed");
+        const bool dictionary=!qEnvironmentVariable("LANGLERN_FR_DICTIONARY").isEmpty()||QFileInfo::exists(QDir(QCoreApplication::applicationDirPath()).filePath("dictionary/fr-wiktionary.sqlite"));
+#ifdef Q_OS_WIN
+        const bool speech=NaturalSpeech::installed() && waveOutGetNumDevs()>0;
+#else
+        const bool speech=false;
+#endif
         const auto hash=fileHash(path);QVERIFY(!hash.isEmpty());
         ShellState shell;QQmlApplicationEngine engine;QStringList warnings;
         connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError>& errors){for(const auto& e:errors)warnings.append(e.toString());});
         engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}});engine.loadFromModule("Langlern.Shell","Main");
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));QVERIFY(window);window->show();QVERIFY(QTest::qWaitForWindowExposed(window));
+        auto* service=window->findChild<OfflineServices*>();QVERIFY(service);service->setLookupLanguage("fr");
         shell.selectFile(QUrl::fromLocalFile(path));QTRY_VERIFY_WITH_TIMEOUT(shell.storageReady(),30000);QTRY_VERIFY_WITH_TIMEOUT(shell.pageCount()>34,30000);
         shell.goToPage(34);QTRY_VERIFY_WITH_TIMEOUT(!shell.busy(),30000);
         QElapsedTimer timer;timer.start();
@@ -254,33 +260,34 @@ private slots:
         connect(&heartbeat,&QTimer::timeout,this,[&]{const auto now=timer.elapsed();maxGap=std::max(maxGap,now-lastTick);lastTick=now;++ticks;});heartbeat.start();
         shell.recognizeCurrentPage();
         QTRY_VERIFY_WITH_TIMEOUT(shell.textSelection()->snapshot(33) && shell.textSelection()->snapshot(33)->ocr && !shell.textSelection()->snapshot(33)->pending,60000);
-        const auto data=shell.textSelection()->snapshot(33);QVERIFY2(data->error.isEmpty(),qPrintable(data->error));QVERIFY(data->characters.size()>80);
+        const auto data=shell.textSelection()->snapshot(33);QVERIFY2(data->error.isEmpty(),qPrintable(data->error));QVERIFY(data->characters.size()>100);
         qInfo("real_textbook_ocr_ms=%lld chars=%lld",timer.elapsed(),qint64(data->characters.size()));
         heartbeat.stop();qInfo("real_textbook_ui_timer_max_gap_ms=%lld ticks=%d",maxGap,ticks);QVERIFY(ticks>5);QVERIFY(maxGap<250);
-        auto* viewport=find(window->contentItem(),"pdfViewport");QVERIFY(viewport);
+        auto* viewport=findItem(window->contentItem(),"pdfViewport");QVERIFY(viewport);
+        const auto at=[&](int index){return pagePoint(viewport,shell,33,data->characters[index].box.center());};
+        const auto drag=[&](QPoint a,QPoint b){
+            QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,a,1);QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,a,1);
+            QTest::mouseMove(window,b,30);QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,b);
+        };
+        const auto doubleClick=[&](QPoint p){
+            QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,p,1);QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,p,1);
+            QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,p);
+        };
         int first=-1,last=-1;for(int i=0;i<data->characters.size();++i)if(data->characters[i].visible){if(first<0)first=i;last=i;if(last-first>=8)break;}
         QVERIFY(first>=0 && last>first);
-        const auto a=data->characters[first].box.center(),b=data->characters[last].box.center();
-        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,pagePoint(viewport,shell,33,a),1);
-        QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,pagePoint(viewport,shell,33,a),1);
-        QTest::mouseMove(window,pagePoint(viewport,shell,33,b),30);QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,pagePoint(viewport,shell,33,b));
+        drag(at(first),at(last));
         QTRY_VERIFY(shell.textSelection()->ready());shell.textSelection()->copy();QCOMPARE(QGuiApplication::clipboard()->text(),shell.textSelection()->text());
         const auto out=qEnvironmentVariable("LANGLERN_OCR_ARTIFACT_DIR");
         if(!out.isEmpty()){QVERIFY(window->grabWindow().save(out+"/real-textbook-selection.png"));QFile text(out+"/real-textbook-ocr.txt");QVERIFY(text.open(QIODevice::WriteOnly|QIODevice::NewOnly));text.write(content(data).toUtf8());}
         {
-            // A multi-line paragraph on the real page: translucent bands must never overlap
-            // (double-painted overlaps showed as darker blotches) and must cover every glyph.
+            // A multi-line paragraph: translucent bands must never overlap (double-painted
+            // overlaps showed as darker blotches) and must cover every glyph.
             int lineEnd=first,visible=0;
             for(int i=first;i<data->characters.size()&&visible<300;++i)if(data->characters[i].visible){lineEnd=i;++visible;}
-            const auto p=data->characters[lineEnd].box.center();
             QTest::keyClick(window,Qt::Key_Escape);
-            QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,pagePoint(viewport,shell,33,a),1);
-            QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,pagePoint(viewport,shell,33,a),1);
-            QTest::mouseMove(window,pagePoint(viewport,shell,33,p),30);QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,pagePoint(viewport,shell,33,p));
+            drag(at(first),at(lineEnd));
             QTRY_VERIFY(shell.textSelection()->ready());QVERIFY(shell.textSelection()->text().count(u'\n')>=2);
-            QElapsedTimer cost;cost.start();
             const auto bands=shell.textSelection()->rectangles(33);
-            qInfo("real_textbook_selection_bands=%lld rect_ms=%lld",qint64(bands.size()),cost.elapsed());
             QVERIFY(bands.size()>=3);
             for(int i=0;i<bands.size();++i)for(int j=i+1;j<bands.size();++j)
                 QVERIFY2(!bands[i].toRectF().intersects(bands[j].toRectF()),"selection bands overlap on the real textbook page");
@@ -290,94 +297,93 @@ private slots:
         }
         // Repeated double-click without a drag must preserve a whole word.
         QTest::keyClick(window,Qt::Key_Escape);
-        int word=indexOf(data,"expérience");QVERIFY(word>=0);
-        const auto inWord=pagePoint(viewport,shell,33,data->characters[word+3].box.center());
-        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,inWord,1);QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,inWord,1);
-        QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,inWord);
+        const int word=indexOf(data,"expérience");QVERIFY(word>=0);
+        doubleClick(at(word+3));
         QTRY_COMPARE(shell.textSelection()->text(),QStringLiteral("expérience"));
-        // Recognize a selected column region and verify its character coordinates stay on that region.
         QTest::keyClick(window,Qt::Key_Escape);
+        if(!dictionary) qInfo("French dictionary not installed; real textbook lookup validation NOT executed");
+        else {
+            // "rentrera" (future of rentrer): double-click selects the word, the book icon looks it up.
+            // Selection actions only appear in the active window; a desktop in use elsewhere can keep it inactive.
+            window->requestActivate();QVERIFY2(QTest::qWaitForWindowActive(window),"Test window could not become active (desktop focus held elsewhere)");
+            const int verb=indexOf(data,"rentrera");QVERIFY(verb>=0);
+            const auto inWord=at(verb+3);
+            doubleClick(inWord);
+            QTRY_COMPARE(shell.textSelection()->text(),QStringLiteral("rentrera"));
+            // Popups are QObjects (not items) parented to the declaring item; overlay coordinates equal scene coordinates.
+            auto* card=window->findChild<QObject*>("lookupCard");QVERIFY(card);
+            if(!card->property("visible").toBool()) {
+                auto* icon=findItem(window->contentItem(),"lookupPageSelection");QVERIFY(icon);QTRY_VERIFY(icon->isVisible());
+                QVERIFY(icon->width()<=36);  // compact entry point
+                QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,itemCenter(icon));
+            }
+            QTRY_VERIFY(service->lookupFound());
+            const auto entry=service->lookupEntries().first().toMap();
+            QCOMPARE(entry["lemma"].toString(),QStringLiteral("rentrer"));
+            QVERIFY2(entry["analyses"].toStringList().contains(QStringLiteral("直陈式 简单将来时 · il/elle")),qPrintable(entry["analyses"].toStringList().join('|')));
+            QTRY_VERIFY(card->property("visible").toBool());
+            auto* lemma=findItem(window->contentItem(),"lookupLemma");QVERIFY(lemma);QTRY_COMPARE(lemma->property("text").toString(),QStringLiteral("rentrer"));
+            auto* analysis=findItem(window->contentItem(),"lookupAnalysis");QVERIFY(analysis);QVERIFY(analysis->isVisible());
+            QVERIFY(analysis->property("text").toString().startsWith(QStringLiteral("rentrera")));
+            auto* external=findItem(window->contentItem(),"lookupExternal");QVERIFY(external);QVERIFY(external->isVisible());
+            QCOMPARE(card->property("externalUrl").toUrl(),QUrl("https://www.frdic.com/dicts/fr/rentrer"));
+            // The card stays inside the window and does not cover the selected word.
+            const QRectF cardRect(card->property("x").toDouble(),card->property("y").toDouble(),card->property("width").toDouble(),card->property("height").toDouble());
+            QVERIFY(QRectF(0,0,window->width(),window->height()).contains(cardRect));QVERIFY(!cardRect.contains(inWord));
+            if(!out.isEmpty())QVERIFY(window->grabWindow().save(out+"/real-textbook-lookup-meaning.png"));
+            auto* tab=findItem(window->contentItem(),"lookupConjugationTab");QVERIFY(tab);QVERIFY(tab->isVisible());
+            QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,itemCenter(tab));
+            auto* grid=findItem(window->contentItem(),"lookupConjugationGrid");QVERIFY(grid);QTRY_VERIFY(grid->isVisible());
+            QTRY_COMPARE(card->property("tenseIndex").toInt(),5);  // opens on 简单将来时, the tense containing "rentrera"
+            // rentrer takes avoir or être: the passé composé shows both auxiliaries, each with its own elision.
+            const auto composed=entry["conjugation"].toList().value(1).toMap();QCOMPARE(composed["name"].toString(),QStringLiteral("passé composé"));
+            const auto firstRow=composed["rows"].toList().value(0).toMap();
+            QCOMPARE(firstRow["person"].toString(),QStringLiteral("j'/je"));QCOMPARE(firstRow["form"].toString(),QStringLiteral("ai rentré / suis rentré(e)"));
+            card->setProperty("tenseIndex",1);
+            auto* tenseName=findItem(window->contentItem(),"lookupTenseName");QVERIFY(tenseName);QTRY_COMPARE(tenseName->property("text").toString(),QStringLiteral("passé composé"));
+            QTest::keyClick(window,Qt::Key_Escape);QTRY_VERIFY(!card->property("visible").toBool());
+            QTest::keyClick(window,Qt::Key_Escape);
+        }
+        if(!speech) qInfo("Natural French voice or audio output unavailable; real textbook speech buttons NOT executed");
+        else {
+            QTRY_VERIFY(!service->speechVoices().isEmpty());
+            QStringList natural;for(const auto& value:service->speechVoices())if(value.toMap()["id"].toString().startsWith("natural:fr:"))natural.append(value.toMap()["id"].toString());
+            QCOMPARE(natural,QStringList({QStringLiteral("natural:fr:male"),QStringLiteral("natural:fr:female")}));
+            QCOMPARE(service->frenchVoice(),QStringLiteral("male"));
+            auto* voiceBox=window->findChild<QQuickItem*>(QStringLiteral("speechVoice"));QVERIFY(voiceBox);
+            QTRY_VERIFY(voiceBox->property("currentText").toString().contains(QStringLiteral("男声")));
+            drag(at(first),at(std::min(first+75,int(data->characters.size())-1)));
+            QTRY_VERIFY(shell.textSelection()->ready());const auto selected=shell.textSelection()->text();QVERIFY(selected.size()>20);
+            auto* button=findItem(window->contentItem(),"speakPageSelection");QVERIFY(button);QTRY_VERIFY(button->isVisible());QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,itemCenter(button));
+            QTRY_VERIFY(service->speaking());QTRY_VERIFY_WITH_TIMEOUT(!service->speechLoading(),30000);QVERIFY2(service->speaking(),qPrintable(service->status()));QCOMPARE(shell.textSelection()->text(),selected);QTest::qWait(500);service->stopSpeaking();
+            // Switching to the female voice in settings updates the choice shown and the saved preference.
+            service->setFrenchVoice(QStringLiteral("female"));
+            QTRY_VERIFY(voiceBox->property("currentText").toString().contains(QStringLiteral("女声")));
+            auto* workspace=window->findChild<WorkspaceState*>();QVERIFY(workspace);QTRY_COMPARE(workspace->frenchVoice(),QStringLiteral("female"));
+            shell.createTextBox(shell.pageLeft(33)+.63*shell.pageWidth(),shell.pageTop(33)+.25*shell.pageHeight(33));
+            auto* editor=findItem(window->contentItem(),"annotationEditor");QVERIFY(editor);editor->forceActiveFocus();
+            QGuiApplication::clipboard()->setText(QStringLiteral("Bonjour, je parle français."));QTest::keyClick(window,Qt::Key_V,Qt::ControlModifier);
+            QTest::keyClick(window,Qt::Key_A,Qt::ControlModifier);QTRY_VERIFY(!editor->property("selectedText").toString().isEmpty());
+            button=findItem(window->contentItem(),"speakEditorSelection");QVERIFY(button);QTRY_VERIFY(button->isVisible());QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,itemCenter(button));
+            QTRY_VERIFY(service->speaking());QTRY_VERIFY_WITH_TIMEOUT(!service->speechLoading(),30000);QVERIFY2(service->speaking(),qPrintable(service->status()));QVERIFY(editor->hasActiveFocus());QTest::qWait(500);
+            const auto speechOut=qEnvironmentVariable("LANGLERN_SPEECH_ARTIFACT_DIR");if(!speechOut.isEmpty())QVERIFY(window->grabWindow().save(speechOut+"/real-textbook-speech.png"));
+            service->stopSpeaking();QTRY_VERIFY(!service->speaking());
+            shell.finishTextEditing();QTest::keyClick(window,Qt::Key_Escape);
+        }
+        // Recognize a selected column region and verify its character coordinates stay on that region.
         shell.recognizeRegion(shell.pageLeft(33)+.04*shell.pageWidth(),shell.pageTop(33)+.19*shell.pageHeight(33),
             shell.pageLeft(33)+.5*shell.pageWidth(),shell.pageTop(33)+.29*shell.pageHeight(33));
-        QTRY_VERIFY_WITH_TIMEOUT(shell.textSelection()->snapshot(33) && shell.textSelection()->snapshot(33)->ocr && !shell.textSelection()->snapshot(33)->pending,60000);
+        QTRY_VERIFY_WITH_TIMEOUT(shell.textSelection()->snapshot(33) && shell.textSelection()->snapshot(33)!=data && shell.textSelection()->snapshot(33)->ocr && !shell.textSelection()->snapshot(33)->pending,60000);
         const auto region=shell.textSelection()->snapshot(33);QVERIFY2(region->error.isEmpty(),qPrintable(region->error));
         QVERIFY(region->region.width()<.5);QVERIFY(region->characters.size()<data->characters.size());QVERIFY(shell.textSelection()->ready());
         for(const auto& c:region->characters)if(c.visible)QVERIFY(region->region.adjusted(-.001,-.001,.001,.001).contains(c.box));
         if(!out.isEmpty())QVERIFY(window->grabWindow().save(out+"/real-textbook-region.png"));
         shell.setZoom(.6);QCOMPARE(shell.textSelection()->snapshot(33),region);
-        shell.recognizeCurrentPage();shell.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/text.pdf"));
+        shell.recognizeCurrentPage();shell.selectFile(QUrl::fromLocalFile(LANGLERN_FIXTURE("text.pdf")));
         QTRY_VERIFY_WITH_TIMEOUT(shell.textSelection()->snapshot(0),30000);QTest::qWait(1000);
         QVERIFY(!shell.textSelection()->snapshot(0)->ocr);QVERIFY(!shell.textSelection()->snapshot(33));QCOMPARE(fileHash(path),hash);
-        QVERIFY2(warnings.isEmpty(),qPrintable(warnings.join('\n')));window->close();QTRY_VERIFY(shell.shutdownComplete());
-    }
-    void realTextbookFrenchLookupCard() {
-        auto path=qEnvironmentVariable("LANGLERN_REAL_PDF");if(path.isEmpty())path=QStringLiteral("C:/Users/jiong/Desktop/法语/你好法语3学生用书第二版.pdf");
-        if(!QFileInfo::exists(path))QSKIP("Fixed real textbook unavailable; real textbook lookup validation NOT executed");
-        if(qEnvironmentVariable("LANGLERN_FR_DICTIONARY").isEmpty()&&!QFileInfo::exists(QDir(QCoreApplication::applicationDirPath()).filePath("dictionary/fr-wiktionary.sqlite")))
-            QSKIP("French dictionary not installed; real textbook lookup validation NOT executed");
-        const auto hash=fileHash(path);QVERIFY(!hash.isEmpty());
-        ShellState shell;QQmlApplicationEngine engine;QStringList warnings;
-        connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError>& errors){for(const auto& e:errors)warnings.append(e.toString());});
-        engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}});engine.loadFromModule("Langlern.Shell","Main");
-        auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));QVERIFY(window);window->show();QVERIFY(QTest::qWaitForWindowExposed(window));
-        auto* service=window->findChild<OfflineServices*>();QVERIFY(service);service->setLookupLanguage("fr");
-        shell.selectFile(QUrl::fromLocalFile(path));QTRY_VERIFY_WITH_TIMEOUT(shell.storageReady(),30000);QTRY_VERIFY_WITH_TIMEOUT(shell.pageCount()>34,30000);
-        shell.goToPage(34);QTRY_VERIFY_WITH_TIMEOUT(!shell.busy(),30000);
-        shell.recognizeCurrentPage();
-        QTRY_VERIFY_WITH_TIMEOUT(shell.textSelection()->snapshot(33) && shell.textSelection()->snapshot(33)->ocr && !shell.textSelection()->snapshot(33)->pending,60000);
-        const auto data=shell.textSelection()->snapshot(33);QVERIFY2(data->error.isEmpty(),qPrintable(data->error));
-        auto* viewport=find(window->contentItem(),"pdfViewport");QVERIFY(viewport);
-        // "rentrera" (future of rentrer) on the real page: double-click selects the word, the book icon looks it up.
-        // Selection actions only appear in the active window; a desktop in use elsewhere can keep it inactive.
-        window->requestActivate();QVERIFY2(QTest::qWaitForWindowActive(window),"Test window could not become active (desktop focus held elsewhere)");
-        const int word=indexOf(data,"rentrera");QVERIFY(word>=0);
-        const auto inWord=pagePoint(viewport,shell,33,data->characters[word+3].box.center());
-        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,inWord,1);QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,inWord,1);
-        QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,inWord);
-        QTRY_COMPARE(shell.textSelection()->text(),QStringLiteral("rentrera"));
-        // Popups are QObjects (not items) parented to the declaring item; overlay coordinates equal scene coordinates.
-        auto* card=window->findChild<QObject*>("lookupCard");QVERIFY(card);
-        if(!card->property("visible").toBool()) {
-            auto* icon=find(window->contentItem(),"lookupPageSelection");QVERIFY(icon);QTRY_VERIFY(icon->isVisible());
-            QVERIFY(icon->width()<=36);  // compact entry point
-            QElapsedTimer latency;latency.start();
-            QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,middle(icon));
-            QTRY_VERIFY(service->lookupFound());qInfo("real_textbook_lookup_ms=%lld",latency.elapsed());
-        }
-        QTRY_VERIFY(service->lookupFound());
-        const auto entry=service->lookupEntries().first().toMap();
-        QCOMPARE(entry["lemma"].toString(),QStringLiteral("rentrer"));
-        QVERIFY2(entry["analyses"].toStringList().contains(QStringLiteral("直陈式 简单将来时 · il/elle")),qPrintable(entry["analyses"].toStringList().join('|')));
-        QTRY_VERIFY(card->property("visible").toBool());
-        auto* lemma=find(window->contentItem(),"lookupLemma");QVERIFY(lemma);QTRY_COMPARE(lemma->property("text").toString(),QStringLiteral("rentrer"));
-        auto* analysis=find(window->contentItem(),"lookupAnalysis");QVERIFY(analysis);QVERIFY(analysis->isVisible());
-        QVERIFY(analysis->property("text").toString().startsWith(QStringLiteral("rentrera")));
-        auto* external=find(window->contentItem(),"lookupExternal");QVERIFY(external);QVERIFY(external->isVisible());
-        QCOMPARE(card->property("externalUrl").toUrl(),QUrl("https://www.frdic.com/dicts/fr/rentrer"));
-        // The card stays inside the window and does not cover the selected word.
-        const QRectF cardRect(card->property("x").toDouble(),card->property("y").toDouble(),card->property("width").toDouble(),card->property("height").toDouble());
-        qInfo("lookup_card_rect=%.0f,%.0f %.0fx%.0f word=%d,%d",cardRect.x(),cardRect.y(),cardRect.width(),cardRect.height(),inWord.x(),inWord.y());
-        QVERIFY(QRectF(0,0,window->width(),window->height()).contains(cardRect));QVERIFY(!cardRect.contains(inWord));
-        const auto out=qEnvironmentVariable("LANGLERN_OCR_ARTIFACT_DIR");
-        if(!out.isEmpty())QVERIFY(window->grabWindow().save(out+"/real-textbook-lookup-meaning.png"));
-        auto* tab=find(window->contentItem(),"lookupConjugationTab");QVERIFY(tab);QVERIFY(tab->isVisible());
-        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,middle(tab));
-        auto* grid=find(window->contentItem(),"lookupConjugationGrid");QVERIFY(grid);QTRY_VERIFY(grid->isVisible());
-        QTRY_COMPARE(card->property("tenseIndex").toInt(),5);  // opens on 简单将来时, the tense containing "rentrera"
-        if(!out.isEmpty())QVERIFY(window->grabWindow().save(out+"/real-textbook-lookup-conjugation.png"));
-        // rentrer takes avoir or être: the passé composé shows both auxiliaries, each with its own elision.
-        const auto composed=entry["conjugation"].toList().value(1).toMap();QCOMPARE(composed["name"].toString(),QStringLiteral("passé composé"));
-        const auto firstRow=composed["rows"].toList().value(0).toMap();
-        QCOMPARE(firstRow["person"].toString(),QStringLiteral("j'/je"));QCOMPARE(firstRow["form"].toString(),QStringLiteral("ai rentré / suis rentré(e)"));
-        card->setProperty("tenseIndex",1);
-        auto* tenseName=find(window->contentItem(),"lookupTenseName");QVERIFY(tenseName);QTRY_COMPARE(tenseName->property("text").toString(),QStringLiteral("passé composé"));
-        if(!out.isEmpty())QVERIFY(window->grabWindow().save(out+"/real-textbook-lookup-passe-compose.png"));
-        QTest::keyClick(window,Qt::Key_Escape);QTRY_VERIFY(!card->property("visible").toBool());
-        QCOMPARE(fileHash(path),hash);
-        QVERIFY2(warnings.isEmpty(),qPrintable(warnings.join('\n')));window->close();QTRY_VERIFY(shell.shutdownComplete());
+        QVERIFY2(warnings.isEmpty(),qPrintable(warnings.join('\n')));window->close();QTRY_VERIFY(!service->speaking());QTRY_VERIFY(shell.shutdownComplete());
     }
 };
-int main(int argc,char** argv) {
-    QGuiApplication app(argc,argv);configureTestApplication(app);OcrSelectionTests tests;return QTest::qExec(&tests,argc,argv);
-}
+LANGLERN_TEST_SUITE(OcrSelectionTests,"ocr")
 #include "ocr_selection_tests.moc"

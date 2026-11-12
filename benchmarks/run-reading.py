@@ -9,7 +9,7 @@ import subprocess
 import time
 
 p = argparse.ArgumentParser()
-p.add_argument('--exe', type=Path, default=Path('build/phase3/reading_tests.exe'))
+p.add_argument('--exe', type=Path, default=Path('build/windows/langlern_tests.exe'))
 p.add_argument('--pdf', type=Path, required=True)
 p.add_argument('--run', type=Path, required=True)
 p.add_argument('--source-root', type=Path, help='Source tree used to build the executable (hash manifest only)')
@@ -55,7 +55,7 @@ for i in range(a.repeat):
     trace = run / f'trajectory-{i}.jsonl'
     env['LANGLERN_STRESS_TRACE'] = str(trace)
     start = time.monotonic()
-    completed = subprocess.run([str(exe), 'readingStress', '-o', str(run / f'test-{i}.log') + ',txt'],
+    completed = subprocess.run([str(exe), 'reading', 'readingStress', '-o', str(run / f'test-{i}.log') + ',txt'],
                                env=env, timeout=a.seconds + 120)
     result = {'index': i, 'returncode': completed.returncode, 'wall_seconds': time.monotonic() - start}
     if trace.exists():

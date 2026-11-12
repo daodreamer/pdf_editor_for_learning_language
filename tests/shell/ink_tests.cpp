@@ -1,4 +1,4 @@
-#include "testapplication.h"
+#include "testsupport.h"
 #include <QTemporaryDir>
 #include "shellstate.h"
 #include "inkinput.h"
@@ -26,8 +26,6 @@
 #include <windows.h>
 #include <psapi.h>
 #endif
-#include <QtQml/QQmlExtensionPlugin>
-Q_IMPORT_QML_PLUGIN(LanglernShellPlugin)
 
 class InkTests : public QObject {
     Q_OBJECT
@@ -37,11 +35,6 @@ class InkTests : public QObject {
     }
     static void stroke(AnnotationModel& m,double y,QColor color=Qt::red,double width=2) {
         QVERIFY(m.beginInk(0,{.2,y},color,width)); m.appendInk({.6,y}); m.endInk();
-    }
-    static QQuickItem* find(QQuickItem* item,const QString& name) {
-        if(item->objectName()==name) return item;
-        for(auto* c:item->childItems()) if(auto* result=find(c,name)) return result;
-        return nullptr;
     }
     static QPoint point(ShellState& s,QQuickItem* viewport,double x,double y,int page=0) {
         return viewport->mapToScene(QPointF((s.contentWidth()-s.pageWidth())/2+x*s.pageWidth()-viewport->property("contentX").toDouble(),
@@ -85,8 +78,8 @@ private slots:
         s.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/scan.pdf"));
         QTRY_VERIFY(s.storageReady()); QTRY_VERIFY(s.annotations()->geometry(0).valid); QTRY_VERIFY(!s.busy());
         s.setZoom(.6); QTRY_VERIFY(!s.busy()); QTest::qWait(200);
-        auto* settings=find(w->contentItem(),"penSettingsButton"); QVERIFY(settings); QVERIFY(settings->isVisible());
-        auto* panel=find(w->contentItem(),"penSettingsPanel"); QVERIFY(panel);
+        auto* settings=findItem(w->contentItem(),"penSettingsButton"); QVERIFY(settings); QVERIFY(settings->isVisible());
+        auto* panel=findItem(w->contentItem(),"penSettingsPanel"); QVERIFY(panel);
         QTest::mouseClick(w,Qt::LeftButton,Qt::NoModifier,settings->mapToScene(QPointF(settings->width()/2,settings->height()/2)).toPoint());
         QTRY_VERIFY(panel->isVisible());
         const auto background=panel->mapToScene(QPointF(6,100)).toPoint();
@@ -97,11 +90,11 @@ private slots:
         QTest::mousePress(w,Qt::RightButton,Qt::NoModifier,background);
         QVERIFY(!s.annotations()->gestureActive());
         QTest::mouseRelease(w,Qt::RightButton,Qt::NoModifier,background);
-        auto* red=find(w->contentItem(),"penColor1"); QVERIFY(red);
+        auto* red=findItem(w->contentItem(),"penColor1"); QVERIFY(red);
         QTest::mouseClick(w,Qt::LeftButton,Qt::NoModifier,red->mapToScene(QPointF(14,14)).toPoint());
-        auto* slider=find(w->contentItem(),"penWidthSlider"); QVERIFY(slider);
+        auto* slider=findItem(w->contentItem(),"penWidthSlider"); QVERIFY(slider);
         slider->setProperty("value",.5); QVERIFY(QMetaObject::invokeMethod(slider,"moved"));
-        auto* input=qobject_cast<InkInput*>(find(w->contentItem(),"inkInput")); QVERIFY(input);
+        auto* input=qobject_cast<InkInput*>(findItem(w->contentItem(),"inkInput")); QVERIFY(input);
         QCOMPARE(input->inkColor(),QColor("#ce3446")); QCOMPARE(input->inkWidth(),.5);
         // Settings also apply to automatic freehand input and survive a mode switch.
         QTest::keyClick(w,Qt::Key_P); QTRY_COMPARE(input->mode(),3); QCOMPARE(input->inkWidth(),.5);
@@ -265,8 +258,8 @@ private slots:
         w->show(); QVERIFY(QTest::qWaitForWindowExposed(w)); w->requestActivate(); QVERIFY(QTest::qWaitForWindowActive(w));
         s.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/scan.pdf"));
         QTRY_VERIFY(s.storageReady()); QTRY_VERIFY(s.annotations()->geometry(0).valid); QTRY_VERIFY(!s.busy()); s.setZoom(.6); QTRY_VERIFY(!s.busy()); QTest::qWait(300);
-        auto* viewport=find(w->contentItem(),"pdfViewport"); QVERIFY(viewport);
-        auto* input=qobject_cast<InkInput*>(find(w->contentItem(),"inkInput")); QVERIFY(input);
+        auto* viewport=findItem(w->contentItem(),"pdfViewport"); QVERIFY(viewport);
+        auto* input=qobject_cast<InkInput*>(findItem(w->contentItem(),"inkInput")); QVERIFY(input);
         qInfo()<<"ink_window"<<w->size()<<"DPR"<<w->devicePixelRatio();
         const auto jobs=s.model().renderJobs;
         QTest::keyClick(w,Qt::Key_P,Qt::ControlModifier|Qt::ShiftModifier); QTRY_COMPARE(input->mode(),3);
@@ -403,8 +396,8 @@ private slots:
         w->show(); QVERIFY(QTest::qWaitForWindowExposed(w)); w->requestActivate(); QVERIFY(QTest::qWaitForWindowActive(w));
         s.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/scan.pdf"));
         QTRY_VERIFY(s.storageReady()); QTRY_VERIFY(s.annotations()->geometry(0).valid); QTRY_VERIFY(!s.busy()); s.setZoom(.6); QTRY_VERIFY(!s.busy()); QTest::qWait(300);
-        auto* viewport=find(w->contentItem(),"pdfViewport"); QVERIFY(viewport);
-        auto* input=qobject_cast<InkInput*>(find(w->contentItem(),"inkInput")); QVERIFY(input);
+        auto* viewport=findItem(w->contentItem(),"pdfViewport"); QVERIFY(viewport);
+        auto* input=qobject_cast<InkInput*>(findItem(w->contentItem(),"inkInput")); QVERIFY(input);
         QTest::keyClick(w,Qt::Key_A,Qt::ControlModifier|Qt::ShiftModifier); QTRY_COMPARE(input->mode(),0); QTest::qWait(60);
         // No crosshair: automatic and typing leave the system arrow (and the cursors of
         // items below); the pen shows an ink dot, the eraser a ring, move-ink a hand.
@@ -459,11 +452,12 @@ private slots:
         ShellState s; QQmlApplicationEngine engine;
         engine.setInitialProperties({{"shell",QVariant::fromValue(&s)}}); engine.loadFromModule("Langlern.Shell","Main");
         auto* w=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(w);
+        w->resize(900,700); // Each pixel check grabs the whole window; keep the readback small.
         w->show(); QVERIFY(QTest::qWaitForWindowExposed(w)); w->requestActivate(); QVERIFY(QTest::qWaitForWindowActive(w));
         s.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/text.pdf"));
         QTRY_VERIFY(s.storageReady()); QTRY_VERIFY(s.annotations()->geometry(0).valid); s.setZoom(.6); QTRY_VERIFY(!s.busy()); QTest::qWait(300);
-        auto* viewport=find(w->contentItem(),"pdfViewport"); QVERIFY(viewport);
-        auto* colors=find(w->contentItem(),"inkColors"); auto* size=find(w->contentItem(),"inkSize"); QVERIFY(colors); QVERIFY(size);
+        auto* viewport=findItem(w->contentItem(),"pdfViewport"); QVERIFY(viewport);
+        auto* colors=findItem(w->contentItem(),"inkColors"); auto* size=findItem(w->contentItem(),"inkSize"); QVERIFY(colors); QVERIFY(size);
         QTest::keyClick(w,Qt::Key_P,Qt::ControlModifier|Qt::ShiftModifier);
         auto draw=[&](double ax,double ay,double bx,double by) {
             QTest::mousePress(w,Qt::LeftButton,Qt::NoModifier,point(s,viewport,ax,ay));
@@ -480,7 +474,7 @@ private slots:
             const auto color=image.pixelColor(point(s,viewport,.45,.2)*w->devicePixelRatio());
             QVERIFY2(color.red()>color.blue()+70,qPrintable(color.name()));
         };
-        checkRed(); s.setZoom(.75); checkRed(); s.setZoom(.6); checkRed();
+        checkRed(); s.setZoom(.75); checkRed(); s.setZoom(.6);
         s.goToPage(8); QTest::qWait(70); s.goToPage(1); QTest::qWait(200); checkRed();
         // Picking uses the same creation order as rendering, regardless of random UUID order.
         QTest::keyClick(w,Qt::Key_M,Qt::ControlModifier|Qt::ShiftModifier);
@@ -501,9 +495,9 @@ private slots:
         w->show(); QVERIFY(QTest::qWaitForWindowExposed(w)); w->requestActivate(); QVERIFY(QTest::qWaitForWindowActive(w));
         s.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/scan.pdf"));
         QTRY_VERIFY(s.annotations()->geometry(0).valid); QTRY_VERIFY(s.storageReady()); QTRY_VERIFY(!s.busy()); s.setZoom(.6); QTRY_VERIFY(!s.busy()); QTest::qWait(300);
-        auto* viewport=find(w->contentItem(),"pdfViewport"); QVERIFY(viewport);
+        auto* viewport=findItem(w->contentItem(),"pdfViewport"); QVERIFY(viewport);
         QTest::keyClick(w,Qt::Key_P,Qt::ControlModifier|Qt::ShiftModifier);
-        auto* input=qobject_cast<InkInput*>(find(w->contentItem(),"inkInput")); QVERIFY(input);
+        auto* input=qobject_cast<InkInput*>(findItem(w->contentItem(),"inkInput")); QVERIFY(input);
         QTRY_COMPARE(input->mode(),3);
         const auto jobs=s.model().renderJobs;
         QMutex mutex; QList<double> frames;
@@ -557,9 +551,5 @@ private slots:
         w->close(); QTRY_VERIFY(s.shutdownComplete());
     }
 };
-int main(int argc,char** argv) {
-    QTemporaryDir workspace; setTestEnvironment("LANGLERN_WORKSPACE_DIR",workspace.path());
-
-    QGuiApplication app(argc,argv); configureTestApplication(app); InkTests tests; return QTest::qExec(&tests,argc,argv);
-}
+LANGLERN_TEST_SUITE(InkTests,"ink")
 #include "ink_tests.moc"

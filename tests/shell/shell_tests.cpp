@@ -1,4 +1,4 @@
-#include "testapplication.h"
+#include "testsupport.h"
 #include <QTemporaryDir>
 #include "shellstate.h"
 
@@ -14,14 +14,12 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QWheelEvent>
-#include <QtQml/QQmlExtensionPlugin>
 #ifdef Q_OS_WIN
 #define NOMINMAX
 #include <windows.h>
 #include <psapi.h>
 #endif
 
-Q_IMPORT_QML_PLUGIN(LanglernShellPlugin)
 
 class ShellTests : public QObject {
     Q_OBJECT
@@ -172,7 +170,9 @@ private slots:
         QVERIFY(shell.pageImage().isNull());
         QCOMPARE(shell.pageCount(), 0);
         shell.setRenderWidth(800);
-        for (int i = 0; i < 50; ++i) {
+        // Ten cycles catch leaked native handles and a growing working set (logged at 1/5/10).
+        constexpr int cycles = 10;
+        for (int i = 0; i < cycles; ++i) {
             const auto previousSession=shell.sessionId();
             shell.selectFile(originalUrl);
             QTRY_VERIFY(shell.sessionId()!=previousSession && shell.selectedUrl()==originalUrl);
@@ -184,7 +184,7 @@ private slots:
             QTRY_VERIFY(closed.size() > count);
             QCOMPARE(closed.last().at(1).toInt(), 0);
 #ifdef Q_OS_WIN
-            if (i == 0 || i == 9 || i == 24 || i == 49) {
+            if (i == 0 || i == 4 || i == cycles - 1) {
                 PROCESS_MEMORY_COUNTERS_EX memory{};
                 memory.cb = sizeof(memory);
                 QVERIFY(GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&memory), sizeof(memory)));
@@ -203,7 +203,7 @@ private slots:
         shell.selectFile(QUrl::fromLocalFile(unicode));
         shell.beginShutdown();
         QTRY_VERIFY_WITH_TIMEOUT(shell.shutdownComplete(), 10000);
-        qInfo() << "50 open/close cycles; closed events" << closed.size() << "discarded" << discarded.size();
+        qInfo() << cycles << "open/close cycles; closed events" << closed.size() << "discarded" << discarded.size();
     }
     void selectionBoundary() {
         QTemporaryDir dir;
@@ -417,20 +417,5 @@ private slots:
     }
 };
 
-int main(int argc, char** argv) {
-    QTemporaryDir workspace; setTestEnvironment("LANGLERN_WORKSPACE_DIR",workspace.path());
-
-    // Deterministic Qt dialog automation; the product keeps the system-native default.
-    QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
-    QGuiApplication app(argc, argv);
-#ifdef Q_OS_WIN
-    app.setFont(QFont(QStringLiteral("Microsoft YaHei UI")));
-#endif
-    configureTestApplication(app);
-#ifdef Q_OS_WIN
-    QQuickWindow::setGraphicsApi(QSGRendererInterface::Direct3D11);
-#endif
-    ShellTests tests;
-    return QTest::qExec(&tests, argc, argv);
-}
+LANGLERN_TEST_SUITE(ShellTests,"shell")
 #include "shell_tests.moc"

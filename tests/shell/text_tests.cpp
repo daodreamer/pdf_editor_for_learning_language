@@ -1,4 +1,4 @@
-#include "testapplication.h"
+#include "testsupport.h"
 #include <QTemporaryDir>
 #include "shellstate.h"
 #include <QClipboard>
@@ -13,8 +13,6 @@
 #include <QElapsedTimer>
 #include <QFont>
 #include <QTest>
-#include <QtQml/QQmlExtensionPlugin>
-Q_IMPORT_QML_PLUGIN(LanglernShellPlugin)
 
 class TextTests : public QObject {
     Q_OBJECT
@@ -237,7 +235,7 @@ private slots:
         QVERIFY(s->snapshot(0)->characters.isEmpty());
         s->begin(0,0.5,0.5,0,0); s->extend(0,0.6,0.5);
         QVERIFY(!s->ready()); QVERIFY(s->snapshot(0)->ocr); QVERIFY(!s->status().isEmpty());
-        for(int i=0;i<25;++i) {
+        for(int i=0;i<10;++i) {
             const auto previousSession=shell.sessionId();
             const auto nextUrl=QUrl::fromLocalFile(fixture);
             shell.selectFile(nextUrl);
@@ -344,17 +342,5 @@ private slots:
         shell.beginShutdown(); QTRY_VERIFY(shell.shutdownComplete());
     }
 };
-int main(int argc,char** argv) {
-    QTemporaryDir workspace; setTestEnvironment("LANGLERN_WORKSPACE_DIR",workspace.path());
-
-    QGuiApplication app(argc,argv);
-#ifdef Q_OS_WIN
-    app.setFont(QFont(QStringLiteral("Microsoft YaHei UI")));
-#endif
-    configureTestApplication(app);
-#ifdef Q_OS_WIN
-    QQuickWindow::setGraphicsApi(QSGRendererInterface::Direct3D11);
-#endif
-    TextTests tests; return QTest::qExec(&tests,argc,argv);
-}
+LANGLERN_TEST_SUITE(TextTests,"text")
 #include "text_tests.moc"

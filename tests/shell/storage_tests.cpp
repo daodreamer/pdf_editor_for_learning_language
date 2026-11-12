@@ -1,4 +1,4 @@
-#include "testapplication.h"
+#include "testsupport.h"
 #include "shellstate.h"
 #include <QDir>
 #include <QFile>
@@ -10,16 +10,13 @@
 #include <QQuickWindow>
 #include <QQuickItem>
 #include <QQmlApplicationEngine>
-#include <QSaveFile>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QUuid>
-#include <QtQml/QQmlExtensionPlugin>
 #include <cstdlib>
 #include <filesystem>
 #include <QElapsedTimer>
-Q_IMPORT_QML_PLUGIN(LanglernShellPlugin)
 
 class StorageTests : public QObject {
     Q_OBJECT
@@ -274,34 +271,5 @@ private slots:
         shell.beginShutdown(); QTRY_VERIFY(shell.shutdownComplete());
     }
 };
-int main(int argc,char** argv) {
-    QGuiApplication app(argc,argv); configureTestApplication(app);
-    if(argc==3 && QByteArray(argv[1])=="--interrupted-write") {
-        const auto path=QString::fromLocal8Bit(argv[2]); QSaveFile f(path);
-        if(!f.open(QIODevice::WriteOnly) || f.write("partial")!=7) return 9;
-        QFile ready(path+".ready"); if(!ready.open(QIODevice::WriteOnly)) return 10; ready.write("ready"); ready.close();
-        return app.exec(); // Parent kills the process before commit.
-    }
-    if(argc==4 && (QByteArray(argv[1])=="--crash-session" || QByteArray(argv[1])=="--read-session")) {
-        const bool writing=QByteArray(argv[1])=="--crash-session";
-        const auto root=QString::fromLocal8Bit(argv[2]); setTestEnvironment("LANGLERN_WORKSPACE_DIR",root);
-        ShellState shell; shell.selectFile(QUrl::fromLocalFile(QString::fromLocal8Bit(argv[3])));
-        QTimer timer; timer.setInterval(20); bool created=false;
-        QObject::connect(&timer,&QTimer::timeout,&app,[&] {
-            if(!shell.storageReady() || !shell.annotations()->geometry(0).valid) return;
-            if(!writing) {
-                if(shell.annotations()->snapshot().size()!=1 || shell.annotations()->snapshot().first().text!=QStringLiteral("crash 恢复")) app.exit(4);
-                else { shell.beginShutdown(); QObject::connect(&shell,&ShellState::shutdownChanged,&app,[&] { if(shell.shutdownComplete()) app.quit(); }); }
-                timer.stop();
-            } else if(!created) {
-                const auto id=shell.annotations()->create(0,.2,.3); shell.annotations()->setText(id,QStringLiteral("crash 恢复"),24); shell.finishTextEditing(); created=true;
-            } else if(shell.storageStatus().contains(QStringLiteral("已保存"))) {
-                QFile marker(root+"/saved.ready"); if(!marker.open(QIODevice::WriteOnly)) app.exit(5); marker.write("ready"); marker.close(); timer.stop();
-            }
-        });
-        timer.start(); QTimer::singleShot(12000,&app,[&] { app.exit(6); }); return app.exec();
-    }
-    QTemporaryDir workspace; setTestEnvironment("LANGLERN_WORKSPACE_DIR",workspace.path());
-    qRegisterMetaType<AnnotationSnapshot>(); StorageTests tests; return QTest::qExec(&tests,argc,argv);
-}
+LANGLERN_TEST_SUITE(StorageTests,"storage")
 #include "storage_tests.moc"

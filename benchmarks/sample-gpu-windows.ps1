@@ -1,7 +1,7 @@
 param([Parameter(Mandatory)][int]$TargetProcessId, [Parameter(Mandatory)][string]$OutputPath)
 $ErrorActionPreference = 'Stop'
 $targetProcess = Get-Process -Id $TargetProcessId
-if ($targetProcess.ProcessName -ne 'reading_tests') { throw 'Expected the explicitly selected reading_tests process' }
+if ($targetProcess.ProcessName -ne 'langlern_tests') { throw 'Expected the explicitly selected langlern_tests process' }
 $targetStart = $targetProcess.StartTime
 $stream = [System.IO.File]::Open($OutputPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::Read)
 $writer = [System.IO.StreamWriter]::new($stream)

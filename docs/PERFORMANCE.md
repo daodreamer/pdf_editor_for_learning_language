@@ -242,7 +242,7 @@ benchmarks/results/<run-id>/
 
 ## 阶段 3 连续阅读测量方法
 
-`benchmarks/run-reading.py` 调用真实 Qt Quick/D3D11 的 reading_tests 轨迹；输入文件先散列，明确预热系统文件缓存。`--seconds 60 --repeat 5` 用于重复轨迹，`--seconds 1800 --repeat 1` 用于连续 30 分钟压力。目录以 CreateNew/不存在方式创建，拒绝覆盖结果。只记录散列、资源、页码与时间，不保存文档正文。
+`benchmarks/run-reading.py` 调用真实 Qt Quick/D3D11 的 `langlern_tests reading readingStress` 轨迹；输入文件先散列，明确预热系统文件缓存。`--seconds 60 --repeat 5` 用于重复轨迹，`--seconds 1800 --repeat 1` 用于连续 30 分钟压力。目录以 CreateNew/不存在方式创建，拒绝覆盖结果。只记录散列、资源、页码与时间，不保存文档正文。
 
 最终轨迹由 frameSwapped 的 GUI queued 回调推进下一帧，按单调时钟实际经过时间移动约 500 逻辑 px/s（资源重建后的单次追赶最多计 200 ms），每 11 秒远跳并反向、19 秒切换缩放，61 秒隐藏/释放/重显窗口。每秒记录当前页、缩放、活跃节点数、CPU 图像、GPU 像素估算、缓存计数和 Windows working set/private。逐帧数据保存在 `.frames.json`，窗口激活/可见状态、实际与模型滚动偏移及资源在 JSONL，逐次引擎/纹理事件在 test log。邻域与 pin 一并计费；低预算有独立确定性测试。
 
@@ -250,7 +250,7 @@ benchmarks/results/<run-id>/
 
 缓存精确命中率=exactHits/lookups，降档复用率=degradedHits/lookups；lookups 为可见范围/分辨率改变或显式跳页，含重新回到已有页的需求，不含每帧重复读取 model role。renderJobs 包含邻页预加载，不能作为分母。GPU 无独立 LRU 命中率，本阶段记录纹理创建事件和驻留估算，不伪造 GPU 命中百分比。
 
-`sample-gpu-windows.ps1` 可对指定 reading_tests PID 每约 5 秒读取 Windows GPU Process Memory 的 Dedicated/Shared/Total Committed，实例按 PID 过滤并汇总；缺失计数为 null/错误记录，不当作零。它是系统报告的进程 GPU 内存，包含驱动和 Qt 开销，不等于模型像素预算。计数器采样有额外开销，启用情况写入报告；采样可能漏过短峰值。
+`sample-gpu-windows.ps1` 可对指定 langlern_tests PID 每约 5 秒读取 Windows GPU Process Memory 的 Dedicated/Shared/Total Committed，实例按 PID 过滤并汇总；缺失计数为 null/错误记录，不当作零。它是系统报告的进程 GPU 内存，包含驱动和 Qt 开销，不等于模型像素预算。计数器采样有额外开销，启用情况写入报告；采样可能漏过短峰值。
 
 30 分钟轨迹和最终数值见 PHASE3_REPORT.md。开发中旧 qWait、8 ms timer 驱动/GUI queued 间隔数据仅作诊断，保留原始结果，不能与最终渲染事件数据混为 A/B 性能提升。
 
@@ -263,7 +263,7 @@ benchmarks/results/<run-id>/
 
 ## 阶段 4 文字选择诊断
 
-复现：SDK PATH 下运行 `build/windows/text_tests.exe boundedTextCost`。构造 65536 个不可变原生字符位置，单调 QElapsedTimer 记录 100 次扩选的 GUI 命中与字符串生成合计时间。此人工阵列用于限定数据规模与计费，真实 PDF 读取另由套件其余测试覆盖，不冒充引擎提取性能。结果保存在 `benchmarks/results/phase4-20261015/accepted-text-tests.log`：4194336 bytes 快照、314.949 ms/100 次，约 3.15 ms/次；单次诊断，不是帧分位或输入到屏幕延迟，也无 A/B 提升结论。
+复现：SDK PATH 下运行 `build/windows/langlern_tests.exe text boundedTextCost`。构造 65536 个不可变原生字符位置，单调 QElapsedTimer 记录 100 次扩选的 GUI 命中与字符串生成合计时间。此人工阵列用于限定数据规模与计费，真实 PDF 读取另由套件其余测试覆盖，不冒充引擎提取性能。结果保存在 `benchmarks/results/phase4-20261015/accepted-text-tests.log`：4194336 bytes 快照、314.949 ms/100 次，约 3.15 ms/次；单次诊断，不是帧分位或输入到屏幕延迟，也无 A/B 提升结论。
 
 真实超限页含 3×30000 字符文本对象，worker 的文字任务约 25.283 ms 后返回明确上限错误。该时间来自本轮单次 worker 时钟，不代表一般文档。快照 16 MiB 和单页字符上限不限制 PDFium 解析内部分配，图像、文字、选区几何与系统进程/GPU 口径分别报告。选区操作不增加 renderJobs 的行为断言、双 DPI 像素差检查和场景图后端证据见 [PHASE4_REPORT.md](PHASE4_REPORT.md)。本轮没有重新测量启动、长期滚动帧分布或系统 GPU 峰值；阶段 3 待办保留。
 

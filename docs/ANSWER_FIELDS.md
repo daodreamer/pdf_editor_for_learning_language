@@ -50,7 +50,7 @@ CPU 缓存统计现在包含横线候选容量，GPU 统计仍只计页面纹理
 ./tools/build-windows.ps1 -Test -Lint
 ```
 
-详细证据用例：在 Qt SDK PATH 下设置 `LANGLERN_ANSWER_ARTIFACT_DIR` 为新建的空目录，运行 `build/windows/annotation_tests.exe answerRuleDetection hoverRuleReusesEditorAndShrinksAfterDeletion`；该目录将得到截图和实际导出文件。扫描样例重建只需 Python 标准库，不下载依赖。持久化字段说明见 [STORAGE_FORMAT.md](STORAGE_FORMAT.md)。
+详细证据用例：在 Qt SDK PATH 下设置 `LANGLERN_ANSWER_ARTIFACT_DIR` 为新建的空目录，运行 `build/windows/langlern_tests.exe annotation answerRuleDetection hoverRuleReusesEditorAndShrinksAfterDeletion`；该目录将得到截图和实际导出文件。扫描样例重建只需 Python 标准库，不下载依赖。持久化字段说明见 [STORAGE_FORMAT.md](STORAGE_FORMAT.md)。
 
 ## 2026-11-10 多行填写线作为一个整体答案
 
