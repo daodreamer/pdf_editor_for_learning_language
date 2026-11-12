@@ -1,5 +1,6 @@
 #pragma once
 #include "shellstate.h"
+#include "inksmoothing.h"
 #include <QQuickItem>
 #include <QPointer>
 #include <QElapsedTimer>
@@ -54,8 +55,10 @@ protected:
     void keyPressEvent(QKeyEvent*) override;
     bool eventFilter(QObject*,QEvent*) override;
 private:
-    bool begin(QPointF position, bool erase = false);
-    void extend(QPointF position);
+    // ms: event timestamp; pressure: tablet pressure 0..1, or < 0 for a mouse.
+    bool begin(QPointF position, bool erase = false, double ms = 0, double pressure = -1);
+    void extend(QPointF position, double ms = 0, double pressure = -1);
+    bool finish(QPointF position, double ms, double pressure = -1); // last move, then commit
     void cancel();
     void updateMouseInput();
     void updateToolCursor();
@@ -78,7 +81,10 @@ private:
     QString autoNote_;
     QElapsedTimer autoNoteAge_;
     QPointF autoOrigin_;
-    QList<QPointF> autoTrail_; // every point since an automatic-mode press
+    struct TrailPoint { QPointF position; double ms; };
+    QList<TrailPoint> autoTrail_; // every point since an automatic-mode press
+    InkSmoother smoother_;
+    bool smoothing_=false; // a pen stroke is being drawn through smoother_
     // End of the last automatic-mode stroke, in content coordinates.
     QElapsedTimer lastStroke_;
     QPointF lastStrokePoint_;

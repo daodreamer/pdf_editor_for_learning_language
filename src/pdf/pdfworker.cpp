@@ -402,7 +402,22 @@ void PdfWorker::exportPdf(quint64 session,QString source,QString target,QByteArr
                 for(const auto& i:ink) if(i.page==index && !i.points.isEmpty()) {
                     QPen pen(i.color,i.width,Qt::SolidLine,Qt::RoundCap,Qt::RoundJoin); painter.setPen(pen); painter.setBrush(Qt::NoBrush);
                     if(i.points.size()==1) { painter.setPen(Qt::NoPen); painter.setBrush(i.color); painter.drawEllipse(local.map(i.points.first()),i.width/2,i.width/2); }
-                    else painter.drawPath(InkPath::path(i.points,local));
+                    else if(i.pressure.size()!=i.points.size()) painter.drawPath(InkPath::path(i.points,local));
+                    else {
+                        // Variable width: short round-capped pieces of the same curve. Ink is
+                        // opaque, so their overlaps are invisible and the outline is seamless.
+                        for(qsizetype k=0;k<i.points.size();++k) {
+                            const auto curve=InkPath::segment(i.points,k,local);
+                            const int steps=std::max(curve.steps(.05),2);
+                            auto a=curve.a; double fa=InkPath::factor(i.pressure,i.points.size(),k,0);
+                            for(int j=1;j<=steps;++j) {
+                                const double t=double(j)/steps;
+                                const auto b=curve.at(t); const double fb=InkPath::factor(i.pressure,i.points.size(),k,t);
+                                pen.setWidthF(i.width*(fa+fb)/2); painter.setPen(pen); painter.drawLine(a,b);
+                                a=b; fa=fb;
+                            }
+                        }
+                    }
                 }
                 require(painter.end(),"矢量 PDF 写入失败。");
             }

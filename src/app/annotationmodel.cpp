@@ -293,7 +293,7 @@ bool hits(const InkStroke& stroke,QPointF from,QPointF to,double radius) {
 }
 qsizetype inkBytes(const QList<InkStroke>& strokes) {
     qsizetype bytes=strokes.capacity()*sizeof(InkStroke);
-    for(const auto& s:strokes) bytes+=s.id.capacity()*2+s.points.capacity()*sizeof(QPointF);
+    for(const auto& s:strokes) bytes+=s.id.capacity()*2+s.points.capacity()*sizeof(QPointF)+s.pressure.capacity()*sizeof(float);
     return bytes;
 }
 }
@@ -345,13 +345,15 @@ void AnnotationModel::applyInk(const QList<InkStroke>& from,const QList<InkStrok
     for(const auto& s:to) { strokes_[s.id]=s; pages.insert(s.page); }
     for(int page:pages) emit inkChanged(page);
 }
-bool AnnotationModel::beginInk(int page,QPointF p,QColor color,double width) {
+bool AnnotationModel::beginInk(int page,QPointF p,QColor color,double width,double pressure) {
     cancelGesture(); finishEditing(); clearInkSelection();
     if(!geometry_.contains(page) || !validPoint(p) || !color.isValid() || !std::isfinite(width) || width<.25 || width>32) return false;
     gestureError_.clear(); emit gestureErrorChanged();
     color.setAlpha(255); // The MVP toolbar offers opaque ink, avoiding overlap alpha artifacts.
     preview_={QUuid::createUuid().toString(QUuid::WithoutBraces),page,{geometry_[page].displayToPdf.map(p)},color,width};
     preview_.order=nextInkOrder_++;
+    if(std::isfinite(pressure) && pressure>=0) preview_.pressure={float(std::min(pressure,2.0)*InkPath::startTaper)};
+    inkLength_=0;
     gesture_=Gesture::Draw; gesturePage_=page;
     emit inkChanged(page); return true;
 }
@@ -384,16 +386,22 @@ void AnnotationModel::eraseSegment(QPointF from,QPointF to) {
     }
     if(changed) emit inkChanged(gesturePage_);
 }
-void AnnotationModel::appendInk(QPointF p) {
+void AnnotationModel::appendInk(QPointF p,double pressure) {
     if(gesture_==Gesture::None) return;
     if(!validPoint(p)) { cancelGesture(); return; }
     const auto g=geometry_[gesturePage_];
     const auto raw=g.displayToPdf.map(p);
     if(gesture_==Gesture::Draw) {
-        if(QLineF(raw,preview_.points.last()).length()<.1) return;
+        const double step=QLineF(raw,preview_.points.last()).length();
+        if(step<.1) return;
         if(preview_.points.size()>=AnnotationConfig::maxStrokePoints) {
             cancelGesture(); gestureError_=QStringLiteral("笔迹超过 65536 点，已取消本次手势；请分段书写。");
             emit gestureErrorChanged(); return;
+        }
+        if(!preview_.pressure.isEmpty()) {
+            inkLength_+=step;
+            const double f=std::isfinite(pressure) && pressure>=0 ? std::min(pressure,2.0) : 1.0;
+            preview_.pressure.append(float(f*InkPath::ramp(InkPath::startTaper,inkLength_,InkPath::startTaperLength(preview_.width))));
         }
         preview_.points.append(raw); emit inkChanged(gesturePage_);
     } else if(gesture_==Gesture::Erase) {
@@ -419,7 +427,12 @@ void AnnotationModel::endInk() {
     if(gesture_==Gesture::None) return;
     const int page=gesturePage_;
     Command c;
-    if(gesture_==Gesture::Draw) { strokes_[preview_.id]=preview_; c.inkAfter={preview_}; }
+    if(gesture_==Gesture::Draw) {
+        // A tap is a round dot of full width; a line lifts off with a tapered tail.
+        if(preview_.points.size()<2) preview_.pressure.clear();
+        else InkPath::taperTail(preview_.points,preview_.pressure,preview_.width,inkLength_);
+        strokes_[preview_.id]=preview_; c.inkAfter={preview_};
+    }
     else if(gesture_==Gesture::Erase) c.inkBefore=erased_;
     else if(preview_!=moveBefore_) { strokes_[preview_.id]=preview_; c.inkBefore={moveBefore_}; c.inkAfter={preview_}; }
     gesture_=Gesture::None; preview_={}; moveBefore_={}; erased_.clear(); gesturePage_=-1;

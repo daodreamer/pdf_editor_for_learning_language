@@ -40,10 +40,12 @@ public:
     QString inkSelection() const { return selectedInk_; }
     QString gestureError() const { return gestureError_; }
     qsizetype historyBytes() const;
-    bool beginInk(int page, QPointF normalized, QColor color, double width);
+    // pressure >= 0 gives the stroke per-point width factors (pen pressure or the
+    // speed-derived factor of mouse ink) with tapered ends; < 0 keeps it uniform.
+    bool beginInk(int page, QPointF normalized, QColor color, double width, double pressure = -1);
     bool beginErase(int page, QPointF normalized, double radius);
     bool beginMoveInk(int page, QPointF normalized, double radius);
-    void appendInk(QPointF normalized);
+    void appendInk(QPointF normalized, double pressure = -1);
     void endInk();
     Q_INVOKABLE void cancelGesture();
     Q_INVOKABLE void removeInk();
@@ -99,6 +101,7 @@ private:
     int gesturePage_ = -1;
     QPointF lastPoint_, moveOrigin_;
     double eraserRadius_ = 0;
+    double inkLength_ = 0; // PDF-unit arc length of the stroke being drawn
     QString selectedInk_, gestureError_;
     quint64 nextInkOrder_ = 0;
     quint64 nextTextOrder_ = 0;

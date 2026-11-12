@@ -53,8 +53,13 @@ QByteArray StorageWorker::encode(const AnnotationSnapshot& s,const QByteArray& i
         {"widthLocked",n.widthLocked},{"minimumHeight",n.minimumHeight},{"maximumWidth",n.maximumWidth},{"lineSpacing",n.lineSpacing},{"styles",QJsonArray::fromVariantList(encodeTextStyles(n.styles))}});
     for(const auto& i:s.ink) {
         QJsonArray points; for(auto p:i.points) points.append(point(p));
-        ink.append(QJsonObject{{"id",i.id},{"page",i.page},{"points",points},{"width",i.width},
-            {"color",i.color.name(QColor::HexArgb)},{"order",QString::number(i.order)}});
+        QJsonObject stroke{{"id",i.id},{"page",i.page},{"points",points},{"width",i.width},
+            {"color",i.color.name(QColor::HexArgb)},{"order",QString::number(i.order)}};
+        if(i.pressure.size()==i.points.size()) {
+            QJsonArray pressure; for(float f:i.pressure) pressure.append(std::round(f*1000)/1000);
+            stroke.insert("pressure",pressure);
+        }
+        ink.append(stroke);
     }
     const auto payload=QJsonDocument(QJsonObject{{"notes",notes},{"ink",ink}}).toJson(QJsonDocument::Compact);
     return QJsonDocument(QJsonObject{{"schema",1},{"identity",QString::fromLatin1(identity)},
@@ -113,6 +118,14 @@ bool StorageWorker::decode(const QByteArray& bytes,const QByteArray& identity,An
             const auto points=v["points"].toArray(); totalPoints+=points.size();
             if(points.isEmpty() || points.size()>65536 || totalPoints>2000000) throw std::runtime_error("points count");
             for(const auto& p:points) i.points.append(point(p));
+            if(v.contains("pressure")) {
+                const auto pressure=v["pressure"].toArray();
+                if(!v["pressure"].isArray() || pressure.size()!=points.size()) throw std::runtime_error("pressure");
+                for(const auto& f:pressure) {
+                    if(!f.isDouble() || !std::isfinite(f.toDouble()) || f.toDouble()<0 || f.toDouble()>2) throw std::runtime_error("pressure range");
+                    i.pressure.append(float(f.toDouble()));
+                }
+            }
             s.ink.append(std::move(i));
         }
         output=std::move(s); return true;

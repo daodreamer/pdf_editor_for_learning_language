@@ -106,7 +106,7 @@ void InkInput::updateToolCursor() {
 }
 void InkInput::setInkColor(QColor color) { if(color_!=color) { cancel(); color_=color; updateToolCursor(); emit styleChanged(); } }
 void InkInput::setInkWidth(double width) { if(width_!=width) { cancel(); width_=width; updateToolCursor(); emit styleChanged(); } }
-void InkInput::cancel() { autoWordTimer_.stop();if(shell_) shell_->annotations()->cancelGesture(); page_=-1; tablet_=false;autoPending_=false;autoTrail_.clear(); rightErasing_=false; if(selectingText_){selectingText_=false;emit textGestureChanged();} }
+void InkInput::cancel() { autoWordTimer_.stop();if(shell_) shell_->annotations()->cancelGesture(); page_=-1; tablet_=false;smoothing_=false;autoPending_=false;autoTrail_.clear(); rightErasing_=false; if(selectingText_){selectingText_=false;emit textGestureChanged();} }
 bool InkInput::eraseTextUnder(QPointF p) {
     if(!shell_) return false;
     const auto id=shell_->textBoxAt(p.x()+contentX_,p.y()+contentY_,AnnotationConfig::eraserPixels);
@@ -141,7 +141,7 @@ QPointF InkInput::normalized(QPointF p) const {
     const double left=shell_->pageLeft(page_);
     return {(p.x()+contentX_-left)/shell_->pageWidth(),(p.y()+contentY_-shell_->pageTop(page_))/shell_->pageHeight(page_)};
 }
-bool InkInput::begin(QPointF p, bool erase) {
+bool InkInput::begin(QPointF p, bool erase, double ms, double pressure) {
     cancel();
     if(!shell_ || (!erase && (!drawingEnabled_ || (mode_!=0&&mode_<3))) || !shell_->containsPage(p.x()+contentX_,p.y()+contentY_)) return false;
     emit gestureStarting();
@@ -152,23 +152,39 @@ bool InkInput::begin(QPointF p, bool erase) {
     const double radius=AnnotationConfig::eraserPixels*shell_->annotations()->geometry(page_).units.width()/shell_->pageWidth();
     bool started=false;
     if(erase) started=shell_->annotations()->beginErase(page_,n,radius);
-    else if(mode_==0||mode_==3) started=shell_->annotations()->beginInk(page_,n,color_,width_);
+    else if(mode_==0||mode_==3) {
+        smoother_.reset(p,ms,pressure);
+        started=smoothing_=shell_->annotations()->beginInk(page_,n,color_,width_,smoother_.factor());
+    }
     else if(mode_==4) started=shell_->annotations()->beginErase(page_,n,radius);
     else if(mode_==5) started=shell_->annotations()->beginMoveInk(page_,n,radius);
     forceActiveFocus();
     return started;
 }
-void InkInput::extend(QPointF p) {
+void InkInput::extend(QPointF p, double ms, double pressure) {
     if(!shell_ || !shell_->annotations()->gestureActive()) return;
     if(!contains(p)) { cancel(); return; }
-    shell_->annotations()->appendInk(normalized(p));
+    if(smoothing_) {
+        const auto s=smoother_.push(p,ms,pressure);
+        shell_->annotations()->appendInk(normalized(s.position),s.factor);
+    } else shell_->annotations()->appendInk(normalized(p));
+}
+bool InkInput::finish(QPointF p, double ms, double pressure) {
+    const bool smoothed=smoothing_;
+    extend(p,ms,pressure);
+    if(!shell_ || !shell_->annotations()->gestureActive()) return false;
+    // The filter trails the pointer slightly; end exactly where the button was released.
+    if(smoothed) shell_->annotations()->appendInk(normalized(p),smoother_.factor());
+    shell_->annotations()->endInk();
+    smoothing_=false;
+    return true;
 }
 void InkInput::mousePressEvent(QMouseEvent* event) {
     if(!drawingEnabled_ || (mode_!=0&&mode_<3)) { event->ignore(); return; }
     if(mode_==0&&shell_) {
         const auto p=event->position();
         if(shell_->interactiveContentAt(p.x()+contentX_,p.y()+contentY_)){event->ignore();return;}
-        cancel();autoOrigin_=p;autoPending_=true;autoTextHit_=false;autoTrail_={p};
+        cancel();autoOrigin_=p;autoPending_=true;autoTextHit_=false;autoTrail_={{p,double(event->timestamp())}};
         const int page=shell_->model().pageAtPosition(p.x()+contentX_,p.y()+contentY_);
         if(const auto text=shell_->textSelection()->snapshot(page);text) {
             const QPointF n((p.x()+contentX_-shell_->pageLeft(page))/shell_->pageWidth(),(p.y()+contentY_-shell_->pageTop(page))/shell_->pageHeight(page));
@@ -177,19 +193,20 @@ void InkInput::mousePressEvent(QMouseEvent* event) {
         forceActiveFocus();event->accept();return;
     }
     if(mode_==4&&shell_&&shell_->eraseTextAt(event->position().x()+contentX_,event->position().y()+contentY_)){event->accept();return;}
-    begin(event->position()); event->accept();
+    begin(event->position(),false,double(event->timestamp())); event->accept();
 }
 void InkInput::mouseMoveEvent(QMouseEvent* event) {
     if(autoPending_){
-        autoTrail_.append(event->position());
+        autoTrail_.append({event->position(),double(event->timestamp())});
         if(QLineF(autoOrigin_,event->position()).length()<AnnotationConfig::autoInkStartPixels){event->accept();return;}
         // Intent is clear: replay the whole buffered trail, not a straight jump
         // from the press point, so the first millimetres of a letter are kept.
         const auto trail=std::move(autoTrail_);
-        if(begin(trail.first())) for(qsizetype i=1;i<trail.size();++i) extend(trail[i]);
+        if(begin(trail.first().position,false,trail.first().ms))
+            for(qsizetype i=1;i<trail.size();++i) extend(trail[i].position,trail[i].ms);
         event->accept();return;
     }
-    extend(event->position());event->accept();
+    extend(event->position(),double(event->timestamp()));event->accept();
 }
 void InkInput::mouseReleaseEvent(QMouseEvent* event) {
     if(autoPending_){
@@ -203,11 +220,7 @@ void InkInput::mouseReleaseEvent(QMouseEvent* event) {
         else if(shell_){autoNote_=shell_->createTextBox(autoOrigin_.x()+contentX_,autoOrigin_.y()+contentY_);autoNoteAge_.start();}
         event->accept();return;
     }
-    extend(event->position());
-    if(shell_ && shell_->annotations()->gestureActive()) {
-        shell_->annotations()->endInk();
-        if(mode_==0) noteStrokeEnded(event->position());
-    }
+    if(finish(event->position(),double(event->timestamp())) && mode_==0) noteStrokeEnded(event->position());
     page_=-1; event->accept();
 }
 void InkInput::mouseUngrabEvent() { cancel(); }
@@ -274,10 +287,13 @@ bool InkInput::eventFilter(QObject* watched,QEvent* event) {
     if(event->type()==QEvent::TabletPress || event->type()==QEvent::TabletMove || event->type()==QEvent::TabletRelease) {
         auto* tablet=static_cast<QTabletEvent*>(event);
         const auto p=mapFromScene(tablet->position());
-        if(event->type()==QEvent::TabletPress && contains(p) && !overlayBlocksInk(filteredWindow_->contentItem(),tablet->position())) { begin(p); tablet_=true; }
+        const double ms=double(tablet->timestamp());
+        const double pressure=tablet->pointingDevice() && tablet->pointingDevice()->capabilities().testFlag(QInputDevice::Capability::Pressure)
+            ? tablet->pressure() : -1;
+        if(event->type()==QEvent::TabletPress && contains(p) && !overlayBlocksInk(filteredWindow_->contentItem(),tablet->position())) { begin(p,false,ms,pressure); tablet_=true; }
         else if(!tablet_) return false;
-        else extend(p);
-        if(event->type()==QEvent::TabletRelease) { if(shell_) shell_->annotations()->endInk(); tablet_=false; page_=-1; }
+        else if(event->type()==QEvent::TabletRelease) { finish(p,ms,pressure); tablet_=false; page_=-1; }
+        else extend(p,ms,pressure);
         event->accept(); return true;
     }
     return false;

@@ -38,6 +38,9 @@ struct InkStroke {
     QColor color;
     double width = 2;
     quint64 order = 0;
+    // Optional per-point width factor (pen pressure or speed), same length as points.
+    // Empty means a uniform width, which is how strokes saved before it was added load.
+    QList<float> pressure;
     bool operator==(const InkStroke&) const = default;
 };
 struct AnnotationSnapshot {

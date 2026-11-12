@@ -11,7 +11,7 @@ qt_add_qml_module(shell_ui STATIC
         ../../../src/app/workspacestate.h ../../../src/app/workspacestate.cpp
         ../../../src/app/windowchrome.h ../../../src/app/windowchrome.cpp
         ../../../src/app/storageworker.h ../../../src/app/storageworker.cpp
-        ../../../src/app/inkstroke.h
+        ../../../src/app/inkstroke.h ../../../src/app/inksmoothing.h
         ../../../src/app/inkitem.h ../../../src/app/inkitem.cpp
         ../../../src/app/inkinput.h ../../../src/app/inkinput.cpp
         ../../../src/app/annotationmodel.h ../../../src/app/annotationmodel.cpp
