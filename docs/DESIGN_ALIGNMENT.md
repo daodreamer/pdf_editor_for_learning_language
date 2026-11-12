@@ -103,6 +103,12 @@ SAPI接口和线程已构建，但本轮没有做扬声器听验或逐口音人�
 
 - **悬停提示**：新增 `HoverTip.qml`（圆角胶囊卡片，随主题变色）。各控件只在悬停时经 Loader 创建它，空闲按钮不常驻弹出层对象。不采用改写引擎共享的附加 ToolTip 实例的做法：实测会在多引擎测试中产生“未放入场景”与样式绑定 `parent` 为空的告警。`DesignButton` 的提示改为显示无障碍名称（如“文档菜单”，不再显示“···”字形），且只在纯图标或文字被截断时出现；画笔按钮自身已有文字，去掉重复提示。`design_workflows` 截图用例在浅色/深色下实际悬停文档菜单按钮，断言出现圆角提示并截图 `tooltip*.png`。未使用的 `ActionButton.qml` 仍保留原附加提示。
 
-悬停提示改动后的本机测试：构建与 qmllint 通过；`design_workflows`（含新悬停用例）、`reading_invariants`、`ocr_selection` 通过。`text_selection`、`ink_annotations`、`natural_speech` 在随后多次运行中失败，且每次失败的断言不同（Ctrl+C 未生效、工具切换键未到达、选区浮层未出现）；同一组用例在悬停提示改动之前的完整运行中 10/10 通过，`ink_annotations` 在悬停提示开启与关闭时都出现过通过和失败。选区浮层与窗口快捷键都要求测试窗口是系统前台活动窗口（`Window.window.active`），而这几轮运行期间本机桌面正被同时使用，判断为测试窗口无法获得前台焦点所致；这是推断，尚未在无人操作的桌面上复跑确认，不将其标为通过。
+悬停提示改动后的本机测试：构建与 qmllint 通过；`design_workflows`（含新悬停用例）、`reading_invariants`、`ocr_selection` 通过。`text_selection`、`ink_annotations`、`natural_speech` 在随后多次运行中失败，且每次失败的断言不同（Ctrl+C 未生效、工具切换键未到达、选区浮层未出现）；同一组用例在悬停提示改动之前的完整运行中 10/10 通过，`ink_annotations` 在悬停提示开启与关闭时都出现过通过和失败。选区浮层与窗口快捷键都要求测试窗口是系统前台活动窗口（`Window.window.active`），而这几轮运行期间本机桌面正被同时使用，判断为测试窗口无法获得前台焦点所致；这是推断，尚未在无人操作的桌面上复跑确认，不将其标为通过。随后（标题栏改动后）的完整运行 10/10 全部通过，与上述判断一致。
+
+### 标题栏与应用图标
+
+- **标题栏**：保留 Windows 原生标题栏、窗口按钮、贴靠与缩放（与本文件早先“保留系统窗口边框及真实窗口控件”的决定一致，不做无边框自绘）。新增 `WindowChrome`（`src/app/windowchrome.*`），通过 DWM 把标题栏底色、文字色、窗口描边设为主题底色/文字色，并设置深色模式与圆角；主题切换时随之更新。Windows 11（22000+）生效；Windows 10 与 macOS 忽略这些属性、保持系统外观。`design_workflows` 在 Windows 11 原生平台上断言已着色（`tinted`）。
+- **应用图标**：与应用内标志相同的松青圆角方块 + 两条白色流线，由 `tools/make-app-icon.ps1`（Windows PowerShell + System.Drawing，无新增依赖）生成 `assets/icons/` 下的 PNG 与多尺寸 `linguapdf.ico`。运行时通过 `QGuiApplication::setWindowIcon` 加载 PNG；`src/app/langlern.rc` 把 `.ico` 嵌入 exe，供资源管理器、任务栏与 Alt+Tab 使用。图标为本项目原创图形，随项目许可。
+- 验证：Release 构建、qmllint 通过；真实桌面截图（真实教材，浅色）见 `benchmarks/results/ui-flow-20261112/titlebar/light.png`。深色标题栏只经代码路径与测试属性覆盖，未做真实桌面截图；macOS `.icns` 图标未制作。
 
 未验证：macOS 实机外观；高 DPI 下阴影与描边的实际观感只在本机 DPR 1.5 看过；暖纸主题只在截图中检查过静态外观；阅读页滚动帧时间未做 A/B，用户 2026-11-12 实际试用反馈无卡顿（主观体验，非测量）。

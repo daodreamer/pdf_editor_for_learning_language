@@ -9,6 +9,7 @@ qt_add_qml_module(shell_ui STATIC
         ../../../src/app/frenchdictionary.h ../../../src/app/frenchdictionary.cpp
         ../../../src/app/annotationtext.h ../../../src/app/annotationtext.cpp
         ../../../src/app/workspacestate.h ../../../src/app/workspacestate.cpp
+        ../../../src/app/windowchrome.h ../../../src/app/windowchrome.cpp
         ../../../src/app/storageworker.h ../../../src/app/storageworker.cpp
         ../../../src/app/inkstroke.h
         ../../../src/app/inkitem.h ../../../src/app/inkitem.cpp
@@ -22,7 +23,7 @@ qt_add_qml_module(shell_ui STATIC
 target_include_directories(shell_ui PUBLIC ../../../src/app)
 target_link_libraries(shell_ui PUBLIC Qt6::Quick langlern_pdf langlern_ocr PRIVATE Qt6::QuickControls2 Qt6::QuickDialogs2 Qt6::Sql)
 if(WIN32)
-    target_link_libraries(shell_ui PRIVATE windowsapp sapi ole32 winmm)
+    target_link_libraries(shell_ui PRIVATE windowsapp sapi ole32 winmm dwmapi)
 endif()
 langlern_warnings(shell_ui)
 qt_add_resources(shell_ui "interface_translations"

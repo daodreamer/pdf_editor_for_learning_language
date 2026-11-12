@@ -4,6 +4,7 @@
 #include <QElapsedTimer>
 #include <QGuiApplication>
 #include <QFont>
+#include <QIcon>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeyEvent>
@@ -23,6 +24,12 @@ int main(int argc, char* argv[]) {
     app.setApplicationName(QStringLiteral("Langlern"));
     app.setOrganizationName(QStringLiteral("Langlern"));
     app.setApplicationVersion(QStringLiteral("0.1.0"));
+    {
+        QIcon icon;
+        for (const int size : {16, 24, 32, 48, 64, 128, 256})
+            icon.addFile(QStringLiteral(":/icons/linguapdf-%1.png").arg(size), QSize(size, size));
+        app.setWindowIcon(icon);
+    }
 #ifdef Q_OS_WIN
     app.setFont(QFont(QStringLiteral("Microsoft YaHei UI")));
 #endif

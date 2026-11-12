@@ -39,6 +39,13 @@ ApplicationWindow {
     palette.highlightedText: shellTheme.surface
 
     Theme { id: shellTheme; dark: window.shell.dark; paper: workspace.paper }
+    // Native title bar takes the ground colour, so the caption reads as part of the shell.
+    WindowChrome {
+        objectName: "windowChrome"
+        window: window
+        caption: shellTheme.canvas; text: shellTheme.text; border: shellTheme.canvas
+        dark: shellTheme.dark
+    }
     WorkspaceState { id: workspace }
     OfflineServices { id: offline }
     Connections {

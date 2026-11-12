@@ -6,6 +6,7 @@
 #include "scancleanup.h"
 #include "frenchdictionary.h"
 #include <QTemporaryDir>
+#include <QOperatingSystemVersion>
 #include <QFile>
 #include <QDir>
 #include <QCryptographicHash>
@@ -346,6 +347,11 @@ private slots:
         window->show();QVERIFY(QTest::qWaitForWindowExposed(window));
         auto* frame=window->findChild<QQuickItem*>("workspaceFrame");QVERIFY(frame);
         auto* workspace=window->findChild<WorkspaceState*>();QVERIFY(workspace);
+        // Windows 11 tints the native caption to the shell ground; older systems keep the stock bar.
+        auto* chrome=window->findChild<QObject*>("windowChrome");QVERIFY(chrome);
+        const bool tintable=QGuiApplication::platformName()==QLatin1String("windows")
+            && QOperatingSystemVersion::current()>=QOperatingSystemVersion::Windows11;
+        if(tintable)QTRY_VERIFY(chrome->property("tinted").toBool());
         const auto output=qEnvironmentVariable("LANGLERN_SCREENSHOT_DIR");
         const auto snap=[&](const QString& name){QTest::qWait(180);if(!output.isEmpty())QVERIFY(window->grabWindow().save(QDir(output).filePath(name+".png")));};
         snap("library-empty");frame->setProperty("screen","import");snap("import");
