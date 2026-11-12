@@ -167,6 +167,41 @@ QString TextSelection::context() const {
     QString result;for(int i=first;i<=last;++i){const auto& c=data->characters[i];if((c.visible||c.unicode==U' ')&&c.unicode&&c.unicode<=0x10ffff)result+=QString::fromUcs4(&c.unicode,1);}
     return result;
 }
+namespace {
+bool sameLine(const QRectF& a, const QRectF& b) {
+    const double overlap=std::min(a.bottom(),b.bottom())-std::max(a.top(),b.top());
+    if (overlap<0.5*std::min(a.height(),b.height())) return false;
+    const double lineHeight=std::max(a.height(),b.height());
+    // Overlapping or nearby on the same baseline; a wide jump is a column gap.
+    const double gap=std::max(a.left(),b.left())-std::min(a.right(),b.right());
+    return gap<=3*lineHeight;
+}
+// Splits rectangles into a disjoint set covering the same area, so a translucent
+// fill never paints a pixel twice (double-painted overlaps read as darker blotches).
+QList<QRectF> disjoint(const QList<QRectF>& input) {
+    QList<double> ys;
+    for (const auto& r : input) { ys.append(r.top()); ys.append(r.bottom()); }
+    std::sort(ys.begin(),ys.end());
+    ys.erase(std::unique(ys.begin(),ys.end()),ys.end());
+    QList<QRectF> output;
+    QList<QPair<double,double>> spans;
+    for (int i=0; i+1<ys.size(); ++i) {
+        const double top=ys[i], bottom=ys[i+1];
+        spans.clear();
+        for (const auto& r : input) if (r.top()<=top && r.bottom()>=bottom) spans.append({r.left(),r.right()});
+        std::sort(spans.begin(),spans.end());
+        for (int j=0; j<spans.size();) {
+            double left=spans[j].first, right=spans[j].second;
+            for (++j; j<spans.size() && spans[j].first<=right; ++j) right=std::max(right,spans[j].second);
+            // Extend a run from the slab directly above when it has identical edges.
+            bool merged=false;
+            for (auto& o : output) if (o.bottom()==top && o.left()==left && o.right()==right) { o.setBottom(bottom); merged=true; break; }
+            if (!merged) output.append(QRectF(QPointF(left,top),QPointF(right,bottom)));
+        }
+    }
+    return output;
+}
+}
 QVariantList TextSelection::rectangles(int page) const {
     QVariantList result;
     const auto data=pages_.value(page);
@@ -175,13 +210,9 @@ QVariantList TextSelection::rectangles(int page) const {
     // Paint one continuous band per text line, like a native text selection.
     // OCR glyph boxes are tight and separated (x-height letters, word spaces),
     // so per-glyph rectangles read as faint outlines rather than a selection.
+    QList<QRectF> bands;
     QRectF band;
-    auto flush=[&] {
-        if (band.isEmpty()) return;
-        const double pad=band.height()*0.12; // ascender/descender breathing room
-        result.append(band.adjusted(-pad*0.25,-pad,pad*0.25,pad).intersected(QRectF(0,0,1,1)));
-        band=QRectF();
-    };
+    auto flush=[&] { if (!band.isEmpty()) bands.append(band); band=QRectF(); };
     for (int i=first; i>=0 && i<=last && i<data->characters.size(); ++i) {
         const auto& c=data->characters[i];
         if (!c.visible) {
@@ -189,15 +220,47 @@ QVariantList TextSelection::rectangles(int page) const {
             continue;
         }
         if (band.isEmpty()) { band=c.box; continue; }
-        const double overlap=std::min(band.bottom(),c.box.bottom())-std::max(band.top(),c.box.top());
         const double lineHeight=std::max(band.height(),c.box.height());
-        const bool sameLine=overlap>=0.5*std::min(band.height(),c.box.height())
-            // Text running backwards or jumping a column gap starts a new band;
-            // vertical/rotated text therefore keeps per-glyph boxes.
-            && c.box.left()>=band.right()-0.5*lineHeight && c.box.left()-band.right()<=3*lineHeight;
-        if (sameLine) band=band.united(c.box);
+        // Text running backwards or jumping a column gap starts a new band;
+        // vertical/rotated text therefore keeps per-glyph boxes.
+        if (sameLine(band,c.box) && c.box.left()>=band.right()-0.5*lineHeight) band=band.united(c.box);
         else { flush(); band=c.box; }
     }
     flush();
+    // Fragments of one visual line (italic runs, font switches, reordered text
+    // streams) become a single band with uniform height. Bands are ordered by
+    // vertical center so each one is only compared with its vertical neighbours.
+    const auto byCenter=[](const QRectF& a,const QRectF& b){return a.center().y()<b.center().y();};
+    std::sort(bands.begin(),bands.end(),byCenter);
+    QList<QRectF> lines;
+    double tallest=0;
+    for (const auto& b : bands) {
+        tallest=std::max(tallest,b.height());
+        bool merged=false;
+        for (int k=int(lines.size())-1; k>=0 && lines[k].center().y()>=b.center().y()-tallest; --k)
+            if (sameLine(lines[k],b)) { lines[k]=lines[k].united(b); merged=true; break; }
+        if (!merged) lines.append(b);
+    }
+    tallest=0;
+    for (auto& b : lines) {
+        const double pad=b.height()*0.12; // ascender/descender breathing room
+        b=b.adjusted(-pad*0.25,-pad,pad*0.25,pad).intersected(QRectF(0,0,1,1));
+        tallest=std::max(tallest,b.height());
+    }
+    // Adjacent lines meet at the middle of their shared padding instead of overlapping;
+    // the translucent fill would otherwise paint the overlap twice, visibly darker.
+    std::sort(lines.begin(),lines.end(),byCenter);
+    bool overlapping=false;
+    for (int i=0; i<lines.size(); ++i)
+        for (int j=i+1; j<lines.size() && lines[j].center().y()-lines[i].center().y()<=tallest; ++j) {
+            auto& a=lines[i]; auto& b=lines[j];
+            if (!a.intersects(b)) continue;
+            const double mid=(b.top()+a.bottom())/2;
+            if (a.center().y()<b.center().y() && mid>a.top() && mid<b.bottom()) { a.setBottom(mid); b.setTop(mid); }
+            else overlapping=true; // same-height collision that a horizontal cut cannot separate
+        }
+    if (overlapping && lines.size()<=ReadingConfig::selectionDisjointBands) lines=disjoint(lines);
+    bands=std::move(lines);
+    for (const auto& b : bands) if (!b.isEmpty()) result.append(b);
     return result;
 }

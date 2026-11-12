@@ -267,6 +267,32 @@ private slots:
         s.put(0,a); s.put(1,hidden); s.begin(0,.15,.15,0,0); s.extend(1,.5,.5);
         QVERIFY(s.ready()); QCOMPARE(s.text(),QStringLiteral("A\n"));
     }
+    void selectionBandsNeverOverlap() {
+        // Two tightly leaded lines; line one contains an italic run whose boxes are
+        // taller and stream-ordered after a CR, like "J'ai découvert les speed datings".
+        TextSelection s;
+        auto page=std::make_shared<TextPage>();
+        QList<TextCharacter> chars;
+        auto run=[&](double x,double y,double h,int n){ for(int i=0;i<n;++i) chars.append({U'a',QRectF(x+i*.02,y,.018,h),true}); };
+        run(.10,.100,.030,8); chars.append({U'\r',QRectF(),false});
+        run(.27,.096,.036,6); chars.append({U' ',QRectF(),false});
+        run(.40,.100,.030,5); chars.append({U'\n',QRectF(),false});
+        run(.10,.134,.030,15);
+        page->characters=chars;
+        s.put(0,page);
+        s.begin(0,chars.first().box.center().x(),chars.first().box.center().y(),0,0);
+        s.extend(0,chars.last().box.center().x(),chars.last().box.center().y());
+        QVERIFY(s.ready());
+        const auto rects=s.rectangles(0);
+        QCOMPARE(rects.size(),2); // one band per visual line
+        for(int i=0;i<rects.size();++i) for(int j=i+1;j<rects.size();++j)
+            QVERIFY2(!rects[i].toRectF().intersects(rects[j].toRectF()),"translucent bands overlap and paint darker");
+        for(const auto& c:chars) {
+            if(!c.visible) continue;
+            bool covered=false; for(const auto& r:rects) covered|=r.toRectF().intersects(c.box);
+            QVERIFY(covered);
+        }
+    }
     void boundedTextCost() {
         TextSelection s;
         auto page=std::make_shared<TextPage>();

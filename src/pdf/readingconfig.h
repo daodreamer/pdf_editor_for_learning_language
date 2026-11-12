@@ -13,6 +13,8 @@ struct ReadingConfig {
     static constexpr qint64 textBytes = 16 * 1024 * 1024;
     static constexpr int textCharacters = 65536;
     static constexpr int selectionPages = 128;
+    // Overlapping selection bands are split into disjoint pieces only up to this count per page.
+    static constexpr int selectionDisjointBands = 256;
     static constexpr int textDeviceSize = 1 << 24;
     static constexpr int ocrWidth = 2400;
     static constexpr qint64 ocrImageBytes = 32 * 1024 * 1024;

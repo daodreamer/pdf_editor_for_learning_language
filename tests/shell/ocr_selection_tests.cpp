@@ -91,6 +91,7 @@ private slots:
             all.begin(0,p.x(),p.y(),0,0);all.extend(0,q.x(),q.y());QVERIFY(all.ready());
             const auto bands=all.rectangles(0);
             QCOMPARE(bands.size(),3);
+            for(int i=0;i<bands.size();++i)for(int j=i+1;j<bands.size();++j)QVERIFY(!bands[i].toRectF().intersects(bands[j].toRectF()));
             for(int i=1;i<bands.size();++i)QVERIFY(bands[i].toRectF().top()>=bands[i-1].toRectF().center().y());
             for(int i=firstVisible;i<=lastVisible;++i) {
                 const auto& c=text->characters[i];if(!c.visible)continue;
@@ -266,6 +267,27 @@ private slots:
         QTRY_VERIFY(shell.textSelection()->ready());shell.textSelection()->copy();QCOMPARE(QGuiApplication::clipboard()->text(),shell.textSelection()->text());
         const auto out=qEnvironmentVariable("LANGLERN_OCR_ARTIFACT_DIR");
         if(!out.isEmpty()){QVERIFY(window->grabWindow().save(out+"/real-textbook-selection.png"));QFile text(out+"/real-textbook-ocr.txt");QVERIFY(text.open(QIODevice::WriteOnly|QIODevice::NewOnly));text.write(content(data).toUtf8());}
+        {
+            // A multi-line paragraph on the real page: translucent bands must never overlap
+            // (double-painted overlaps showed as darker blotches) and must cover every glyph.
+            int lineEnd=first,visible=0;
+            for(int i=first;i<data->characters.size()&&visible<300;++i)if(data->characters[i].visible){lineEnd=i;++visible;}
+            const auto p=data->characters[lineEnd].box.center();
+            QTest::keyClick(window,Qt::Key_Escape);
+            QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,pagePoint(viewport,shell,33,a),1);
+            QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,pagePoint(viewport,shell,33,a),1);
+            QTest::mouseMove(window,pagePoint(viewport,shell,33,p),30);QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,pagePoint(viewport,shell,33,p));
+            QTRY_VERIFY(shell.textSelection()->ready());QVERIFY(shell.textSelection()->text().count(u'\n')>=2);
+            QElapsedTimer cost;cost.start();
+            const auto bands=shell.textSelection()->rectangles(33);
+            qInfo("real_textbook_selection_bands=%lld rect_ms=%lld",qint64(bands.size()),cost.elapsed());
+            QVERIFY(bands.size()>=3);
+            for(int i=0;i<bands.size();++i)for(int j=i+1;j<bands.size();++j)
+                QVERIFY2(!bands[i].toRectF().intersects(bands[j].toRectF()),"selection bands overlap on the real textbook page");
+            for(int i=first;i<=lineEnd;++i){const auto& c=data->characters[i];if(!c.visible)continue;
+                bool covered=false;for(const auto& r:bands)covered=covered||r.toRectF().intersects(c.box);QVERIFY(covered);}
+            if(!out.isEmpty()){QTest::qWait(100);QVERIFY(window->grabWindow().save(out+"/real-textbook-multiline-selection.png"));}
+        }
         // Repeated double-click without a drag must preserve a whole word.
         QTest::keyClick(window,Qt::Key_Escape);
         int word=indexOf(data,"expérience");QVERIFY(word>=0);
