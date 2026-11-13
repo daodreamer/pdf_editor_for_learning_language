@@ -6,6 +6,7 @@
 #include <QGuiApplication>
 #include <QFont>
 #include <QIcon>
+#include <QImage>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeyEvent>
@@ -36,10 +37,17 @@ int main(int argc, char* argv[]) {
             app.setApplicationName(QStringLiteral("Langlern"));
         }
     }
+    // Title bar, taskbar and Alt+Tab use this window icon; Explorer uses the .rc icon.
+    // The startup log reports how many sizes really loaded so packaging can verify it.
+    int loadedIconSizes = 0;
     {
         QIcon icon;
-        for (const int size : {16, 24, 32, 48, 64, 128, 256})
-            icon.addFile(QStringLiteral(":/icons/linguapdf-%1.png").arg(size), QSize(size, size));
+        for (const int size : {16, 24, 32, 48, 64, 128, 256}) {
+            const auto path = QStringLiteral(":/icons/linguapdf-%1.png").arg(size);
+            if (QImage(path).isNull()) continue;
+            icon.addFile(path, QSize(size, size));
+            ++loadedIconSizes;
+        }
         app.setWindowIcon(icon);
     }
 #ifdef Q_OS_WIN
@@ -67,7 +75,8 @@ int main(int argc, char* argv[]) {
         fields.insert(QStringLiteral("build_type"), QStringLiteral(LANGLERN_BUILD_TYPE));
         qInfo().noquote() << QJsonDocument(fields).toJson(QJsonDocument::Compact);
     };
-    log(QStringLiteral("application_ready"), {{QStringLiteral("qt"), QString::fromLatin1(qVersion())}});
+    log(QStringLiteral("application_ready"), {{QStringLiteral("qt"), QString::fromLatin1(qVersion())},
+                                              {QStringLiteral("window_icon_sizes"), loadedIconSizes}});
     ShellState shell;
     QQmlApplicationEngine engine;
     log(QStringLiteral("engine_ready"));

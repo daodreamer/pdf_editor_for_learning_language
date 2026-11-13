@@ -58,12 +58,21 @@ while process.poll() is None:
 stdout=process.communicate(timeout=20)[0]
 (out/'product-startup.log').write_bytes(stdout)
 if process.returncode or b'interactive_proxy' not in stdout: raise RuntimeError('Product startup failed')
+# Explorer, "Open with" and pinned shortcuts read the exe icon resource; the title bar,
+# taskbar button and Alt+Tab use the window icon set at startup. Both must be present.
+import ctypes
+exe_icons=ctypes.windll.shell32.ExtractIconExW(str(runtime/'LinguaPDF.exe'),-1,None,None,0)
+window_icons=next((json.loads(line).get('window_icon_sizes',0) for line in stdout.decode('utf-8','replace').splitlines()
+                   if '"application_ready"' in line),0)
+if exe_icons<1 or window_icons!=7:
+    raise RuntimeError(f'Application icon missing: exe resource icons={exe_icons}, window icon sizes={window_icons}/7')
 audit=json.loads((package/'licenses/deployed-binaries.json').read_text(encoding='utf-8'))
 qt_names={Path(item['file']).name.lower() for item in audit if item.get('sbom')}
 qt_modules=[s for s in modules if Path(s).name.lower().startswith('qt6') or Path(s).name.lower() in qt_names]
 if not qt_modules or any(not Path(s).is_relative_to(runtime) for s in qt_modules):
     raise RuntimeError('Qt module loaded outside isolated candidate: '+str(qt_modules))
-records.append({'test':'product_startup','exit':process.returncode,'qt_modules':sorted(qt_modules)})
+records.append({'test':'product_startup','exit':process.returncode,'qt_modules':sorted(qt_modules),
+                'exe_icons':exe_icons,'window_icon_sizes':window_icons})
 root=Path(__file__).resolve().parents[1]
 shutil.copy2(root/'.deps/Qt/6.8.3/msvc2022_64/bin/Qt6Test.dll',runtime)
 shutil.copy2(build/'langlern_tests.exe',runtime)
