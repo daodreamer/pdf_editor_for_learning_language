@@ -89,6 +89,11 @@ private slots:
         s.setZoom(1.2);QTRY_VERIFY(!s.busy());QTest::qWait(100);
         const auto noteAnchor=s.annotations()->geometry(1).pdfToDisplay.map(savedAnchor);
         QVERIFY(QLineF(note->parentItem()->parentItem()->mapToScene(QPointF()),QPointF(point(1,noteAnchor.x(),noteAnchor.y()))).length()<2);
+        // Zooming can scroll the right page's lower half out of a small (CI) viewport; bring the
+        // pair back into view so the pen press lands on page 1 rather than outside the reader.
+        const auto inView=[&](QPointF p){return viewport->mapRectToScene(viewport->boundingRect()).contains(p);};
+        if(!inView(point(1,.2,.7)) || !inView(point(1,.4,.7))) { s.goToPage(2);QTRY_VERIFY(!s.busy());QTest::qWait(100); }
+        QVERIFY2(inView(point(1,.2,.7)) && inView(point(1,.4,.7)),"pen target on page 1 is outside the viewport");
         QTest::keyClick(window,Qt::Key_P,Qt::ControlModifier|Qt::ShiftModifier);QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,point(1,.2,.7));QTest::mouseMove(window,point(1,.4,.7),20);
         QVERIFY(s.annotations()->gestureActive());s.setDoublePage(false);QVERIFY(!s.annotations()->gestureActive());QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,point(0,.4,.7));QVERIFY(s.annotations()->inkSnapshot().isEmpty());
         QCOMPARE(s.annotations()->snapshot().first().anchor,savedAnchor);s.setDoublePage(true);
