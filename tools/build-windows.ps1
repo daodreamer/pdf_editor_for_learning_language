@@ -1,4 +1,4 @@
-param([string]$BuildDir = 'build/windows', [switch]$Test, [string]$TestRegex = '', [switch]$Phase0, [switch]$Lint)
+param([string]$BuildDir = 'build/windows', [switch]$Test, [string]$TestRegex = '', [switch]$Lint)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 Push-Location $root
@@ -14,8 +14,7 @@ try {
     if ($LASTEXITCODE) { throw 'Offline OCR dependency build failed' }
     & "$root/.tools/venv/Scripts/python" -X utf8 "$root/tools/bootstrap-speech.py"
     if ($LASTEXITCODE) { throw 'Supertonic speech dependency preparation failed' }
-    $options = @('-DLANGLERN_BUILD_PHASE0=OFF', "-DPDFium_DIR=$root/.deps/pdfium-win")
-    if ($Phase0) { $options = @('-DLANGLERN_BUILD_PHASE0=ON', "-DPDFium_DIR=$root/.deps/pdfium-win") }
+    $options = @("-DPDFium_DIR=$root/.deps/pdfium-win")
     if ($Test) { $options += '-DBUILD_TESTING=ON' }
     & "$root/.deps/Qt/6.8.3/msvc2022_64/bin/qt-cmake.bat" -S . -B $BuildDir -G Ninja -DCMAKE_BUILD_TYPE=Release @options
     if ($LASTEXITCODE) { throw 'Configure failed' }

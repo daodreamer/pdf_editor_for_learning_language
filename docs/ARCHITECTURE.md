@@ -70,7 +70,7 @@ Scene Graph 按屏幕曲率细分曲线，使用预乘颜色的顶点几何和�
 
 ## 阶段 0 实施契约（编码前确认）
 
-原型全部置于 `prototypes/phase0/`，不建立未使用的产品模块。共用 `PdfWorker` 在唯一 QThread 中创建局部 RAII PDFium 环境、文档、页、文本页和位图。通过 QFile + FPDF_FILEACCESS 按需读取，避免窄路径编码及整本载入。单槽 mailbox 保存最新需求，原子 generation 可在 API 运行期间失效；UI 交付时再次校验。底层同步渲染不会被强制中断，过期仅丢弃结果。退出先失效，worker 异步清理完成后退出进程。
+原型全部置于 `prototypes/phase0/`，不建立未使用的产品模块。共用 `PdfWorker` 在唯一 QThread 中创建局部 RAII PDFium 环境、文档、页、文本页和位图。通过 QFile + FPDF_FILEACCESS 按需读取，避免窄路径编码及整本载入。单槽 mailbox 保存最新需求，原子 generation 可在 API 运行期间失效；UI 交付时再次校验。底层同步渲染不会被强制中断，过期仅丢弃结果。退出先失效，worker 异步清理完成后退出进程。（该原型已于 2026-11-13 删除，正式实现见 `src/`。）
 
 `RenderRequest` 包含 session/generation、path、page、pixel width；`RenderResult` 是 QImage 值快照和无句柄 JSON 元信息。像素预算集中在 Config，分配前检查；BGRA 位图写入 QImage ARGB32，白底使输出不含需要猜测的预乘透明度。纹理仅在 updatePaintNode 中创建，由节点拥有，重建时从 CPU 快照恢复。不实施正式 LRU、虚拟滚动或完整标注 UI。
 
@@ -166,7 +166,6 @@ langlern_pdf_editor/
 │   ├── reader/
 │   └── theme/
 ├── resources/                    # 图标、已审查字体、资源清单
-├── prototypes/phase0/            # 技术验证入口，不作为完整产品
 ├── tests/
 │   ├── unit/
 │   ├── integration/

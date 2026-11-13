@@ -18,7 +18,7 @@ build/windows/langlern_tests.exe <shell|reading|text|annotation|ink|storage|desi
 - 真实教材滚动连续性保留“适合宽度”与 40% 两种配置，各 400 步；文档菜单定位只用扫描样本（与文档无关）；“先打开原文件”在有真实教材时用教材、否则用扫描样本，并改用大小与修改时间确认源文件未变（完整内容散列由 OCR 真实页用例负责）。
 - 开关文档循环 50→10 次、会话失效循环 25→10 次；自然语音短句默认 1 轮 3 次请求（`benchmarks/run-speech.py` 设置 `LANGLERN_SPEECH_ROUNDS=3`）。
 - 删除未接入任何流程的 `tests/artifact-safety.py`（阶段 0 原型的历史检查）。
-- CI：`Phase 0 probes` 只运行 `^phase0_` 测试（完整 GUI 套件由桌面工作流运行，不再重复）；SDK 隔离包验证运行 `shell`、`storage`、`design`、`ocr`、`speech` 五个套件，覆盖 Qt Quick、PDFium 渲染/导出、SQLite 词库插件、Tesseract 与自然语音运行时。`tools/build-windows.ps1 -Test -TestRegex <正则>` 可筛选 CTest。
+- CI：只保留桌面工作流（`.github/workflows/shell.yml`）。阶段 0 原型 `prototypes/phase0/`、其工作流 `phase0.yml`、`tests/integration.py` 与 `benchmarks/run-probe.py` 已删除：原型代码不被产品使用，对应的渲染、坐标、旋转与导出检查已由正式套件覆盖；`phase0.yml` 中仅手动触发、从未在自建 Mac 上运行的 macOS 作业一并删除，macOS 命令见下文。SDK 隔离包验证运行 `shell`、`storage`、`design`、`ocr`、`speech` 五个套件，覆盖 Qt Quick、PDFium 渲染/导出、SQLite 词库插件、Tesseract 与自然语音运行时。`tools/build-windows.ps1 -Test -TestRegex <正则>` 可筛选 CTest。
 
 文件对话框自动化统一使用 `AA_DontUseNativeDialogs`；`design` 套件中资料库“导入”会打开 Qt Quick 文件对话框，用例随即取消。
 
@@ -174,7 +174,6 @@ CTest 共 7 项，新增 `storage_export`。CMake 将仓库 `assets/fonts/NotoSa
 
 CTest 的文件对话框自动化使用 `AA_DontUseNativeDialogs`，覆盖 Qt 对话框取消/重开、选中结果信号路由；产品默认使用原生系统对话框。原生对话框实际点击选文件仍需人工检查，不能把合成 accepted 信号算成 OS 选文件通过。
 
-原型现在须显式启用：`./tools/build-windows.ps1 -Phase0 -Test`。直接 CMake 使用 `-DLANGLERN_BUILD_PHASE0=ON -DPDFium_DIR=<固定包路径>`；默认 OFF。下文旧复现命令中的构建步骤须加 `-Phase0`，PDF/字体实验命令不变。
 
 ## 本机已执行的 Windows 路径
 
@@ -186,28 +185,13 @@ Windows 11 x64，Visual Studio Community 2026 / MSVC 19.51.36257.0 / SDK 10.0.26
 python -m venv .tools/venv
 .tools/venv/Scripts/python -m pip install -r tools/requirements-phase0.lock.txt
 .tools/venv/Scripts/python tools/bootstrap.py --platform windows
-./tools/build-windows.ps1 -Phase0 -Test
+./tools/build-windows.ps1 -Test
 .tools/venv/Scripts/python tools/make-fixtures.py
 ```
 
 实际本机 Qt 获取使用 bootstrap 内同一条 aqt 命令；PDFium 与字体原先直接从锁文件 URL 下载。bootstrap 的整体干净安装尚未重放；单个来源和散列已核对。不要求联网运行原型。
 
-执行真实集成检查（每次使用**新的**输出目录，避免覆盖已有产物）：
-
-```powershell
-$env:PATH = "$pwd/.deps/Qt/6.8.3/msvc2022_64/bin;" + $env:PATH
-.tools/venv/Scripts/python tests/integration.py --exe build/windows/phase0_pdf_probe.exe --font .deps/fonts/NotoSansSC-Regular.ttf --out benchmarks/results/my-new-run/integration
-.tools/venv/Scripts/python benchmarks/run-probe.py 'D:/samples/book.pdf' --run benchmarks/results/my-new-run/book --repeat 33
-$env:QSG_INFO = '1'
-$env:QT_FORCE_STDERR_LOGGING = '1'
-./build/windows/phase0_quick_probe.exe tests/fixtures/geometry.pdf benchmarks/results/my-new-run/quick.png
-```
-
-Quick 原型没有文件对话框，用命令行指定 PDF。自动执行预览→高清在途失效→当前高清→隐藏/资源释放→重显。传入截图路径时自动保存后退出；不传截图路径时可手工检查 IME，关窗时异步结束 worker。60 秒 watchdog 为实验上限，不是即时取消 PDFium 的能力。
-
-手工输入验收可设置 `PHASE0_MANUAL=1` 后启动且不传截图路径：保持窗口打开，跳过自动隐藏重建，便于真实输入法和焦点检查。结束时关闭窗口；环境变量仅用于原型实验。输入框日志记录预编辑长度、composing、提交长度和焦点，不记录输入正文。按钮只用于焦点验收，不是产品工具栏。
-
-`phase0_pdf_probe --help` 给出页码、像素宽、重复次数、字体和新 PDF 导出参数。单张图像最多 64 MiB，边长最多 8192；超限在分配前失败。阶段 0 不做正式缓存和分块。输出包括 events.jsonl、首轮 page.png；不记录文档正文。所有 PDFium API 的正常和异常清理都在 worker 内完成。
+阶段 0 原型的集成检查（`tests/integration.py`、`run-probe.py`、`phase0_quick_probe`）已随原型删除（2026-11-13），历史结果见 `docs/PHASE0_REPORT.md`。
 
 本机构建日志中缺 Vulkan headers 不阻断 D3D11；未使用 Vulkan。`qt-cmake` 重复配置时可能提示 CMAKE_TOOLCHAIN_FILE 未使用；实际编译器、Qt 和 SDK 以 CMakeCache 与日志为准。没有执行 ASan/UBSan；MSVC 此次为 Release 普通构建，不得称为 sanitizer 通过。
 
@@ -220,7 +204,7 @@ python3 -m venv .tools/venv
 .tools/venv/bin/python -m pip install aqtinstall==3.3.0 cmake==3.31.6 ninja==1.11.1.3 fonttools==4.60.1 PyMuPDF==1.26.5
 .tools/venv/bin/python tools/bootstrap.py --platform mac
 export PATH="$PWD/.tools/venv/bin:$PATH"
-.deps/Qt/6.8.3/macos/bin/qt-cmake -S . -B build/macos -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DPDFium_DIR="$PWD/.deps/pdfium-mac"
+.deps/Qt/6.8.3/macos/bin/qt-cmake -S . -B build/macos -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DPDFium_DIR="$PWD/.deps/pdfium-mac" -DBUILD_TESTING=ON
 cmake --build build/macos
 ctest --test-dir build/macos --output-on-failure
 ```
