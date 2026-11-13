@@ -1,4 +1,5 @@
 #include "testsupport.h"
+#include "legacydata.h"
 #include "shellstate.h"
 #include <QDir>
 #include <QFile>
@@ -32,6 +33,23 @@ class StorageTests : public QObject {
         return {{n},{i},12};
     }
 private slots:
+    void legacyDataMigration() {
+        QTemporaryDir dir; QVERIFY(dir.isValid());
+        const auto legacy=dir.filePath("Langlern/Langlern"), target=dir.filePath("LinguaPDF");
+        QVERIFY(!migrateLegacyData(legacy,target).migrated);  // Nothing to move on a fresh install.
+        QVERIFY(QDir().mkpath(legacy+"/workspaces")); put(legacy+"/workspaces/a.json","{\"v\":1}"); put(legacy+"/library-v1.json","[]");
+        auto moved=migrateLegacyData(legacy,target);
+        QVERIFY2(moved.migrated && !moved.useLegacy,qPrintable(moved.detail));
+        QFile copied(target+"/workspaces/a.json"); QVERIFY(copied.open(QIODevice::ReadOnly)); QCOMPARE(copied.readAll(),QByteArray("{\"v\":1}"));
+        QVERIFY(QFileInfo::exists(target+"/library-v1.json"));
+        QVERIFY(!QFileInfo::exists(dir.filePath("Langlern")));  // Empty organization folder removed.
+        // Existing new data is never overwritten; the legacy copy stays untouched.
+        QVERIFY(QDir().mkpath(legacy)); put(legacy+"/library-v1.json","old");
+        moved=migrateLegacyData(legacy,target);
+        QVERIFY(!moved.migrated && !moved.useLegacy);
+        QFile kept(legacy+"/library-v1.json"); QVERIFY(kept.open(QIODevice::ReadOnly)); QCOMPARE(kept.readAll(),QByteArray("old"));
+        QFile current(target+"/library-v1.json"); QVERIFY(current.open(QIODevice::ReadOnly)); QCOMPARE(current.readAll(),QByteArray("[]"));
+    }
     void bulkSnapshotDiskRoundtrip() {
         QTemporaryDir dir;
         AnnotationSnapshot bulk; bulk.revision=4096;

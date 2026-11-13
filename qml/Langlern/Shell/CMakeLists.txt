@@ -9,6 +9,7 @@ qt_add_qml_module(shell_ui STATIC
         ../../../src/app/frenchdictionary.h ../../../src/app/frenchdictionary.cpp
         ../../../src/app/annotationtext.h ../../../src/app/annotationtext.cpp
         ../../../src/app/workspacestate.h ../../../src/app/workspacestate.cpp
+        ../../../src/app/legacydata.h ../../../src/app/legacydata.cpp
         ../../../src/app/windowchrome.h ../../../src/app/windowchrome.cpp
         ../../../src/app/storageworker.h ../../../src/app/storageworker.cpp
         ../../../src/app/inkstroke.h ../../../src/app/inksmoothing.h

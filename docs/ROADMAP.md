@@ -6,6 +6,8 @@
 
 2026-10-19 用户授权增量：免费离线 OCR → 原生/OCR 统一选择 → 自动模式双击按住拖选与文本框选区按钮 → 法语等系统声音、暂停/继续/语速 → 固定真实教材、交互回归、缓存/会话/退出与候选打包验证。该授权覆盖历史“不实现 OCR”限制；没有授权云服务、付费 API 或 OCR 隐形文字层 PDF 导出。依赖和结果见 [OCR_SELECTION.md](OCR_SELECTION.md)，macOS 实机仍待验证。
 
+2026-11-13：**LinguaPDF 1.0.0 Windows 正式发布**，许可终审见 [third_party/DISTRIBUTION.md](../third_party/DISTRIBUTION.md)，发布流程见 [RELEASING.md](RELEASING.md)；macOS 仍待后续。
+
 日期：2026-10-15。状态：阶段 0–3 Windows 交付记录保留；阶段 4 原生文字选择与复制、阶段 5 文字答案与坐标系统已按 Windows 范围交付；阶段 6 画笔/擦除/统一历史已按 Windows 范围交付；阶段 7 已按 Windows 范围交付；阶段 8 Windows 实现与当前本机验收记录见 PHASE8_REPORT.md；macOS 仍依用户要求延期。macOS 全部实机检查依用户要求延至整个项目完成后。阶段 3 的启动目标未达等待办保留。实际结果见 [PHASE0_REPORT.md](PHASE0_REPORT.md)、[PHASE1_REPORT.md](PHASE1_REPORT.md)、[PHASE2_REPORT.md](PHASE2_REPORT.md)、[PHASE3_REPORT.md](PHASE3_REPORT.md)、[PHASE4_REPORT.md](PHASE4_REPORT.md)、[PHASE5_REPORT.md](PHASE5_REPORT.md)、[PHASE6_REPORT.md](PHASE6_REPORT.md)、[PHASE7_REPORT.md](PHASE7_REPORT.md)。
 
 约束来源：[AGENTS.md](../AGENTS.md)。架构与接口见 [ARCHITECTURE.md](ARCHITECTURE.md)，测试口径与目标见 [PERFORMANCE.md](PERFORMANCE.md)。本文件列出的命令、目标与产物是后续任务，不是执行记录。

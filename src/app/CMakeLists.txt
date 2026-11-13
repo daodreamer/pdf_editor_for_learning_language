@@ -8,11 +8,14 @@ qt_add_resources(langlern "app_icon"
         ../../assets/icons/linguapdf-64.png ../../assets/icons/linguapdf-128.png
         ../../assets/icons/linguapdf-256.png
 )
+# The CMake target keeps its internal name; the shipped executable is LinguaPDF.exe.
+set_target_properties(langlern PROPERTIES OUTPUT_NAME LinguaPDF)
 if(WIN32)
-    target_sources(langlern PRIVATE langlern.rc)
+    configure_file(linguapdf.rc.in "${CMAKE_CURRENT_BINARY_DIR}/linguapdf.rc" @ONLY)
+    target_sources(langlern PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/linguapdf.rc")
 endif()
 target_link_libraries(langlern PRIVATE shell_ui shell_uiplugin Qt6::QuickControls2)
-target_compile_definitions(langlern PRIVATE LANGLERN_BUILD_TYPE="$<CONFIG>")
+target_compile_definitions(langlern PRIVATE LANGLERN_BUILD_TYPE="$<CONFIG>" LINGUAPDF_VERSION="${PROJECT_VERSION}")
 langlern_warnings(langlern)
 if(WIN32)
     add_dependencies(langlern langlern_speech)

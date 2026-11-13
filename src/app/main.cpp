@@ -1,3 +1,4 @@
+#include "legacydata.h"
 #include "shellstate.h"
 
 #include <QCommandLineParser>
@@ -12,6 +13,7 @@
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QSGRendererInterface>
+#include <QStandardPaths>
 #include <QTimer>
 #include <QtQml/QQmlExtensionPlugin>
 
@@ -21,9 +23,19 @@ int main(int argc, char* argv[]) {
     QElapsedTimer clock;
     clock.start();
     QGuiApplication app(argc, argv);
-    app.setApplicationName(QStringLiteral("Langlern"));
-    app.setOrganizationName(QStringLiteral("Langlern"));
-    app.setApplicationVersion(QStringLiteral("0.1.0"));
+    // Data lives in <AppLocalData>/LinguaPDF (no organization level). Versions before 1.0
+    // used "Langlern/Langlern"; move it once so existing practice data stays visible.
+    app.setApplicationName(QStringLiteral("LinguaPDF"));
+    app.setApplicationVersion(QStringLiteral(LINGUAPDF_VERSION));
+    if(!qEnvironmentVariableIsSet("LANGLERN_WORKSPACE_DIR")) {
+        const auto legacy=QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)+QStringLiteral("/Langlern/Langlern");
+        const auto moved=migrateLegacyData(legacy,QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation));
+        if(!moved.detail.isEmpty()) qInfo().noquote() << "legacy_data:" << moved.detail;
+        if(moved.useLegacy) {
+            app.setOrganizationName(QStringLiteral("Langlern"));
+            app.setApplicationName(QStringLiteral("Langlern"));
+        }
+    }
     {
         QIcon icon;
         for (const int size : {16, 24, 32, 48, 64, 128, 256})
@@ -40,7 +52,7 @@ int main(int argc, char* argv[]) {
     QQuickWindow::setGraphicsApi(QSGRendererInterface::Metal);
 #endif
     QCommandLineParser parser;
-    parser.setApplicationDescription(QStringLiteral("Langlern PDF reader"));
+    parser.setApplicationDescription(QStringLiteral("LinguaPDF — offline PDF reader for language practice"));
     parser.addPositionalArgument(QStringLiteral("pdf"), QStringLiteral("Local PDF to open after showing the window"));
     parser.addHelpOption();
     parser.addVersionOption();

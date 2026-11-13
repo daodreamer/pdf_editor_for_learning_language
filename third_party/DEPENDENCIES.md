@@ -1,5 +1,7 @@
 # 依赖与许可审查
 
+> 2026-11-13：LinguaPDF 1.0.0 Windows 发行的逐组件许可终审结论见 [DISTRIBUTION.md](DISTRIBUTION.md)，用户可见的第三方声明与使用条款见仓库根目录 [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md)。下文按时间记录各阶段的依赖审查，其中「未决」「待审」的条目以终审结论为准。
+
 ## 2026-11-09 Lucide 线性图标
 
 工具栏及菜单图标改用 Lucide v0.460.0（lucide-static，unpkg 固定版本）的 26 个图标路径，ISC 许可（部分源自 Feather，MIT），允许任意使用、修改和再分发，须保留版权与许可声明：原文放在 `notices/Lucide-ISC.txt`，并加入 `notices.sha256.json`；打包脚本复制 notices 目录。SVG 元素在开发时转换为 PathSvg 路径数据嵌入 `qml/Langlern/Shell/LineIcon.qml`（圆/矩形/折线转换为等价路径，不改变图形），仍由既有 Qt Quick Shapes 渲染，改用 CurveRenderer 解析抗锯齿；不新增 QtSvg、运行库或网络依赖。下文阶段 8“原创路径、没有复制 Lucide 资源”为历史状态。

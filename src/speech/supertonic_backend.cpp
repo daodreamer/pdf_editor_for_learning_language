@@ -165,7 +165,7 @@ void normalizeLoudness(std::vector<float>& pcm,int sampleRate) {
 }
 
 class Model {
-    Ort::Env environment_{ORT_LOGGING_LEVEL_ERROR,"Langlern speech"};
+    Ort::Env environment_{ORT_LOGGING_LEVEL_ERROR,"LinguaPDF speech"};
     Ort::SessionOptions options_;
     Ort::MemoryInfo memory_=Ort::MemoryInfo::CreateCpu(OrtArenaAllocator,OrtMemTypeDefault);
     std::unique_ptr<Graph> duration_,encoder_,estimator_,vocoder_;

@@ -1,5 +1,6 @@
-"""Create a local unsigned Windows candidate. Never overwrite an existing artifact."""
+"""Create the unsigned portable LinguaPDF Windows package. Never overwrite an existing artifact."""
 import argparse
+import re
 import hashlib
 import json
 import os
@@ -11,6 +12,7 @@ import zipfile
 from build_provenance import product_inputs
 
 ROOT = Path(__file__).resolve().parents[1]
+VERSION = re.search(r'project\(LinguaPDF VERSION (\S+)', (ROOT/'CMakeLists.txt').read_text(encoding='utf-8')).group(1)
 SOURCE_DIRECTORIES=('src','qml','assets','tools','tests','docs','third_party','.github','prototypes','benchmarks')
 
 def sha(p):
@@ -36,7 +38,7 @@ def package(build, out, vs):
         raise ValueError('Candidate output must not be inside a source directory')
     qt = ROOT / '.deps/Qt/6.8.3/msvc2022_64'
     provenance=json.loads((build/'product-build.json').read_text(encoding='utf-8'))
-    if provenance['source_sha256']!=product_inputs() or provenance['exe_sha256']!=sha(build/'langlern.exe'):
+    if provenance['source_sha256']!=product_inputs() or provenance['exe_sha256']!=sha(build/'LinguaPDF.exe'):
         raise RuntimeError('Product/source changed since build; run build-windows.ps1 again')
     ocr_lock=json.loads((ROOT/'third_party/ocr.lock.json').read_text(encoding='utf-8'))
     for model in ocr_lock['models']:
@@ -51,7 +53,7 @@ def package(build, out, vs):
     flags=' '.join(value for key,value in configuration.items() if key!='CMAKE_BUILD_TYPE').lower()
     if configuration.get('CMAKE_BUILD_TYPE')!='Release' or 'sanitize' in flags:
         raise RuntimeError('Candidate packaging requires a regular Release build')
-    for p in [build/'langlern.exe', build/'pdfium.dll', build/'fonts/NotoSansSC-Regular.ttf']:
+    for p in [build/'LinguaPDF.exe', build/'pdfium.dll', build/'fonts/NotoSansSC-Regular.ttf']:
         if not p.is_file():
             raise FileNotFoundError(p)
     if sha(build/'pdfium.dll')!=sha(ROOT/'.deps/pdfium-win/bin/pdfium.dll'):
@@ -63,7 +65,7 @@ def package(build, out, vs):
     if archive.exists() or checksum.exists():
         raise FileExistsError('Archive/checksum already exists')
     out.mkdir(parents=True, exist_ok=False)
-    shutil.copy2(build/'langlern.exe', out)
+    shutil.copy2(build/'LinguaPDF.exe', out)
     shutil.copy2(build/'pdfium.dll', out)
     shutil.copytree(build/'fonts', out/'fonts')
     shutil.copytree(build/'tessdata', out/'tessdata')
@@ -74,7 +76,7 @@ def package(build, out, vs):
                '--no-compiler-runtime', '--no-translations', '--no-opengl-sw',
                '--no-system-d3d-compiler', '--no-system-dxc-compiler',
                '--skip-plugin-types', 'qmltooling,generic,networkinformation,tls,sqldrivers',
-               '--verbose', '1', str(out/'langlern.exe')]
+               '--verbose', '1', str(out/'LinguaPDF.exe')]
     result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     (out/'deployment.log').write_bytes(result.stdout)
     result.check_returncode()
@@ -100,6 +102,8 @@ def package(build, out, vs):
     shutil.copytree(ROOT/'third_party/notices', licenses)
     shutil.copy2(build/'product-build.json',licenses)
     shutil.copy2(ROOT/'LICENSE', out)
+    shutil.copy2(ROOT/'THIRD-PARTY-NOTICES.md', out)
+    shutil.copy2(ROOT/'CHANGELOG.md', out)
     shutil.copy2(ROOT/'third_party/qt-sbom-evidence.json', licenses)
     shutil.copy2(ROOT/'third_party/dependencies.lock.json', licenses)
     shutil.copy2(ROOT/'third_party/dictionary.lock.json', licenses)
@@ -159,7 +163,7 @@ def package(build, out, vs):
     for name in ['DISTRIBUTION.md', 'DEPENDENCIES.md']:
         shutil.copy2(ROOT/'third_party'/name, licenses/name)
     # Include actual working source used for this candidate, including uncommitted changes.
-    source_paths = [ROOT/n for n in ['CMakeLists.txt','README.md','LICENSE','AGENTS.md','CONTRIBUTING.md']]
+    source_paths = [ROOT/n for n in ['CMakeLists.txt','README.md','LICENSE','THIRD-PARTY-NOTICES.md','CHANGELOG.md','AGENTS.md','CONTRIBUTING.md']]
     for directory in SOURCE_DIRECTORIES:
         source_paths.extend(p for p in (ROOT/directory).rglob('*') if p.is_file()
                             and '__pycache__' not in p.parts and 'results' not in p.parts)
@@ -169,12 +173,12 @@ def package(build, out, vs):
     shutil.copy2(ROOT/'docs/WINDOWS_PACKAGE.md', out/'README.md')
     inventory = {p.relative_to(out).as_posix():{'bytes':p.stat().st_size,'sha256':sha(p)}
                  for p in sorted(out.rglob('*')) if p.is_file()}
-    manifest = {'candidate':'0.1.0-windows-x64', 'signed':False, 'qt':'6.8.3', 'pdfium':'157.0.8100.0',
+    manifest = {'product':'LinguaPDF', 'version':VERSION, 'platform':'windows-x64', 'signed':False, 'qt':'6.8.3', 'pdfium':'157.0.8100.0',
                 'windows_sdk':{'version':sdk_version,'d3dcompiler_source':'Redist/D3D/x64/d3dcompiler_47.dll',
                                'd3dcompiler_sha256':sha(d3d_compiler),'dxc_deployed':False},
                 'runtime_source':str(runtime.relative_to(vs)), 'qt_sboms':sboms,
                 'source_sha256':source_hashes, 'files':inventory,
-                'scope':'Local candidate; clean VM, physical IME/input, cold startup and remote CI not verified. See licenses/DISTRIBUTION.md.'}
+                'scope':'Unsigned portable release. Licensing review: licenses/DISTRIBUTION.md; known limitations: CHANGELOG.md.'}
     (out/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
     with zipfile.ZipFile(archive,'x',zipfile.ZIP_DEFLATED) as z:
         for p in sorted(out.rglob('*')):

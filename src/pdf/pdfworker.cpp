@@ -394,7 +394,7 @@ void PdfWorker::exportPdf(quint64 session,QString source,QString target,QByteArr
                 writer.setResolution(720);
                 writer.setPageSize(QPageSize(QSizeF(w,h),QPageSize::Point,QString(),QPageSize::ExactMatch));
                 writer.setPageMargins(QMarginsF(0,0,0,0),QPageLayout::Point);
-                writer.setTitle(QStringLiteral("Langlern annotations"));
+                writer.setTitle(QStringLiteral("LinguaPDF annotations"));
                 QPainter painter(&writer); require(painter.isActive(),"无法启动 PDF 矢量绘制。");
                 painter.scale(writer.width()/w,writer.height()/h);
                 auto ink=snapshot.ink;

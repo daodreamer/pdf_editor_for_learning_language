@@ -49,7 +49,7 @@
     "Supertonic-OpenRAIL-M.txt": "0d944a9110fed9a9602d60e0423a272903e7bd21ab060490774efc77c2275e9f",
     "Supertonic-code-MIT.txt": "0dfe0d0ba84416fe3879d9a34f4909d8d0137c78d1e95834177b0414ac096fa2",
     "Supertonic-model-card.md": "d414e4b085fb9989ebfd2b64f868ff861694022b4bdb805b09e702386dbdc7d5",
-    "Supertonic-modifications.txt": "ff3c82e2d3461725821977dee5958145e81c73a79192696aece39e553c595a0d"
+    "Supertonic-modifications.txt": "145f3bf4dc914cca966c6b5b3f2543c1e996ae6684c73a1e791941363891008c"
   },
   "notice_sources": {
     "Supertonic-OpenRAIL-M.txt": "https://huggingface.co/Supertone/supertonic-3/resolve/3cadd1ee6394adea1bd021217a0e650ede09a323/LICENSE",

@@ -27,7 +27,7 @@ if __name__=='__main__':
         if line.startswith(('CMAKE_BUILD_TYPE:','CMAKE_CXX_FLAGS:','CMAKE_CXX_FLAGS_RELEASE:',
                             'CMAKE_EXE_LINKER_FLAGS:','CMAKE_EXE_LINKER_FLAGS_RELEASE:')):
             key,value=line.split('=',1); cache[key.split(':')[0]]=value
-    result={'source_sha256':product_inputs(), 'exe_sha256':digest(args.build/'langlern.exe'),
+    result={'source_sha256':product_inputs(), 'exe_sha256':digest(args.build/'LinguaPDF.exe'),
             'cmake_cache_sha256':digest(args.build/'CMakeCache.txt'),'configuration':cache,
             'ocr_libraries':{p.name:digest(p) for p in sorted((ROOT/'.deps/ocr/lib').glob('*.lib'))},
             'ocr_models':{p.name:digest(p) for p in sorted((args.build/'tessdata').glob('*.traineddata'))},

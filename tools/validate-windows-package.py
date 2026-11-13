@@ -44,7 +44,7 @@ env['QT_MESSAGE_PATTERN']='%{message}'
 env['LANGLERN_WORKSPACE_DIR']=str(out/'workspaces')
 records=[]
 # Probe the shipped executable before introducing the test-only DLL.
-process=subprocess.Popen([str(runtime/'langlern.exe'),'--startup-probe','--quit-after-ready'],
+process=subprocess.Popen([str(runtime/'LinguaPDF.exe'),'--startup-probe','--quit-after-ready'],
                          cwd=out,env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
 modules=set()
 deadline=time.monotonic()+20

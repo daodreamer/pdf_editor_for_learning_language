@@ -14,7 +14,7 @@ import time
 import psutil
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--exe", type=Path, default=Path("build/windows/langlern.exe"))
+parser.add_argument("--exe", type=Path, default=Path("build/windows/LinguaPDF.exe"))
 parser.add_argument("--run", type=Path, required=True)
 parser.add_argument("--repeat", type=int, default=33)
 parser.add_argument("--control-exe", type=Path)

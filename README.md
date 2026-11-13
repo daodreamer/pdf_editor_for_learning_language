@@ -1,57 +1,50 @@
-# Langlern PDF Editor
+# LinguaPDF
 
-阅读时可点底部 **双页** 或“··· → 横向双页布局”，并排查看1–2、3–4等相邻页面；上一/下一按钮按组翻页，页码输入和缩略图仍可定位指定页。奇数末页居中，右页支持选择原文、输入和手写。切回单页恢复此前缩放。
+免费、开源、完全离线的 PDF 阅读与语言练习工具，面向数百 MB、上千页的扫描教材。可以直接在页面上填写答案、手写标记，并查词、朗读、OCR，最后导出带答案的新 PDF。
 
-当前界面按用户提供的 **LinguaPDF 学习原型**迭代：书架、阅读、生词本、导入四页；页面/书签侧栏，六种工具，顶部/悬浮/侧边工具栏，浅色/纸张色/深色和中英文界面。真实功能与设计稿的差异见 [设计适配记录](docs/DESIGN_ALIGNMENT.md)。
+**[下载 Windows 版](https://github.com/daodreamer/pdf_editor_for_learning_language/releases/latest)** · [更新日志](CHANGELOG.md) · [第三方许可](THIRD-PARTY-NOTICES.md)
 
-自动模式下空白单击输入、空白拖动书写、原文点击查词；滚轮阅读。A/P/T/C/R/E 切换自动/书写/打字/批改/点读/橡皮（输入框有焦点时不抢占输入）。按住鼠标右键临时擦除笔迹，松开恢复原模式。新文本框约为 “this” 的宽度，随输入向右扩展；到达页边界或按 Enter / Shift+Enter 换行后固定宽度。Ctrl+Enter 完成答案，Tab 在本页已有文字答案间切换。Alt 单击文字答案批改；批改为手动判断。所有标注继续自动保存并可导出新 PDF。
+当前版本 1.0.0，仅提供 Windows x64 版，macOS 版计划中。
 
-打开或拖入 PDF 默认直接阅读原版，不自动进行优化转换。拍摄或扫描件需要处理时，从阅读器右上角“··· → 扫描优化…”进入预览，再手动另存为新 PDF。扫描优化逐页生成新的图像 PDF（最高 150 DPI），不会保留原文字层或带入练习标注；保留原始文件和原练习数据。
+## 功能
 
-扫描教材支持免费离线 Tesseract OCR，随附法语、英语、简中模型。自动模式下双击的第二次按住并拖动选择页面文字，单次按住继续书写；文本框内部保持普通拖选。页面或答案选区均有“复制、朗读”按钮。点读模式扫描页按需识别；“··· → OCR 与朗读设置”可更换语言、识别当前页或框选区域，并设置离线声音及语速。法语默认使用随附 Supertonic 3 自然男声，可在设置中改为女声并会记住选择，无需 Windows 法语语音包；支持暂停/继续/停止和保持音调的语速调整。英语等其他语言仍使用本机可用的系统声音。构建、验收和限制见 [OCR 与选文说明](docs/OCR_SELECTION.md) 和 [自然法语朗读](docs/NATURAL_SPEECH.md)。英汉查词仍使用 ECDICT，缺少词条可手填释义；macOS 朗读尚未接入，OCR 构建与交互实机待验证。
+- **流畅阅读大文件**：只渲染可见页面，带有界缓存；支持连续滚动、缩放、双页布局、缩略图和书签；浅色、纸张色、深色主题；高 DPI。
+- **在页面上作答**：单击任意位置输入；悬停在教材的横线或虚线上可以直接在线上作答；文字框透明无边框，可以移动、调整大小、改格式。
+- **手写**：多色画笔（带平滑和笔锋）、橡皮擦、统一撤销和重做。
+- **语言工具**：复制原文；离线 OCR（法、英、简中）；英汉和法语离线词典，法语支持变形还原和常用时态变位表；法语自然朗读（男声/女声，变速不变调）。
+- **可靠保存**：本地自动保存，可从异常退出中恢复；导出新 PDF，从不修改原文件。
+- **完全离线**：不需要账号、云服务或网络连接。
 
-完成输入后，将鼠标移到文字框上会渐显范围和四角手柄；拖动角点调整大小与相邻边的位置，拖动上方“移动”柄整体移动。手动调整后的宽度固定，高度至少容纳文字内容；位置与尺寸自动保存，可撤销重做。
+## 使用
 
-选中文字答案中的一段文字时，选区上方会显示苹果风圆角格式浮窗，空间不足时移到下方。可调整六种颜色、8–72 字号、加粗和斜体，仅改变选中文字；支持编辑器撤销重做、本地保存恢复和 PDF 导出。粗体与斜体由随附字体合成，不引入系统字体依赖。
+下载 Release 中的 `LinguaPDF-<版本>-windows-x64.zip`，解压后运行 `LinguaPDF.exe`。程序没有代码签名，首次运行如果出现 SmartScreen 提示，点“更多信息 → 仍要运行”。详细操作、数据位置、更新和卸载方法见 [Windows 使用说明](docs/WINDOWS_PACKAGE.md)。
 
-准备可选离线词库（仅此开发命令需要联网；应用运行完全离线）：
+常用快捷键：A/P/T/C/R/E 依次切换自动、书写、打字、批改、点读、橡皮；Ctrl+Z / Ctrl+Y 撤销 / 重做；F1 查看全部快捷键。
+
+## 从源码构建（Windows）
+
+技术栈：C++20、Qt 6.8.3（Qt Quick，Direct3D 11）、PDFium、CMake + Ninja。需要 Visual Studio 2022 或 2026 的 C++ 工具链，以及 Python 3.13。
 
 ```powershell
+python -m venv .tools/venv
+.tools/venv/Scripts/python -m pip install -r tools/requirements-phase0.lock.txt
+.tools/venv/Scripts/python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 -O .deps/Qt --archives qtbase qtdeclarative qttools
+.tools/venv/Scripts/python tools/bootstrap.py --platform windows --pdfium-only
 .tools/venv/Scripts/python tools/bootstrap-dictionary.py
 .tools/venv/Scripts/python tools/bootstrap-french-dictionary.py
 ./tools/build-windows.ps1 -Test -Lint
 ./tools/run-windows.ps1
 ```
 
-英文词库约 80 MB，法语词库约 52 MB，均按固定散列的源数据转换为只读 SQLite 索引，不在启动时全量载入内存。未安装时查词会说明缺少词库，不阻断阅读。
+依赖下载都有固定版本和散列校验；程序运行时完全离线。打包和发布流程见 [发布流程](docs/RELEASING.md)，更多构建细节见 [编译说明](docs/BUILDING.md)。
 
-查词：选中单词后点浮动条上的书本图标，或在阅读模式双击原文单词。查词卡片贴在单词旁边，显示原形、IPA、词性和英文释义。变位或变形的词会标出它与原形的关系，例如 `allions → 直陈式 未完成过去时 · nous`、`yeux → œil`。动词可以切换到“变位”页，变位表只收录日常、大学和工作中常用的 13 个时态：现在时、复合过去时、未完成过去时、愈过去时、最近将来时、简单将来时、先将来时、最近过去时、条件式现在时/过去时、虚拟式现在时/过去时、命令式，另加分词。打开时直接定位到选中词所在的时态并高亮，每个时态下方标注法语名称。复合时态按词典记录的助动词生成：用 être 时过去分词标出配合（allé(e)s）；avoir 和 être 都可用的动词（passer、rentrer）两种都列出。简单过去时等书面语时态不进变位表，但查到这类形式时仍会标注“简单过去时（书面语）”。卡片底部 FR/EN 切换词典语言（会保存），右上角 ↗ 在系统浏览器打开法语助手的原形页面（需联网，属于可选功能）。
+## 文档
 
-面向 Windows / macOS 的离线 PDF 阅读与语言练习工具。固定技术栈为 C++20、Qt Quick、PDFium、CMake。
+- [架构](docs/ARCHITECTURE.md) · [路线图](docs/ROADMAP.md) · [性能测试方法](docs/PERFORMANCE.md)
+- [保存格式](docs/STORAGE_FORMAT.md) · [OCR 与选文](docs/OCR_SELECTION.md) · [自然法语朗读](docs/NATURAL_SPEECH.md)
+- [依赖审查](third_party/DEPENDENCIES.md) · [1.0.0 发行许可终审](third_party/DISTRIBUTION.md)
+- [贡献指南](CONTRIBUTING.md)
 
-当前已实现阶段 0–7 的 Windows 阅读、原生文字选择、文字答案、自由笔迹、撤销重做、本地自动保存/恢复和新 PDF 导出。本轮阶段 8 提供轻量线性图标、紧凑与自适应工具栏、完整快捷键说明、延后创建阅读控件、保存/导出独立状态，以及可复现的 Windows 便携候选包流程。实际验收数据与已知限制见 [阶段 8 报告](docs/PHASE8_REPORT.md)。macOS 按用户安排在项目完成后运行检查。
+## 许可
 
-使用工具栏切换模式；`Ctrl+Shift+P` 画笔、`Ctrl+Shift+E` 整笔擦除、`Ctrl+Shift+M` 选择/移动笔迹，`Ctrl+Shift+A/S/T` 自动/原文选择/文字输入。选择笔迹后按 Delete 删除，Ctrl+Z/Y 撤销/重做（编辑文字时作用于编辑器局部历史）。macOS 对应 Command 尚待实机验证。
-
-已有本项目固定 Qt/MSVC 开发依赖时：
-
-```powershell
-./tools/build-windows.ps1 -Test
-./tools/run-windows.ps1
-```
-
-默认构建正式应用，需要固定版本 PDFium。首次依赖获取、保留原型的构建选项及验证限制见编译说明。开发启动脚本使用 SDK 运行库。创建无需 Qt SDK 的便携候选包：
-
-```powershell
-./tools/package-windows.ps1 -OutputDir build/packages/windows-x64
-.tools/venv/Scripts/python -X utf8 tools/validate-windows-package.py --package build/packages/windows-x64 --out benchmarks/results/my-package-check
-```
-
-输出目录必须不存在；不要覆盖旧证据。使用、更新和数据保留说明见 [Windows 候选包说明](docs/WINDOWS_PACKAGE.md)，许可状态见 [分发说明](third_party/DISTRIBUTION.md)。
-
-- [编译与实验复现](docs/BUILDING.md)
-- [架构](docs/ARCHITECTURE.md)、[路线图](docs/ROADMAP.md)、[性能方法](docs/PERFORMANCE.md)
-- [依赖和许可审查](third_party/DEPENDENCIES.md)
-- [贡献说明](CONTRIBUTING.md)
-
-项目自有代码采用 MIT；第三方代码、字体和项目 skills 保留各自许可。此声明不表示整个发行包已获合规确认。答案字体为随附 OFL Noto Sans SC，不支持的字符会使导出明确失败。诊断输出必须使用新的运行目录；导出拒绝已有目标，原始 PDF 不应被修改。
+LinguaPDF 源码采用 [MIT](LICENSE) 许可。发行包随附的第三方组件保留各自的许可，详见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。其中法语语音模型 Supertonic 3 采用 OpenRAIL-M 许可，带有使用限制；法语词典数据采用 CC BY-SA 4.0。

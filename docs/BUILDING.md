@@ -162,12 +162,12 @@ CTest 共 7 项，新增 `storage_export`。CMake 将仓库 `assets/fonts/NotoSa
 ./tools/run-windows.ps1
 ```
 
-两个脚本的默认目录均为 `build/windows`。指定另一目录时，两处都传入相同 `-BuildDir`。正式目标 `langlern.exe`，自动化目标 `langlern_tests.exe`。开发启动脚本为子进程补充 Qt bin PATH；发行部署留阶段 8。
+两个脚本的默认目录均为 `build/windows`。指定另一目录时，两处都传入相同 `-BuildDir`。正式目标 `langlern`（输出文件 `LinguaPDF.exe`），自动化目标 `langlern_tests.exe`。开发启动脚本为子进程补充 Qt bin PATH；发行部署留阶段 8。
 
 阶段 2 新目录 `build/phase2` 和默认 `build/windows` 的实际构建/回归见 PHASE2_REPORT。启动采样（必须使用新输出目录）：
 
 ```powershell
-.tools/venv/Scripts/python benchmarks/run-startup.py --exe build/windows/langlern.exe --run benchmarks/results/my-new-startup
+.tools/venv/Scripts/python benchmarks/run-startup.py --exe build/windows/LinguaPDF.exe --run benchmarks/results/my-new-startup
 ```
 
 启动脚本默认 3 次预热 + 30 个新进程样本；不刷新系统缓存，不能称冷启动。指标是首帧提交后合成 F6 快捷键往返的接收代理，详见 PERFORMANCE。普通运行不会发送 F6，也无诊断 watchdog；`--startup-probe --quit-after-ready` 仅供采样。
@@ -223,7 +223,7 @@ $env:PATH = "$pwd/.tools/venv/Scripts;" + $env:PATH
 
 大型样本由 `tools/make-large-fixture.py` 生成；不存在时不要设置环境变量，普通测试仍可运行，largeFileSmoke 会明确标记 skipped。本轮实际运行了该本地样本。扫描页/密码测试输入已提交，来源为原创 geometry；再生脚本 `tools/make-phase2-fixtures.py` 使用已有开发依赖 PyMuPDF，不属于产品运行依赖。
 
-应用支持 `langlern.exe <本地PDF路径>`，窗口显示后异步打开。使用开发 SDK PATH 后可运行 `./build/windows/langlern.exe ./tests/fixtures/geometry.pdf`；启动脚本仍为无参数文件对话框入口。
+应用支持 `LinguaPDF.exe <本地PDF路径>`，窗口显示后异步打开。使用开发 SDK PATH 后可运行 `./build/windows/LinguaPDF.exe ./tests/fixtures/geometry.pdf`；启动脚本仍为无参数文件对话框入口。
 
 `LANGLERN_SCREENSHOT_DIR` 指向已存在的新目录时，交互测试保存空窗口浅/深主题、PDF 和旋转深色截图，拒绝覆盖旧图。`QT_SCALE_FACTOR=2` 可用于附加 DPI 回归。文件对话框的原生 OS 点击选取仍属于人工检查；自动化验证 Qt 对话框及 accepted 到真实引擎的路由。
 
