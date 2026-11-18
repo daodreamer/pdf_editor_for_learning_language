@@ -214,7 +214,7 @@ private slots:
         QVERIFY2(warnings.isEmpty(),qPrintable(warnings.join('\n')));window->close();QTRY_VERIFY(shell.shutdownComplete());
     }
     void speechVoicesPauseStopAndMissingLanguage() {
-#ifndef Q_OS_WIN
+#if !defined(Q_OS_WIN) && !defined(Q_OS_MACOS)
         QSKIP("System speech backend is not implemented on this platform");
 #endif
         OfflineServices service;QSignalSpy initialized(&service,&OfflineServices::speechChanged);QTRY_VERIFY_WITH_TIMEOUT(!initialized.isEmpty(),10000);
@@ -244,6 +244,8 @@ private slots:
         const bool dictionary=!qEnvironmentVariable("LANGLERN_FR_DICTIONARY").isEmpty()||QFileInfo::exists(QDir(QCoreApplication::applicationDirPath()).filePath("dictionary/fr-wiktionary.sqlite"));
 #ifdef Q_OS_WIN
         const bool speech=NaturalSpeech::installed() && waveOutGetNumDevs()>0;
+#elif defined(Q_OS_MACOS)
+        const bool speech=NaturalSpeech::installed();
 #else
         const bool speech=false;
 #endif

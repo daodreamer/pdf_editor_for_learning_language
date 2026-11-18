@@ -25,6 +25,8 @@
 #ifdef Q_OS_WIN
 #include <windows.h>
 #include <psapi.h>
+#elif defined(Q_OS_MACOS)
+#include <mach/mach.h>
 #endif
 
 class InkTests : public QObject {
@@ -312,7 +314,7 @@ private slots:
         QCOMPARE(s.annotations()->inkSnapshot(),original);
         QTest::keyClick(w,Qt::Key_P,Qt::ControlModifier|Qt::ShiftModifier);
         QTest::keyClick(w,Qt::Key_Z,Qt::ControlModifier); QTRY_VERIFY(s.annotations()->inkSnapshot().isEmpty());
-        QTest::keyClick(w,Qt::Key_Y,Qt::ControlModifier); QTRY_COMPARE(s.annotations()->inkSnapshot(),original);
+        QTest::keySequence(w,QKeySequence::Redo); QTRY_COMPARE(s.annotations()->inkSnapshot(),original);
         // Compare actual pixels at the middle of the new stroke, away from endpoints.
         QTest::qWait(60); const auto image=w->grabWindow(); QVERIFY(!image.isNull());
         const auto mid=point(s,viewport,.4,.2)*w->devicePixelRatio();
@@ -541,6 +543,11 @@ private slots:
         QVERIFY(GetProcessMemoryInfo(GetCurrentProcess(),reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&memory),sizeof(memory)));
         report["working_set"]=qint64(memory.WorkingSetSize); report["private_bytes"]=qint64(memory.PrivateUsage);
         report["peak_working_set"]=qint64(memory.PeakWorkingSetSize);
+#elif defined(Q_OS_MACOS)
+        task_vm_info_data_t memory{}; mach_msg_type_number_t size=TASK_VM_INFO_COUNT;
+        QCOMPARE(task_info(mach_task_self(),TASK_VM_INFO,reinterpret_cast<task_info_t>(&memory),&size),KERN_SUCCESS);
+        report["phys_footprint"]=qint64(memory.phys_footprint); report["resident_size"]=qint64(memory.resident_size);
+        report["peak_phys_footprint"]=qint64(memory.ledger_phys_footprint_peak);
 #endif
         qInfo().noquote()<<QJsonDocument(report).toJson(QJsonDocument::Compact);
         report["input_trace"]=trace; report["frame_intervals_ms"]=rawFrames;

@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tarfile
 import urllib.request
 
@@ -50,6 +51,9 @@ def main():
         options = ['-DSW_BUILD=OFF', '-DBUILD_SHARED_LIBS=OFF', '-DCMAKE_BUILD_TYPE=Release',
                    '-DCMAKE_PREFIX_PATH=' + prefix.as_posix(),
                    '-DCMAKE_INSTALL_PREFIX=' + prefix.as_posix()]
+        if sys.platform == 'darwin':
+            # Match the app's minimum (macOS 13.4) instead of the host SDK version.
+            options += ['-DCMAKE_OSX_DEPLOYMENT_TARGET=13.4', '-DCMAKE_OSX_ARCHITECTURES=arm64']
         if name == 'zlib':
             options += ['-DZLIB_BUILD_TESTING=OFF', '-DZLIB_BUILD_SHARED=OFF', '-DZLIB_BUILD_STATIC=ON']
         elif name == 'libpng':

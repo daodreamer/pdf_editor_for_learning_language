@@ -61,6 +61,9 @@ inline void configureTestApplication(QGuiApplication& app) {
 #ifdef Q_OS_WIN
     app.setFont(QFont(QStringLiteral("Microsoft YaHei UI")));
     QQuickWindow::setGraphicsApi(QSGRendererInterface::Direct3D11);
+#elif defined(Q_OS_MACOS)
+    Q_UNUSED(app);
+    QQuickWindow::setGraphicsApi(QSGRendererInterface::Metal);
 #else
     Q_UNUSED(app);
 #endif

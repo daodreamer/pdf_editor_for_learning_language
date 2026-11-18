@@ -26,6 +26,13 @@ target_link_libraries(shell_ui PUBLIC Qt6::Quick langlern_pdf langlern_ocr PRIVA
 if(WIN32)
     target_link_libraries(shell_ui PRIVATE windowsapp sapi ole32 winmm dwmapi)
 endif()
+if(APPLE)
+    # System audio, speech and text recognition (AVFoundation, AudioToolbox, Vision); no extra dependencies.
+    target_sources(shell_ui PRIVATE ../../../src/app/platformmedia.h ../../../src/app/platformmedia_mac.mm)
+    set_source_files_properties(../../../src/app/platformmedia_mac.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    target_link_libraries(shell_ui PRIVATE "-framework Foundation" "-framework AVFoundation" "-framework AudioToolbox"
+        "-framework Vision" "-framework CoreGraphics")
+endif()
 langlern_warnings(shell_ui)
 qt_add_resources(shell_ui "interface_translations"
     PREFIX "/"

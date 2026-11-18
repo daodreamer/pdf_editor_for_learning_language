@@ -68,14 +68,14 @@ ApplicationWindow {
     Action {
         id: closeAction
         text: qsTr("关闭文档")
-        shortcut: (Qt.platform.os === "osx" ? "Meta" : "Ctrl") + "+W"
+        shortcut: "Ctrl+W"
         enabled: window.shell.selectedName.length > 0
         onTriggered: window.shell.clearSelection()
     }
     Action {
         id: themeAction
         text: window.themeLabel
-        shortcut: (Qt.platform.os === "osx" ? "Meta" : "Ctrl") + "+Shift+L"
+        shortcut: "Ctrl+Shift+L"
         onTriggered: window.shell.cycleTheme()
     }
     Action {
@@ -147,8 +147,9 @@ ApplicationWindow {
                     clip: true
                     Label {
                         width: parent.width
-                        text: (Qt.platform.os === "osx" ? "⌘" : "Ctrl")
-                            + qsTr(" 为修饰键：\nO  打开 PDF    W  关闭文档    S  保存\nZ / Y  撤销 / 重做（编辑时为文字历史）\nC  复制选中原文\nShift+A  自动：空白输入 / 原文拖选\nShift+S / T  原文选择 / 输入答案\nShift+P / E / M  画笔 / 整笔擦除 / 移动笔迹\nShift+L  切换主题\n滚轮  阅读    Ctrl+滚轮  缩放\nEsc / Ctrl+Enter  完成文字编辑\nCtrl+Delete  删除选中文字框\nDelete  删除选中笔迹\n\n答案自动保存在本机。导出时使用新的 PDF 文件名。\nF1  快捷键    Tab / Shift+Tab  切换焦点")
+                        // Qt maps "Ctrl" shortcuts and Qt.ControlModifier to Command on macOS.
+                        readonly property string mod: Qt.platform.os === "osx" ? "⌘" : "Ctrl"
+                        text: mod + qsTr(" 为修饰键：\nO  打开 PDF    W  关闭文档    S  保存\nZ / %2  撤销 / 重做（编辑时为文字历史）\nC  复制选中原文\nShift+A  自动：空白输入 / 原文拖选\nShift+S / T  原文选择 / 输入答案\nShift+P / E / M  画笔 / 整笔擦除 / 移动笔迹\nShift+L  切换主题\n滚轮  阅读    %1+滚轮  缩放\nEsc / %1+Enter  完成文字编辑\n%1+Delete  删除选中文字框\nDelete  删除选中笔迹\n\n答案自动保存在本机。导出时使用新的 PDF 文件名。\nF1  快捷键    Tab / Shift+Tab  切换焦点").arg(mod).arg(Qt.platform.os === "osx" ? "Shift+Z" : "Y")
                         lineHeight: 1.6
                         wrapMode: Text.WordWrap
                         color: shellTheme.text

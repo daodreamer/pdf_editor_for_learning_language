@@ -25,7 +25,7 @@ build/windows/langlern_tests.exe <shell|reading|text|annotation|ink|storage|desi
 
 ## 2026-11-11 Supertonic 3 法语语音构建
 
-`tools/build-windows.ps1` 先运行 `tools/bootstrap-speech.py`：按 `third_party/speech.lock.json` 下载 ONNX Runtime 1.23.2、SoundTouch 2.3.3 和 Supertone/supertonic-3 固定提交 `3cadd1ee6394adea1bd021217a0e650ede09a323` 的 fp32 图、M1/F3 声线，校验字节数与 SHA-256。随后在隔离的 `.tools/speech-venv`（按 `tools/requirements-speech.lock.txt` 固定 onnx 1.19.1、onnxruntime 1.23.2 等）运行 `tools/derive-speech-models.py` 派生随包图，派生结果必须与锁文件散列逐字节一致，否则构建失败；本机两次独立派生结果一致。首次开发构建需联网（上游 fp32 约 383 MiB 缓存在 `.deps/supertonic3-upstream`），应用运行不下载。DLL、模型、声线与许可证复制到 `build/windows/voices/supertonic3-fr`（约 136 MiB），窗口启动时不加载；`LANGLERN_SPEECH_DIR` 可指定同结构目录。详见 [NATURAL_SPEECH.md](NATURAL_SPEECH.md)。
+`tools/build-windows.ps1` 先运行 `tools/bootstrap-speech.py`：按 `third_party/speech.lock.json` 下载 ONNX Runtime 1.23.2（2026-11-18 起为 Microsoft 官方 NuGet 包，见下文 macOS 一节）、SoundTouch 2.3.3 和 Supertone/supertonic-3 固定提交 `3cadd1ee6394adea1bd021217a0e650ede09a323` 的 fp32 图、M1/F3 声线，校验字节数与 SHA-256。随后在隔离的 `.tools/speech-venv`（按 `tools/requirements-speech.lock.txt` 固定 onnx 1.19.1、onnxruntime 1.23.2 等）运行 `tools/derive-speech-models.py` 派生随包图，派生结果必须与锁文件散列逐字节一致，否则构建失败；本机两次独立派生结果一致。首次开发构建需联网（上游 fp32 约 383 MiB 缓存在 `.deps/supertonic3-upstream`），应用运行不下载。DLL、模型、声线与许可证复制到 `build/windows/voices/supertonic3-fr`（约 136 MiB），窗口启动时不加载；`LANGLERN_SPEECH_DIR` 可指定同结构目录。详见 [NATURAL_SPEECH.md](NATURAL_SPEECH.md)。
 
 ## 2026-10-19 Pocket TTS / Estelle 构建（已被替代，仅作历史记录）
 
@@ -98,7 +98,7 @@ CTest 共 7 项，新增 `storage_export`。CMake 将仓库 `assets/fonts/NotoSa
 
 默认 `build/windows` 同步更新。CTest 共 5 项，新增 `text_annotations`。SDK PATH 下可运行 `build/windows/langlern_tests.exe annotation -o annotations.log,txt` 获取详细结果；高 DPI 附加设置 `QT_SCALE_FACTOR=2`，不是物理跨屏验证。`LANGLERN_SCREENSHOT_DIR` 指向已存在的新目录可生成文字答案截图，拒绝覆盖。实际结果见 [PHASE5_REPORT.md](PHASE5_REPORT.md)。
 
-自动模式：空白单击建框并直接输入，原生文字拖动选择，空白拖动滚动；可切换选择/输入模式，输入模式允许覆盖原文处建框。单击已有答案编辑；选中后拖“移动”柄。Esc / Ctrl+Enter / 完成编辑结束事务；Ctrl+Delete 或删除按钮删除整框，普通 Delete 删除文字。Ctrl+Shift+A/S/T 切换自动/选择/输入。编辑器内 Ctrl+Z/Y 使用局部文字撤销，结束编辑后 Ctrl+Z/Y 及标注撤销/重做按钮使用事务历史。未选中不画边框或背景。答案仅存在当前会话，关闭/换文件后丢失；保存恢复和导出留在阶段 7。macOS 的快捷键前缀已按 Meta 路由，但构建/运行尚未验证。
+自动模式：空白单击建框并直接输入，原生文字拖动选择，空白拖动滚动；可切换选择/输入模式，输入模式允许覆盖原文处建框。单击已有答案编辑；选中后拖“移动”柄。Esc / Ctrl+Enter / 完成编辑结束事务；Ctrl+Delete 或删除按钮删除整框，普通 Delete 删除文字。Ctrl+Shift+A/S/T 切换自动/选择/输入。编辑器内 Ctrl+Z/Y 使用局部文字撤销，结束编辑后 Ctrl+Z/Y 及标注撤销/重做按钮使用事务历史。未选中不画边框或背景。答案仅存在当前会话，关闭/换文件后丢失；保存恢复和导出留在阶段 7。（历史记录：当时 macOS 分支按 Meta 路由属错误，2026-11-18 已改为 Qt 的 Ctrl，即 ⌘，见下文 macOS 一节。）
 
 ## 阶段 4 原生文字选择与复制
 
@@ -195,21 +195,57 @@ python -m venv .tools/venv
 
 本机构建日志中缺 Vulkan headers 不阻断 D3D11；未使用 Vulkan。`qt-cmake` 重复配置时可能提示 CMAKE_TOOLCHAIN_FILE 未使用；实际编译器、Qt 和 SDK 以 CMakeCache 与日志为准。没有执行 ASan/UBSan；MSVC 此次为 Release 普通构建，不得称为 sanitizer 通过。
 
-## macOS Apple Silicon：准备路径，尚未运行
+## macOS Apple Silicon（2026-11-18 本机实测）
 
-需要实际 arm64 设备、Xcode CLI Tools 和 Python 3.13。PDFium arm64 包已下载检查配置和散列；Qt macOS 包、链接、运行时搜索路径、Metal 尚未实测。
+环境：Apple Silicon arm64、macOS 27.0 (26A428)、Xcode（AppleClang 21.0.0，MacOSX27.0.sdk）、python.org Python 3.13、Qt 6.8.3 `clang_64`（aqtinstall）、PDFium 157.0.8100.0 arm64、Release。
 
 ```sh
 python3 -m venv .tools/venv
-.tools/venv/bin/python -m pip install aqtinstall==3.3.0 cmake==3.31.6 ninja==1.11.1.3 fonttools==4.60.1 PyMuPDF==1.26.5
-.tools/venv/bin/python tools/bootstrap.py --platform mac
+.tools/venv/bin/python -m pip install -r tools/requirements-phase0.lock.txt
+# python.org 版 Python 不带 CA 证书；只对本 shell 指向 venv 内 certifi，不改全局配置
+export SSL_CERT_FILE="$(.tools/venv/bin/python -c 'import certifi;print(certifi.where())')"
 export PATH="$PWD/.tools/venv/bin:$PATH"
+python tools/bootstrap.py --platform mac
+python -X utf8 tools/bootstrap-ocr.py
+python -X utf8 tools/bootstrap-dictionary.py
+python -X utf8 tools/bootstrap-french-dictionary.py   # 完整法语词库，上游约 593 MB，按锁文件校验
+python -X utf8 tools/bootstrap-speech.py              # Supertonic 3：ONNX Runtime（NuGet）、SoundTouch、模型派生
 .deps/Qt/6.8.3/macos/bin/qt-cmake -S . -B build/macos -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DPDFium_DIR="$PWD/.deps/pdfium-mac" -DBUILD_TESTING=ON
-cmake --build build/macos
-ctest --test-dir build/macos --output-on-failure
+cmake --build build/macos --parallel
+LANGLERN_REAL_PDF="$HOME/Documents/French/你好法语3学生用书第二版.pdf" \
+LANGLERN_REAL_WORKBOOK="$HOME/Documents/French/你好法语3练习册第二版.pdf" \
+LANGLERN_LARGE_PDF="$HOME/Documents/French/你好法语2学生用书第二版.pdf" \
+  ctest --test-dir build/macos --output-on-failure
 ```
 
-以上是待验证命令，不是构建成功记录。macOS 不使用 Windows 的 DLL copy，需在真机核实 PDFium dylib install-name/RPATH；若失败保留日志并修复。CI macOS job 使用 self-hosted/macOS/ARM64 标签，尚无已注册 runner 的证据。YAML 未在远程执行；CI 不代替 GPU/IME 真机验收。
+结果：CTest 10/10 通过（111.31 s），除需显式开启的 30 分钟阅读压力测试外无跳过。真实教材（291516513 bytes，与 Windows 验收样本同大小）、练习册与 485 MB 大文件均已执行，测试前后四份源 PDF 的 SHA-256 一致。`shell_startup` 报告 `graphics_api=6`（Metal），本机反复运行窗口可交互代理约 255–295 ms（单机诊断，不是正式性能基准）。
+
+macOS 媒体与语音（2026-11-18 起与 Windows 功能对等）：
+
+| 功能 | Windows | macOS |
+| --- | --- | --- |
+| 本地教材音频：播放/暂停、跳转、变速、AB 循环 | WinMM MCI | AVFoundation `AVAudioPlayer`（`src/app/platformmedia_mac.mm`） |
+| 系统朗读：声音列表、暂停/继续、语速、缺声音报错 | SAPI | `AVSpeechSynthesizer`（排除 novelty 声音；语速按 0.5×默认值×√倍率映射，近似 0.5–2 倍） |
+| 导入页“识别当前预览页” OCR | Windows.Media.Ocr | Vision `VNRecognizeTextRequest`（精确模式，系统语言列表，离线） |
+| Supertonic 3 自然法语朗读 | `langlern_speech.dll` + WinMM waveOut | `liblanglern_speech.dylib` + AudioToolbox `AudioQueue`（同样 8×40 ms 缓冲、暂停/变速/停止语义） |
+
+`tools/bootstrap-speech.py` 在 macOS 上派生的四个模型与锁文件散列逐字节一致（与 Windows 相同的固定 onnx/onnxruntime 工具链）。实测：已加载模型后 5.6 s 音频生成约 0.54 s；首次请求含约 400 MB 散列校验与加载 1.0–4.2 s（冷/热文件缓存）；真实教材第 34 页朗读按钮男/女声均实际发声。音频设备上真实播放、暂停、变速、停止由 `speech` 套件验证；人耳主观听感未在本轮评测。
+
+**ONNX Runtime 来源变更（Windows 与 macOS）**：2026-11-18 起 github.com/microsoft/onnxruntime 及其发布页返回 404，原锁定的 `onnxruntime-win-x64-1.23.2.zip` 无法再下载。两个平台统一改用 Microsoft 官方 NuGet 包 `Microsoft.ML.OnnxRuntime` 1.23.2：nupkg SHA-512 与 nuget.org 目录条目一致，LICENSE/ThirdPartyNotices 与已审查文本逐字节相同；`bootstrap-speech.py` 把包内 `build/native/include` 与 `runtimes/<平台>/native` 解到 `.deps/speech-source/onnxruntime-<平台>-1.23.2-nuget/{include,lib}`，并逐文件校验锁文件中的字节数与 SHA-256（Windows：`onnxruntime.dll`、`onnxruntime.lib`、`onnxruntime_providers_shared.dll`；macOS：`libonnxruntime.dylib`）。原 zip 的 URL 与散列保留在锁文件 `replaces` 字段。**未验证**：NuGet 中的 win-x64 DLL 是否与原 zip 中已审查的 DLL 逐字节相同（本机无原 zip，镜像站拒绝自动下载）；Windows 机器若仍有旧缓存 `.deps/speech-source/onnxruntime-win-x64-1.23.2`，下次运行 `bootstrap-speech.py` 会逐个打印 “identical to / DIFFERS from the cached release zip”，请据此确认。Windows 构建与 CI 在本次改动后尚未执行。
+
+为 macOS 修复的问题：
+
+- **AGL 链接失败**：Qt 6.8.3 `FindWrapOpenGL` 总是链接 `-framework AGL`，新版 SDK 已移除 AGL（运行时目录仍在，故 `find_library` 会误找到）。根 `CMakeLists.txt` 仅在当前 SDK 缺 AGL 时从 `WrapOpenGL::WrapOpenGL` 去掉它；不修改 Qt 安装。
+- **PDFium 无法加载**：上游 dylib 的 install name 是 `./libpdfium.dylib`（相对当前目录）。配置时复制到 `build/macos/pdfium/`，改为 `@rpath/libpdfium.dylib` 并重新 ad-hoc 签名，导入目标指向该副本。
+- **字体/词库/tessdata 找不到**：资源放在构建根目录并按 `applicationDirPath()` 查找；Qt 只在 Windows 设置 `CMAKE_RUNTIME_OUTPUT_DIRECTORY`，现对所有平台统一设置，可执行文件为 `build/macos/LinguaPDF` 与 `build/macos/langlern_tests`。
+- **部署目标**：应用与 OCR 静态库固定 macOS 13.0（PDFium arm64 的 minos），消除链接器版本不一致警告。
+- **快捷键**：QML 中 macOS 分支使用 `Meta`，而 Qt 在 macOS 上 `Ctrl`/`Qt.ControlModifier` 即 ⌘，`Meta` 是物理 Control 键，导致菜单标为 ⌘W 的操作实际需 Control+W。统一改用 `Ctrl`；帮助文本按平台显示 ⌘ 与重做键（macOS 为 ⌘⇧Z）。
+- **启动探针**：F6 探针在首帧即发送，macOS 可能在首帧后才激活窗口，键被丢弃导致超时；改为窗口激活后发送，超时日志记录 `window_active`/`focus_window`。
+- **测试**：重做与“选到文末”改用 `QKeySequence::Redo`/`SelectEndOfDocument`（Windows 仍为 Ctrl+Y / Ctrl+Shift+End）；Tab 遍历按钮仅在平台启用全部控件键盘导航时断言（macOS 默认关闭“键盘导航”）；扫描取消用例等待页数就绪后再开始。
+
+- **系统媒体**：音频、系统朗读、OCR、自然朗读输出原先只有 Windows 实现；现按上表接入 macOS 系统框架，相关测试不再按平台跳过。最低系统版本随 ONNX Runtime dylib（minos 13.4）提高到 macOS 13.4。
+
+已知限制：GUI 测试依赖窗口激活，运行期间若在其他应用中点击或输入，macOS 协作激活会拒绝把焦点交给测试窗口，相关用例可能超时，应保持桌面空闲后重跑。尚未产出 `.app` bundle、签名/公证或 macOS 发行包；资源按构建目录布局查找，打包时需改为 bundle 内路径。IME 实机组合输入、触控板手势、Retina 多屏 DPR 未人工验收；sanitizer 未执行；CI 仍只有 Windows 工作流。日志位于 `benchmarks/results/2026-11-18-macos/`（不提交）。
 
 
 ## 阶段 2 真实引擎回归

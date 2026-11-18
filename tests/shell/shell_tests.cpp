@@ -5,6 +5,7 @@
 #include <QFile>
 #include <QCryptographicHash>
 #include <QGuiApplication>
+#include <QStyleHints>
 #include <QFont>
 #include <QQmlApplicationEngine>
 #include <QQuickItem>
@@ -284,7 +285,12 @@ private slots:
         QVERIFY(window->activeFocusItem());
         const auto* initialFocus = window->activeFocusItem();
         QTest::keyClick(window, Qt::Key_Tab);
-        QVERIFY(window->activeFocusItem() != initialFocus);
+        // macOS follows System Settings > Keyboard navigation: when it is off (the default), Tab
+        // visits text controls only, so a toolbar-only window has nothing else to reach.
+        if (QGuiApplication::styleHints()->tabFocusBehavior() == Qt::TabFocusAllControls)
+            QVERIFY(window->activeFocusItem() != initialFocus);
+        else
+            qInfo("Tab traversal across buttons NOT checked: platform keyboard navigation limits Tab to text controls");
         QTest::keyClick(window, Qt::Key_F1);
         auto* help = window->findChild<QObject*>(QStringLiteral("helpLoader"));
         QVERIFY(help);

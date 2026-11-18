@@ -1,10 +1,30 @@
 cmake_minimum_required(VERSION 3.24)
+# Pinned PDFium arm64 declares minos 13.0 and ONNX Runtime 1.23.2 (natural speech) 13.4 (must precede project()).
+set(CMAKE_OSX_DEPLOYMENT_TARGET "13.4" CACHE STRING "Minimum macOS version")
 project(LinguaPDF VERSION 1.0.0 LANGUAGES CXX)
+if(APPLE)
+    enable_language(OBJCXX)  # src/app/platformmedia_mac.mm: AVFoundation/Vision system services
+endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_OBJCXX_STANDARD 20)
+set(CMAKE_OBJCXX_EXTENSIONS OFF)
 find_package(Qt6 6.8.3 REQUIRED COMPONENTS Core Gui Quick Qml QuickControls2 QuickDialogs2 Sql)
 qt_standard_project_setup(REQUIRES 6.8)
+# Runtime data (fonts/, tessdata/, dictionary/) is staged in the build root and found through
+# applicationDirPath(). Qt sets this output directory only on Windows; use it on every platform.
+if(NOT CMAKE_RUNTIME_OUTPUT_DIRECTORY)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
+endif()
+# Qt 6.8.3's FindWrapOpenGL always links AGL. Newer macOS SDKs (verified: macOS 27 SDK) no longer
+# ship AGL.framework although the runtime copy may remain, so linking fails. Nothing here uses AGL;
+# drop it only when the active SDK lacks it.
+if(APPLE AND TARGET WrapOpenGL::WrapOpenGL AND NOT EXISTS "${CMAKE_OSX_SYSROOT}/System/Library/Frameworks/AGL.framework")
+    get_target_property(langlern_gl_libs WrapOpenGL::WrapOpenGL INTERFACE_LINK_LIBRARIES)
+    list(FILTER langlern_gl_libs EXCLUDE REGEX "(^-framework AGL$|/AGL\\.framework$)")
+    set_target_properties(WrapOpenGL::WrapOpenGL PROPERTIES INTERFACE_LINK_LIBRARIES "${langlern_gl_libs}")
+endif()
 list(PREPEND CMAKE_PREFIX_PATH "${PROJECT_SOURCE_DIR}/.deps/ocr")
 find_package(Tesseract 5.5.1 EXACT CONFIG REQUIRED)
 foreach(language fra eng chi_sim)
@@ -35,9 +55,26 @@ find_package(PDFium CONFIG REQUIRED)
 if(NOT PDFium_VERSION STREQUAL "157.0.8100.0")
     message(FATAL_ERROR "Expected PDFium 157.0.8100.0, got ${PDFium_VERSION}")
 endif()
+if(APPLE)
+    # The pinned upstream dylib records install name "./libpdfium.dylib", which dyld resolves
+    # against the current working directory. Link a staged copy whose id is @rpath-relative so the
+    # build-tree RPATH finds it; arm64 needs the ad-hoc signature renewed after the id change.
+    get_target_property(langlern_pdfium_source pdfium IMPORTED_LOCATION)
+    set(langlern_pdfium_dir "${CMAKE_BINARY_DIR}/pdfium")
+    file(MAKE_DIRECTORY "${langlern_pdfium_dir}")
+    file(COPY_FILE "${langlern_pdfium_source}" "${langlern_pdfium_dir}/libpdfium.pending.dylib")
+    execute_process(COMMAND install_name_tool -id @rpath/libpdfium.dylib "${langlern_pdfium_dir}/libpdfium.pending.dylib"
+        COMMAND_ERROR_IS_FATAL ANY)
+    execute_process(COMMAND codesign --force --sign - "${langlern_pdfium_dir}/libpdfium.pending.dylib"
+        COMMAND_ERROR_IS_FATAL ANY)
+    file(COPY_FILE "${langlern_pdfium_dir}/libpdfium.pending.dylib" "${langlern_pdfium_dir}/libpdfium.dylib" ONLY_IF_DIFFERENT)
+    file(REMOVE "${langlern_pdfium_dir}/libpdfium.pending.dylib")
+    set_target_properties(pdfium PROPERTIES IMPORTED_LOCATION "${langlern_pdfium_dir}/libpdfium.dylib"
+        IMPORTED_SONAME "@rpath/libpdfium.dylib")
+endif()
 add_subdirectory(src/pdf)
 add_subdirectory(src/ocr)
-if(WIN32)
+if(WIN32 OR APPLE)
     add_subdirectory(src/speech)
 endif()
 add_subdirectory(qml/Langlern/Shell)

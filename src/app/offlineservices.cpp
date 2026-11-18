@@ -31,10 +31,17 @@
 #include <winrt/Windows.Media.Ocr.h>
 #include <winrt/Windows.Storage.Streams.h>
 #endif
+#ifdef Q_OS_MACOS
+#include "platformmedia.h"
+#include <chrono>
+#include <thread>
+#endif
 
 struct OfflineServices::Native {
 #ifdef Q_OS_WIN
     MCIDEVICEID audio=0;
+#elif defined(Q_OS_MACOS)
+    std::unique_ptr<PlatformMedia::AudioPlayer> audio;  // owned by the services worker thread
 #endif
     double loopStart=-1,loopEnd=-1;
 };
@@ -92,6 +99,15 @@ OfflineServices::OfflineServices(QObject* parent):QObject(parent),native_(std::m
             }
         }
         QMetaObject::invokeMethod(this,[this,voices]{speechVoices_=voices;emit speechChanged();},Qt::QueuedConnection);
+#elif defined(Q_OS_MACOS)
+        QVariantList voices;
+        if(NaturalSpeech::installed()) {
+            voices.append(QVariantMap{{"label",tr("男声 · 自然法语（离线）")},{"id",QStringLiteral("natural:fr:male")},{"locale",QStringLiteral("fr-FR")}});
+            voices.append(QVariantMap{{"label",tr("女声 · 自然法语（离线）")},{"id",QStringLiteral("natural:fr:female")},{"locale",QStringLiteral("fr-FR")}});
+        }
+        for(const auto& voice:PlatformMedia::systemVoices())
+            voices.append(QVariantMap{{"label",voice.name},{"id",voice.id},{"locale",voice.locale}});
+        QMetaObject::invokeMethod(this,[this,voices]{speechVoices_=voices;emit speechChanged();},Qt::QueuedConnection);
 #endif
     },Qt::QueuedConnection);
     QMetaObject::invokeMethod(worker_,[this] {
@@ -102,6 +118,8 @@ OfflineServices::OfflineServices(QObject* parent):QObject(parent),native_(std::m
             for(const auto& language:winrt::Windows::Media::Ocr::OcrEngine::AvailableRecognizerLanguages())
                 langs.append(QString::fromWCharArray(language.LanguageTag().c_str()));
         } catch(const winrt::hresult_error&) {}
+#elif defined(Q_OS_MACOS)
+        langs=PlatformMedia::recognitionLanguages();
 #endif
         QMetaObject::invokeMethod(this,[this,langs]{languages_=langs;emit changed();},Qt::QueuedConnection);
     },Qt::QueuedConnection);
@@ -128,6 +146,8 @@ OfflineServices::~OfflineServices() {
 #ifdef Q_OS_WIN
         if(state->audio)mciSendCommandW(state->audio,MCI_CLOSE,0,0);
         winrt::uninit_apartment();
+#elif defined(Q_OS_MACOS)
+        state->audio.reset();
 #endif
     },Qt::BlockingQueuedConnection);
     thread_.quit();thread_.wait();
@@ -175,6 +195,9 @@ void OfflineServices::recognize(QImage image,QString document,int page,QString l
                 }
             }
         } catch(const winrt::hresult_error& e) { error=tr("OCR 失败：%1").arg(QString::fromWCharArray(e.message().c_str())); }
+#elif defined(Q_OS_MACOS)
+        if(!language.isEmpty() && !PlatformMedia::recognitionLanguages().contains(language)) error=tr("此 OCR 语言包未安装。请选择系统已有语言包。");
+        else if(const auto failure=PlatformMedia::recognizeText(image,language,text,words);!failure.isEmpty()) error=tr("OCR 失败：%1").arg(failure);
 #else
         Q_UNUSED(image);Q_UNUSED(language);error=tr("此平台尚未接入本地 OCR 引擎。");
 #endif
@@ -280,13 +303,13 @@ void OfflineServices::speak(QString text,QString locale) {
     QMetaObject::invokeMethod(speechWorker_,[this,text,locale,voiceId,natural,revision] {
         if(revision!=speechRevision_)return;
         QString error;
-#ifdef Q_OS_WIN
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
         if(natural) {
             if(!natural_)natural_=std::make_unique<NaturalSpeech>();
             SpeechMetrics metrics;
             const SpeechControl control{speechRevision_,revision,speechPaused_,speechRate_,[this,revision]{
                 QMetaObject::invokeMethod(this,[this,revision]{if(revision==speechRevision_){speechLoading_=false;emit speechChanged();}},Qt::QueuedConnection);
-            }};
+            },{}};
             error=natural_->speak(text,voiceId.endsWith(QLatin1String(":female"))?QString::fromLatin1(NaturalVoices::female):QString::fromLatin1(NaturalVoices::male),control,metrics);
             qInfo("speech_natural request=%llu voice=%s load_ms=%.3f first_pcm_ms=%.3f generation_ms=%.3f audio_s=%.3f played_samples=%llu queue_peak_bytes=%llu canceled=%d",
                 revision,qPrintable(voiceId),metrics.loadMs,metrics.firstPcmMs,metrics.generationMs,metrics.audioSeconds,metrics.playedSamples,metrics.peakQueueBytes,metrics.canceled);
@@ -297,6 +320,8 @@ void OfflineServices::speak(QString text,QString locale) {
             },Qt::QueuedConnection);
             return;
         }
+#endif
+#ifdef Q_OS_WIN
         Microsoft::WRL::ComPtr<ISpVoice> voice;
         auto result=CoCreateInstance(CLSID_SpVoice,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&voice));
         if(SUCCEEDED(result)) {
@@ -320,6 +345,26 @@ void OfflineServices::speak(QString text,QString locale) {
             }
         }
         if(FAILED(result)&&error.isEmpty())error=tr("离线朗读不可用，请检查系统语音包。");
+#elif defined(Q_OS_MACOS)
+        PlatformMedia::Speaker speaker;
+        if(voiceId.isEmpty())error=tr("本机朗读引擎没有可用的 %1 离线声音，请在系统中安装对应声音。").arg(locale);
+        bool paused=false;
+        for(qsizetype start=0;error.isEmpty() && start<text.size() && revision==speechRevision_;) {
+            qsizetype end=std::min(start+2000,text.size());
+            if(end<text.size() && text[end].isLowSurrogate())--end;
+            const auto chunk=text.mid(start,end-start);start=end;
+            if(!speaker.speak(voiceId,chunk,speechRate_.load())){error=tr("离线朗读不可用，请检查系统语音包。");break;}
+            // Speaking starts asynchronously: wait for it to begin (or a very short chunk to end) before polling.
+            QElapsedTimer started;started.start();bool began=false;
+            for(;;) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(30));
+                if(revision!=speechRevision_){speaker.stop();break;}
+                const bool pause=speechPaused_.load();
+                if(pause!=paused){if(pause)speaker.pause();else speaker.resume();paused=pause;}
+                if(speaker.speaking())began=true;
+                else if(began || started.elapsed()>3000)break;
+            }
+        }
 #else
         error=tr("此平台尚未接入离线语音引擎。");
 #endif
@@ -341,6 +386,10 @@ void OfflineServices::openAudio(QUrl file) {
             mciSendCommandW(state->audio,MCI_SET,MCI_SET_TIME_FORMAT,reinterpret_cast<DWORD_PTR>(&format));
             MCI_STATUS_PARMS value{};value.dwItem=MCI_STATUS_LENGTH;mciSendCommandW(state->audio,MCI_STATUS,MCI_STATUS_ITEM,reinterpret_cast<DWORD_PTR>(&value));duration=double(value.dwReturn)/1000;
         }
+#elif defined(Q_OS_MACOS)
+        if(!state->audio)state->audio=std::make_unique<PlatformMedia::AudioPlayer>();
+        state->loopStart=state->loopEnd=-1;
+        if(!state->audio->open(file.toLocalFile(),duration).isEmpty()) error=tr("无法播放该本地音频，系统解码器可能不支持。请尝试 WAV 或 MP3。");
 #else
         error=tr("此平台尚未接入本地音频播放器。");
 #endif
@@ -354,6 +403,10 @@ void OfflineServices::toggleAudio() {
         if(!state->audio)return;
         const auto code=mciSendCommandW(state->audio,playing?MCI_PLAY:MCI_PAUSE,0,0);
         if(code==0)QMetaObject::invokeMethod(this,[this,playing]{playing_=playing;emit audioChanged();},Qt::QueuedConnection);
+#elif defined(Q_OS_MACOS)
+        if(!state->audio || !state->audio->isOpen())return;
+        const bool ok=playing?state->audio->play():(state->audio->pause(),true);
+        if(ok)QMetaObject::invokeMethod(this,[this,playing]{playing_=playing;emit audioChanged();},Qt::QueuedConnection);
 #endif
     },Qt::QueuedConnection);
 }
@@ -364,6 +417,8 @@ void OfflineServices::seek(double seconds) {
     QMetaObject::invokeMethod(worker_,[ms,playing,state=native_] {
 #ifdef Q_OS_WIN
         if(!state->audio)return;MCI_SEEK_PARMS seek{};seek.dwTo=ms;mciSendCommandW(state->audio,MCI_SEEK,MCI_TO,reinterpret_cast<DWORD_PTR>(&seek));if(playing)mciSendCommandW(state->audio,MCI_PLAY,0,0);
+#elif defined(Q_OS_MACOS)
+        Q_UNUSED(playing);if(state->audio)state->audio->seek(ms/1000.0);  // AVAudioPlayer keeps its play state across seeks
 #endif
     },Qt::QueuedConnection);
 }
@@ -375,6 +430,10 @@ void OfflineServices::setRate(double rate) {
         if(!state->audio)return;
         const auto command=L"set "+std::to_wstring(state->audio)+L" speed "+std::to_wstring(speed);
         if(mciSendStringW(command.c_str(),nullptr,0,nullptr)!=0)
+            QMetaObject::invokeMethod(this,[this]{status_=tr("当前音频解码器不支持变速。");emit changed();},Qt::QueuedConnection);
+#elif defined(Q_OS_MACOS)
+        if(!state->audio || !state->audio->isOpen())return;
+        if(!state->audio->setRate(speed/1000.0))
             QMetaObject::invokeMethod(this,[this]{status_=tr("当前音频解码器不支持变速。");emit changed();},Qt::QueuedConnection);
 #endif
     },Qt::QueuedConnection);
@@ -396,6 +455,11 @@ void OfflineServices::pollAudio() {
         if(playing&&state->loopStart>=0&&state->loopEnd>state->loopStart&&seconds>=state->loopEnd) {
             MCI_SEEK_PARMS seek{};seek.dwTo=static_cast<DWORD>(state->loopStart*1000);mciSendCommandW(state->audio,MCI_SEEK,MCI_TO,reinterpret_cast<DWORD_PTR>(&seek));mciSendCommandW(state->audio,MCI_PLAY,0,0);seconds=state->loopStart;
         }
+        QMetaObject::invokeMethod(this,[this,seconds,playing]{position_=seconds;playing_=playing;emit audioChanged();},Qt::QueuedConnection);
+#elif defined(Q_OS_MACOS)
+        if(!state->audio || !state->audio->isOpen())return;
+        auto seconds=state->audio->position();const bool playing=state->audio->playing();
+        if(playing&&state->loopStart>=0&&state->loopEnd>state->loopStart&&seconds>=state->loopEnd){state->audio->seek(state->loopStart);seconds=state->loopStart;}
         QMetaObject::invokeMethod(this,[this,seconds,playing]{position_=seconds;playing_=playing;emit audioChanged();},Qt::QueuedConnection);
 #endif
     },Qt::QueuedConnection);

@@ -27,7 +27,7 @@ Piper/Kokoro 依赖 espeak-ng（GPL-3.0），与项目 MIT 分发方式冲突，
 - `src/speech/supertonic_backend.cpp` → `langlern_speech.dll`：ONNX Runtime CPU 四图流程（时长预测 → 文本编码 → 8 步流匹配 → 声码器），语速系数 1.05，按名称绑定图输入。文本 NFKD 规范化、去 emoji、标点/空格修正、补句末标点并加 `<fr>…</fr>` 标签，字符经随包 `unicode_indexer.json` 映射，未知字符丢弃。逻辑为 Supertone MIT 参考代码的独立 C++ 移植。
 - 切分：每句一段（超过 200 字符先按逗号/分号、再按空格切），句间 0.3 s 静音。单句最长 30 s，超出报错提示分段选择。
 - 响度：每句独立归一到 −16 dBFS 有效 RMS（20 ms 帧、−45 dBFS 门限、增益 0.25–8×），零相位 3 ms 前瞻峰值限幅到 −1 dBFS（50 ms 释放）。
-- `src/app/naturalspeech.*`：在既有 speechThread 延迟加载 DLL、校验内嵌锁文件中全部模型/声线散列、创建模型；PCM 以 ≤4096 样本切片经 2 MiB 有界队列交给独立 WinMM/SoundTouch 播放线程（44.1 kHz 单声道）。推理线程数 min(4, 逻辑核/2)。每次图调用之间轮询请求版本；正在执行的单次图调用不能中断，停止后丢弃其结果。
+- `src/app/naturalspeech.*`：在既有 speechThread 延迟加载 DLL、校验内嵌锁文件中全部模型/声线散列、创建模型；PCM 以 ≤4096 样本切片经 2 MiB 有界队列交给独立 WinMM（macOS 为 AudioQueue）/SoundTouch 播放线程（44.1 kHz 单声道）。推理线程数 min(4, 逻辑核/2)。每次图调用之间轮询请求版本；正在执行的单次图调用不能中断，停止后丢弃其结果。
 - 服务层 `OfflineServices`：声音 id `natural:fr:male`/`natural:fr:female`，`frenchVoice` 偏好；`WorkspaceState.frenchVoice` 持久化。
 
 ## 依赖、许可与派生
@@ -54,4 +54,6 @@ Windows 11 / Core Ultra 7 265K（20 逻辑核）/ MSVC 19.51 / Qt 6.8.3 Release�
 - `benchmarks/run-speech.py --repeat 3`（`benchmarks/results/supertonic-20261111-bench`）：三轮独立进程均成功、无跳过。首次请求加载 1732–1802 ms、首段 PCM 2068–2146 ms（含校验与加载）；已加载后首段 PCM 300–369 ms；进程峰值 RSS / private 524–540 / 516–532 MiB（含 Qt、PDF、OCR、界面，非语音独占），比 Estelle 记录（432–435 MiB）高约 100 MiB。OS 文件缓存为热态。
 - 本地候选 `build/packages/supertonic-20261111.zip` 220217201 字节（SHA-256 `a9dfe8f298c342e3f8d14a55beaa24b1056d779b84c346ac4f0953006026b8c0`），`voices/supertonic3-fr` 约 146 MiB（含 DLL、许可证、SoundTouch 源码）；`validate-windows-package.py` 通过（清单、启动/模块来源与 9 个隔离运行套件）。包体积增大主要来自此前加入的法语词库（约 127 MiB），语音目录比 Estelle 版多约 16 MiB。
 
-未执行：macOS、干净虚拟机、长时间压力、sanitizer、声卡呈现延迟、GPU 显存。远端 CI 无音频设备/教材时相关用例按既有规则跳过；尚未提交和推送，远端 CI 未验证。
+macOS（2026-11-18，Apple Silicon、macOS 27.0）：`liblanglern_speech.dylib` 与 Microsoft 官方 NuGet 包中的 ONNX Runtime 1.23.2 osx-arm64 dylib、SoundTouch dylib 同目录延迟加载；PCM 经 AudioToolbox AudioQueue 播放（与 WinMM 版相同的 8×40 ms 缓冲与暂停/变速/停止语义）。模型派生结果与锁文件逐字节一致；`speech` 套件 6/6 通过，已加载后 5.6 s 音频生成约 0.54 s，首次请求含校验与加载 1.0–4.2 s。
+
+未执行：干净虚拟机、长时间压力、sanitizer、声卡呈现延迟、GPU 显存、macOS 人耳主观评测。远端 CI 无音频设备/教材时相关用例按既有规则跳过；尚未提交和推送，远端 CI 未验证。

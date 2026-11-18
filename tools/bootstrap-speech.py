@@ -46,6 +46,40 @@ def verified(path, item):
     return path.exists() and path.stat().st_size == item['bytes'] and digest(path) == item['sha256']
 
 
+def prepare_onnxruntime(item, platform):
+    """Lay out the official NuGet package as the release archive did: include/ and lib/."""
+    package = SOURCES / 'microsoft.ml.onnxruntime.1.23.2.nupkg'
+    download(item['url'], package, item['sha256'])
+    target = item['platforms'][platform]
+    directory = SOURCES / target['directory']
+    expected = {Path(entry['path']).name: entry for entry in target['lib']}
+    if not all(verified(directory / 'lib' / name, entry) for name, entry in expected.items()):
+        pending = SOURCES / (target['directory'] + '.pending')
+        shutil.rmtree(pending, ignore_errors=True)
+        with zipfile.ZipFile(package) as archive:
+            for entry in archive.namelist():
+                if entry.startswith(item['include']) and not entry.endswith('/'):
+                    output = pending / 'include' / entry[len(item['include']):]
+                    output.parent.mkdir(parents=True, exist_ok=True)
+                    output.write_bytes(archive.read(entry))
+            for entry in target['lib']:
+                output = pending / 'lib' / Path(entry['path']).name
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_bytes(archive.read(entry['path']))
+                if not verified(output, entry):
+                    raise ValueError('ONNX Runtime package file checksum mismatch: ' + entry['path'])
+            for notice in ('LICENSE', 'ThirdPartyNotices.txt'):
+                (pending / notice).write_bytes(archive.read(notice))
+        shutil.rmtree(directory, ignore_errors=True)
+        pending.replace(directory)
+    # Evidence for the source switch: compare with the previously reviewed release zip when it is still cached.
+    legacy = SOURCES / 'onnxruntime-win-x64-1.23.2' / 'lib'
+    if platform == 'windows' and legacy.is_dir():
+        for name in expected:
+            same = (legacy / name).exists() and digest(legacy / name) == digest(directory / 'lib' / name)
+            print(f'ONNX Runtime {name}: NuGet copy {"identical to" if same else "DIFFERS from"} the cached release zip')
+
+
 def derivation_python():
     python = VENV / ('Scripts/python.exe' if sys.platform == 'win32' else 'bin/python')
     requirements = (ROOT / 'tools/requirements-speech.lock.txt').read_text(encoding='utf-8')
@@ -60,19 +94,16 @@ def derivation_python():
 
 def main():
     lock = json.loads((ROOT / 'third_party/speech.lock.json').read_text(encoding='utf-8'))
+    platform = 'windows' if sys.platform == 'win32' else 'mac'
     for item in lock['sources']:
-        name = item['name']
-        filename = {'onnxruntime': 'onnxruntime-win-x64-1.23.2.zip', 'soundtouch': 'soundtouch-2.3.3.tar.gz'}[name]
-        path = SOURCES / filename
+        if item['name'] == 'onnxruntime':
+            prepare_onnxruntime(item, platform)
+            continue
+        path = SOURCES / 'soundtouch-2.3.3.tar.gz'
         download(item['url'], path, item['sha256'])
-        directory = {'onnxruntime': 'onnxruntime-win-x64-1.23.2', 'soundtouch': 'soundtouch'}[name]
-        if not (SOURCES / directory).exists():
-            if name == 'onnxruntime':
-                with zipfile.ZipFile(path) as archive:
-                    archive.extractall(SOURCES)
-            else:
-                with tarfile.open(path) as archive:
-                    archive.extractall(SOURCES, filter='data')
+        if not (SOURCES / 'soundtouch').exists():
+            with tarfile.open(path) as archive:
+                archive.extractall(SOURCES, filter='data')
     model = lock['model']
     upstream = {item['path']: item for item in lock['upstream']}
     for relative, item in upstream.items():

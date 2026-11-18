@@ -17,6 +17,7 @@
 #include <QStandardPaths>
 #include <QTimer>
 #include <QtQml/QQmlExtensionPlugin>
+#include <memory>
 
 Q_IMPORT_QML_PLUGIN(LanglernShellPlugin)
 
@@ -96,8 +97,22 @@ int main(int argc, char* argv[]) {
             {QStringLiteral("graphics_api"), static_cast<int>(window->rendererInterface()->graphicsApi())},
             {QStringLiteral("dpr"), window->devicePixelRatio()}});
         if (probe) {
-            QCoreApplication::postEvent(window, new QKeyEvent(QEvent::KeyPress, Qt::Key_F6, Qt::NoModifier));
-            QCoreApplication::postEvent(window, new QKeyEvent(QEvent::KeyRelease, Qt::Key_F6, Qt::NoModifier));
+            // Window shortcuts ignore keys until the window is active. macOS may activate it only
+            // after the first frame, so a key sent earlier is dropped; send it once active.
+            const auto sendProbeKey = [window] {
+                QCoreApplication::postEvent(window, new QKeyEvent(QEvent::KeyPress, Qt::Key_F6, Qt::NoModifier));
+                QCoreApplication::postEvent(window, new QKeyEvent(QEvent::KeyRelease, Qt::Key_F6, Qt::NoModifier));
+            };
+            if (window->isActive()) {
+                sendProbeKey();
+            } else {
+                auto connection = std::make_shared<QMetaObject::Connection>();
+                *connection = QObject::connect(window, &QWindow::activeChanged, window, [window, connection, sendProbeKey] {
+                    if (!window->isActive()) return;
+                    QObject::disconnect(*connection);
+                    sendProbeKey();
+                });
+            }
         }
     }, Qt::QueuedConnection);
     QObject::connect(&shell, &ShellState::startupAcknowledged, &app, [&] {
@@ -107,7 +122,13 @@ int main(int argc, char* argv[]) {
     });
     if (probe) {
         QTimer::singleShot(10000, &app, [&] {
-            if (!acknowledged) { log(QStringLiteral("probe_timeout")); app.exit(3); }
+            // Window shortcuts need the window to be active; record it so a timeout caused by the
+            // desktop withholding focus (macOS cooperative activation) is distinguishable.
+            if (!acknowledged) {
+                log(QStringLiteral("probe_timeout"), {{QStringLiteral("window_active"), window->isActive()},
+                    {QStringLiteral("focus_window"), QGuiApplication::focusWindow() != nullptr}});
+                app.exit(3);
+            }
         });
     }
     log(QStringLiteral("window_show_requested"));

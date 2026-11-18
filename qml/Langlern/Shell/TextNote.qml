@@ -171,11 +171,11 @@ Item {
                     event.accepted = note.shell.annotations.selectNext(note.noteId)
                     return
                 }
-                if ((event.modifiers & (Qt.platform.os === "osx" ? Qt.MetaModifier : Qt.ControlModifier)) && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
+                if ((event.modifiers & Qt.ControlModifier) && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
                     note.shell.finishTextEditing()
                     focus = false
                     event.accepted = true
-                } else if ((event.modifiers & (Qt.platform.os === "osx" ? Qt.MetaModifier : Qt.ControlModifier)) && event.key === Qt.Key_Delete) {
+                } else if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_Delete) {
                     note.shell.resetInput()
                     note.shell.annotations.removeSelected()
                     event.accepted = true

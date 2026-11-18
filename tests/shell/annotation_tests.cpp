@@ -419,7 +419,7 @@ private slots:
         QGuiApplication::clipboard()->setText(QStringLiteral("Marie Dupont avec une longue réponse")); QTest::keyClick(window,Qt::Key_V,Qt::ControlModifier);
         QTRY_VERIFY(shell.annotations()->snapshot().first().text.startsWith("Marie"));
         const auto expanded=shell.annotations()->snapshot().first();
-        editor->setProperty("cursorPosition",5); QTest::keyClick(window,Qt::Key_End,Qt::ControlModifier|Qt::ShiftModifier); QTest::keyClick(window,Qt::Key_Backspace);
+        editor->setProperty("cursorPosition",5); QTest::keySequence(window,QKeySequence::SelectEndOfDocument); QTest::keyClick(window,Qt::Key_Backspace);
         QTRY_COMPARE(shell.annotations()->snapshot().first().text,QStringLiteral("Marie"));
         QTRY_VERIFY(shell.annotations()->snapshot().first().height<expanded.height);
         QTest::keyClick(window,Qt::Key_Return,Qt::ControlModifier);
@@ -545,13 +545,13 @@ private slots:
         const auto expanded=shell.annotations()->snapshot().first();
         QVERIFY(expanded.width<=expanded.maximumWidth);
         editor->setProperty("cursorPosition",5);
-        QTest::keyClick(window,Qt::Key_End,Qt::ControlModifier|Qt::ShiftModifier); QTest::keyClick(window,Qt::Key_Backspace);
+        QTest::keySequence(window,QKeySequence::SelectEndOfDocument); QTest::keyClick(window,Qt::Key_Backspace);
         QTRY_COMPARE(shell.annotations()->snapshot().first().text,QStringLiteral("short"));
         QTRY_VERIFY(shell.annotations()->snapshot().first().width<expanded.width);
         QTRY_COMPARE(shell.annotations()->snapshot().first().height,24.0);
         QTest::keyClick(window,Qt::Key_Z,Qt::ControlModifier);
         QTRY_COMPARE(shell.annotations()->snapshot().first().text,text);
-        QTest::keyClick(window,Qt::Key_Y,Qt::ControlModifier);
+        QTest::keySequence(window,QKeySequence::Redo);
         QTRY_COMPARE(shell.annotations()->snapshot().first().text,QStringLiteral("short"));
         QTest::keyClick(window,Qt::Key_A,Qt::ControlModifier); QTest::keyClick(window,Qt::Key_Backspace);
         QTRY_VERIFY(shell.annotations()->snapshot().first().text.isEmpty());
@@ -578,7 +578,7 @@ private slots:
             QTest::mouseMove(window,scene(target.center())+QPoint(3,0),20); QTRY_VERIFY(hint->isVisible());
             QTest::keyClick(window,Qt::Key_Z,Qt::ControlModifier);
             QTRY_COMPARE(shell.annotations()->snapshot(),committed);
-            QTest::keyClick(window,Qt::Key_Y,Qt::ControlModifier);
+            QTest::keySequence(window,QKeySequence::Redo);
             QTRY_VERIFY(shell.annotations()->snapshot().isEmpty());
             QTest::keyClick(window,Qt::Key_Z,Qt::ControlModifier);
             QTRY_COMPARE(shell.annotations()->snapshot(),committed);
@@ -773,7 +773,7 @@ private slots:
         QCOMPARE(style.start,0); QCOMPARE(style.length,5); QVERIFY(style.bold);
         QVERIFY(editor->hasActiveFocus()); QCOMPARE(editor->property("selectedText").toString(),QStringLiteral("hello"));
         QTest::keyClick(window,Qt::Key_Z,Qt::ControlModifier); QTRY_VERIFY(shell.annotations()->snapshot().first().styles.isEmpty());
-        QTest::keyClick(window,Qt::Key_Y,Qt::ControlModifier); QTRY_VERIFY(shell.annotations()->snapshot().first().styles.first().bold);
+        QTest::keySequence(window,QKeySequence::Redo); QTRY_VERIFY(shell.annotations()->snapshot().first().styles.first().bold);
         QVERIFY(QMetaObject::invokeMethod(editor,"select",Q_ARG(int,0),Q_ARG(int,5)));
         QTRY_VERIFY(popup->property("visible").toBool());
         click("formatItalic"); click("formatColor2"); click("formatLarger");
@@ -958,7 +958,7 @@ private slots:
         QCOMPARE(shell.annotations()->snapshot().first().text,QStringLiteral("answer中文"));
         QTest::keyClick(window,Qt::Key_Z,Qt::ControlModifier);
         QTRY_COMPARE(shell.annotations()->snapshot().first().text,QStringLiteral("answer"));
-        QTest::keyClick(window,Qt::Key_Y,Qt::ControlModifier);
+        QTest::keySequence(window,QKeySequence::Redo);
         QTRY_COMPARE(shell.annotations()->snapshot().first().text,QStringLiteral("answer中文"));
         const double beforeReturn=shell.annotations()->snapshot().first().width;
         QTest::keyClick(window,Qt::Key_Return);

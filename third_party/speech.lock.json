@@ -13,8 +13,32 @@
   "sources": [
     {
       "name": "onnxruntime",
-      "url": "https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-win-x64-1.23.2.zip",
-      "sha256": "0b38df9af21834e41e73d602d90db5cb06dbd1ca618948b8f1d66d607ac9f3cd"
+      "url": "https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime/1.23.2/microsoft.ml.onnxruntime.1.23.2.nupkg",
+      "sha256": "25fe172f7fcdf34f2b5b02c8b997f6b88abc282956849d4af4335af23d0c4e4a",
+      "nuget_sha512": "sVAnmG5xfi4JW7YU70jY6z4kSWaCt39tnyRHnqy7QlLIHA4RZ+mBBnzKUKAjhJYyTyPDPy92Wui7MY/kFgs2mA==",
+      "bytes": 123371574,
+      "note": "Official Microsoft NuGet package Microsoft.ML.OnnxRuntime 1.23.2. github.com/microsoft/onnxruntime and its releases return 404 since 2026-11-18, so the previously locked release zip can no longer be fetched. Recorded 2026-11-18: SHA-512 equals the nuget.org catalog entry; LICENSE and ThirdPartyNotices.txt are byte-identical to the reviewed notices.",
+      "replaces": {
+        "url": "https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-win-x64-1.23.2.zip",
+        "sha256": "0b38df9af21834e41e73d602d90db5cb06dbd1ca618948b8f1d66d607ac9f3cd"
+      },
+      "include": "build/native/include/",
+      "platforms": {
+        "windows": {
+          "directory": "onnxruntime-win-x64-1.23.2-nuget",
+          "lib": [
+            {"path": "runtimes/win-x64/native/onnxruntime.dll", "bytes": 14186016, "sha256": "dec964ab1ee36cc9b0ae247d13b376627992fc57dec0454354017ab8fd84f1ea"},
+            {"path": "runtimes/win-x64/native/onnxruntime.lib", "bytes": 2124, "sha256": "977263ca76e6a9d0f230a198d3b05b2a2bddfed66bc5c4d4fd25293b03cc78b5"},
+            {"path": "runtimes/win-x64/native/onnxruntime_providers_shared.dll", "bytes": 22088, "sha256": "a2b3a50956aa75a9879c8472bc7df4f7a8072bcd2db19a1b7d988e7688f293ef"}
+          ]
+        },
+        "mac": {
+          "directory": "onnxruntime-osx-arm64-1.23.2-nuget",
+          "lib": [
+            {"path": "runtimes/osx-arm64/native/libonnxruntime.dylib", "bytes": 35138784, "sha256": "d306d2bc768540766c7ed8a1e0ff05d2870c77a934ebeee4a7bafa1b732ef299"}
+          ]
+        }
+      }
     },
     {
       "name": "soundtouch",

@@ -22,7 +22,11 @@
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
 #define SPEECH_EXPORT extern "C" __declspec(dllexport)
+#else
+#define SPEECH_EXPORT extern "C" __attribute__((visibility("default")))
+#endif
 namespace {
 // Fixed by the pinned model release and the 2026-11-11 French evaluation; see docs/NATURAL_SPEECH.md.
 constexpr int denoiseSteps=8;
@@ -71,7 +75,11 @@ class Graph {
     std::vector<const char*> outputs_;
 public:
     Graph(Ort::Env& env,const QString& path,const Ort::SessionOptions& options)
+#ifdef _WIN32
         :session_(env,reinterpret_cast<const wchar_t*>(path.utf16()),options) {
+#else
+        :session_(env,path.toUtf8().constData(),options) {
+#endif
         Ort::AllocatorWithDefaultOptions allocator;
         for(std::size_t i=0;i<session_.GetInputCount();++i)inputStorage_.emplace_back(session_.GetInputNameAllocated(i,allocator).get());
         for(std::size_t i=0;i<session_.GetOutputCount();++i)outputStorage_.emplace_back(session_.GetOutputNameAllocated(i,allocator).get());

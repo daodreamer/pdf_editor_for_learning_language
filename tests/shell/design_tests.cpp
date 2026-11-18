@@ -151,10 +151,10 @@ private slots:
         service.setLookupLanguage("en");QCOMPARE(service.lookupLanguage(),QStringLiteral("en"));QVERIFY(service.externalDictionaryUrl("aller").isEmpty());
     }
     void realLocalAudioPlaybackAndSeeking() {
-#ifndef Q_OS_WIN
-        QSKIP("Native audio currently Windows only");
-#else
+#if defined(Q_OS_WIN)
         if(waveOutGetNumDevs()==0) QSKIP("No WinMM audio output device; real playback requires an audio-capable runner");
+#elif !defined(Q_OS_MACOS)
+        QSKIP("Native audio is implemented for Windows and macOS only");
 #endif
         QFile file(root_->filePath("silent.wav"));QVERIFY(file.open(QIODevice::WriteOnly));
         QDataStream out(&file);out.setByteOrder(QDataStream::LittleEndian);
@@ -169,8 +169,8 @@ private slots:
         QTest::qWait(650);QVERIFY(service.position()<1.4);service.toggleAudio();QTRY_VERIFY(!service.playing());
     }
     void realOfflineOcrAndInvalidation() {
-#ifndef Q_OS_WIN
-        QSKIP("Native OCR currently Windows only");
+#if !defined(Q_OS_WIN) && !defined(Q_OS_MACOS)
+        QSKIP("Native OCR is implemented for Windows and macOS only");
 #endif
         OfflineServices service;QSignalSpy ready(&service,&OfflineServices::changed);QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(),10000);
         if(service.languages().isEmpty())QSKIP("No installed system OCR language pack or OCR runtime is available");
@@ -331,7 +331,8 @@ private slots:
         QCOMPARE(source.pixelColor(2,2),QColor(Qt::black));
     }
     void cleanupCancellationDoesNotPublishFile() {
-        ShellState shell;shell.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/geometry.pdf"));QTRY_VERIFY(shell.storageReady());
+        // optimizeScan() is a no-op until pages are known; storage may become ready first.
+        ShellState shell;shell.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/geometry.pdf"));QTRY_VERIFY(shell.storageReady()&&shell.pageCount()>0);
         const auto target=root_->filePath("cancelled.pdf");shell.optimizeScan(QUrl::fromLocalFile(target),{{"deshadow",true}});shell.cancelScan();
         QTRY_VERIFY_WITH_TIMEOUT(!shell.scanning(),30000);QVERIFY(!QFileInfo::exists(target));QVERIFY(shell.exportStatus().contains(QStringLiteral("取消")));
         shell.beginShutdown();QTRY_VERIFY(shell.shutdownComplete());

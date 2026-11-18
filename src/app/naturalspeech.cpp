@@ -26,6 +26,9 @@
 #define NOMINMAX
 #include <windows.h>
 #include <mmsystem.h>
+#elif defined(Q_OS_MACOS)
+#include <AudioToolbox/AudioToolbox.h>
+#include <unordered_set>
 #endif
 
 namespace {
@@ -139,6 +142,70 @@ public:
     }
     void drain() {while(!blocks_.empty() && poll())briefWait();}
 };
+#elif defined(Q_OS_MACOS)
+void checkAudio(OSStatus status,const char* step) {
+    if(status!=noErr)throw std::runtime_error(std::string("Audio output failed: ")+step+" ("+std::to_string(int(status))+")");
+}
+// Same contract as the Windows WaveOutput: at most 8 queued 40 ms blocks, progress reported as blocks finish.
+class WaveOutput {
+    AudioQueueRef queue_=nullptr;
+    std::deque<std::pair<AudioQueueBufferRef,std::size_t>> blocks_;
+    std::mutex doneMutex_;
+    std::unordered_set<AudioQueueBufferRef> done_;
+    const SpeechControl& control_;
+    SpeechMetrics& metrics_;
+    const std::atomic<bool>& aborted_;
+    std::size_t blockSamples_;
+    bool started_=false,paused_=false;
+    // Runs on AudioQueue's internal thread; only records completion.
+    static void finished(void* opaque,AudioQueueRef,AudioQueueBufferRef buffer) {
+        auto& self=*static_cast<WaveOutput*>(opaque);std::lock_guard lock(self.doneMutex_);self.done_.insert(buffer);
+    }
+    void collect() {
+        while(!blocks_.empty()) {
+            {std::lock_guard lock(doneMutex_);if(!done_.erase(blocks_.front().first))return;}
+            AudioQueueFreeBuffer(queue_,blocks_.front().first);metrics_.playedSamples+=blocks_.front().second;blocks_.pop_front();
+            if(control_.playbackProgress)control_.playbackProgress(metrics_.playedSamples);
+        }
+    }
+public:
+    WaveOutput(const SpeechControl& control,SpeechMetrics& metrics,const std::atomic<bool>& aborted,unsigned sampleRate)
+        :control_(control),metrics_(metrics),aborted_(aborted),blockSamples_(sampleRate/25) {
+        AudioStreamBasicDescription format{};format.mSampleRate=sampleRate;format.mFormatID=kAudioFormatLinearPCM;
+        format.mFormatFlags=kLinearPCMFormatFlagIsSignedInteger|kLinearPCMFormatFlagIsPacked;format.mChannelsPerFrame=1;
+        format.mBitsPerChannel=16;format.mBytesPerFrame=2;format.mFramesPerPacket=1;format.mBytesPerPacket=2;
+        // A null run loop makes AudioQueue call back on its own thread; the speech worker has no CFRunLoop.
+        checkAudio(AudioQueueNewOutput(&format,&WaveOutput::finished,this,nullptr,nullptr,0,&queue_),"open");
+    }
+    ~WaveOutput() {
+        if(!queue_)return;
+        AudioQueueStop(queue_,true);AudioQueueDispose(queue_,true);  // disposing frees every buffer
+    }
+    bool poll() {
+        if(!control_.current() || aborted_.load())return false;
+        const bool pause=control_.paused.load();
+        if(started_ && pause!=paused_){checkAudio(pause?AudioQueuePause(queue_):AudioQueueStart(queue_,nullptr),"pause");paused_=pause;}
+        collect();return true;
+    }
+    bool write(const float* samples,std::size_t count) {
+        for(std::size_t offset=0;offset<count;) {
+            while(control_.current() && (blocks_.size()>=8 || control_.paused.load())) {if(!poll())return false;briefWait();}
+            if(!poll())return false;
+            const auto length=std::min(blockSamples_,count-offset);AudioQueueBufferRef buffer=nullptr;
+            checkAudio(AudioQueueAllocateBuffer(queue_,UInt32(length*sizeof(short)),&buffer),"allocate");
+            auto* pcm=static_cast<short*>(buffer->mAudioData);
+            for(std::size_t i=0;i<length;++i) {
+                const auto value=samples[offset+i];pcm[i]=std::isfinite(value)?short(std::round(std::clamp(value,-1.f,1.f)*32767.f)):0;
+            }
+            buffer->mAudioDataByteSize=UInt32(length*sizeof(short));
+            blocks_.emplace_back(buffer,length);  // tracked before enqueueing so a failure still frees it at dispose
+            checkAudio(AudioQueueEnqueueBuffer(queue_,buffer,0,nullptr),"enqueue");offset+=length;
+            if(!started_){checkAudio(AudioQueueStart(queue_,nullptr),"start");started_=true;}
+        }
+        return true;
+    }
+    void drain() {while(!blocks_.empty() && poll())briefWait();}
+};
 #endif
 }
 
@@ -150,6 +217,9 @@ bool NaturalSpeech::installed(const QString& root) {
 #ifdef Q_OS_WIN
     return QFileInfo::exists(root+"/manifest.json") && QFileInfo::exists(root+"/langlern_speech.dll")
         && QFileInfo::exists(root+"/onnxruntime.dll") && QFileInfo::exists(root+"/SoundTouchDLL.dll");
+#elif defined(Q_OS_MACOS)
+    return QFileInfo::exists(root+"/manifest.json") && QFileInfo::exists(root+"/liblanglern_speech.dylib")
+        && QFileInfo::exists(root+"/libonnxruntime.1.23.2.dylib") && QFileInfo::exists(root+"/libSoundTouchDLL.dylib");
 #else
     Q_UNUSED(root);return false;
 #endif
@@ -186,9 +256,14 @@ struct NaturalSpeech::Impl {
         }
         if(!control.current()){metrics.canceled=true;return {};}
         try {
-            ort.setFileName(root+"/onnxruntime.dll");if(!ort.load())return ort.errorString();
-            backend.setFileName(root+"/langlern_speech.dll");if(!backend.load())return backend.errorString();
-            tempoLibrary.setFileName(root+"/SoundTouchDLL.dll");if(!tempoLibrary.load())return tempoLibrary.errorString();
+#ifdef Q_OS_WIN
+            const QString ortName="/onnxruntime.dll",backendName="/langlern_speech.dll",tempoName="/SoundTouchDLL.dll";
+#else
+            const QString ortName="/libonnxruntime.1.23.2.dylib",backendName="/liblanglern_speech.dylib",tempoName="/libSoundTouchDLL.dylib";
+#endif
+            ort.setFileName(root+ortName);if(!ort.load())return ort.errorString();
+            backend.setFileName(root+backendName);if(!backend.load())return backend.errorString();
+            tempoLibrary.setFileName(root+tempoName);if(!tempoLibrary.load())return tempoLibrary.errorString();
             create=resolve<SpeechCreate>(backend,"langlernSpeechCreate");rate=resolve<SpeechSampleRate>(backend,"langlernSpeechSampleRate");
             generate=resolve<SpeechGenerate>(backend,"langlernSpeechGenerate");destroy=resolve<SpeechDestroy>(backend,"langlernSpeechDestroy");
             tempo.load(tempoLibrary);std::array<char,2048> error{};
@@ -230,7 +305,7 @@ QString NaturalSpeech::generate(const QString& text,const QString& voice,const S
     return impl_->stream(text,voice,control,metrics,[&](const float* values,std::size_t count){return waitWhilePaused(control) && sink(values,count);});
 }
 QString NaturalSpeech::speak(const QString& text,const QString& voice,const SpeechControl& control,SpeechMetrics& metrics) {
-#ifndef Q_OS_WIN
+#if !defined(Q_OS_WIN) && !defined(Q_OS_MACOS)
     Q_UNUSED(text);Q_UNUSED(voice);Q_UNUSED(control);Q_UNUSED(metrics);return QStringLiteral("Natural speech playback is not implemented on this platform");
 #else
     if(!knownVoice(voice))return QStringLiteral("Unknown speech voice");

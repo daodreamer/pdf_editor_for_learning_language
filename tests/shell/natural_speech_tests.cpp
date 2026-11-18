@@ -65,10 +65,10 @@ class NaturalSpeechTests : public QObject {
     std::unique_ptr<QTemporaryDir> workspace_;
 private slots:
     void initTestCase() {
-#ifndef Q_OS_WIN
+#if !defined(Q_OS_WIN) && !defined(Q_OS_MACOS)
         QSKIP("Supertonic CPU backend/playback is not yet validated on this platform");
 #endif
-        QVERIFY2(NaturalSpeech::installed(),"Run tools/build-windows.ps1 to build and install the actual Supertonic French voice pack");
+        QVERIFY2(NaturalSpeech::installed(),"Run tools/bootstrap-speech.py and rebuild to install the actual Supertonic French voice pack");
     }
     void init(){workspace_=std::make_unique<QTemporaryDir>();setTestEnvironment("LANGLERN_WORKSPACE_DIR",workspace_->path());}
     void nativePcmBothVoicesUnicodeAndIntegrity() {

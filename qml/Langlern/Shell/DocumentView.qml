@@ -17,12 +17,12 @@ ColumnLayout {
         inputMode = mode
         selectionMouse.forceActiveFocus()
     }
-    Shortcut { sequence: (Qt.platform.os === "osx" ? "Meta" : "Ctrl") + "+Shift+A"; enabled: view.visible; onActivated: view.switchMode(0) }
-    Shortcut { sequence: (Qt.platform.os === "osx" ? "Meta" : "Ctrl") + "+Shift+S"; enabled: view.visible; onActivated: view.switchMode(1) }
-    Shortcut { sequence: (Qt.platform.os === "osx" ? "Meta" : "Ctrl") + "+Shift+T"; enabled: view.visible; onActivated: view.switchMode(2) }
-    Shortcut { sequence: (Qt.platform.os === "osx" ? "Meta" : "Ctrl") + "+Shift+P"; enabled: view.visible; onActivated: view.switchMode(3) }
-    Shortcut { sequence: (Qt.platform.os === "osx" ? "Meta" : "Ctrl") + "+Shift+E"; enabled: view.visible; onActivated: view.switchMode(4) }
-    Shortcut { sequence: (Qt.platform.os === "osx" ? "Meta" : "Ctrl") + "+Shift+M"; enabled: view.visible; onActivated: view.switchMode(5) }
+    Shortcut { sequence: "Ctrl+Shift+A"; enabled: view.visible; onActivated: view.switchMode(0) }
+    Shortcut { sequence: "Ctrl+Shift+S"; enabled: view.visible; onActivated: view.switchMode(1) }
+    Shortcut { sequence: "Ctrl+Shift+T"; enabled: view.visible; onActivated: view.switchMode(2) }
+    Shortcut { sequence: "Ctrl+Shift+P"; enabled: view.visible; onActivated: view.switchMode(3) }
+    Shortcut { sequence: "Ctrl+Shift+E"; enabled: view.visible; onActivated: view.switchMode(4) }
+    Shortcut { sequence: "Ctrl+Shift+M"; enabled: view.visible; onActivated: view.switchMode(5) }
     property color inkColor: inkColors.colors[inkColors.currentIndex]
     property real inkWidth: inkSize.value
     property bool marking: false
