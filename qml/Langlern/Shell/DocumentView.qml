@@ -59,6 +59,8 @@ ColumnLayout {
         readonly property var colors: ["#235fbd", "#ce3446", "#188450", "#242424"]
         model: colors
     }
+    // Pen width in PDF points; written by the toolbar slider and restored from preferences.
+    property alias penWidth: inkSize.value
     Item { id: inkSize; objectName: "inkSize"; property real value: 2 }
     Flickable {
         id: viewport

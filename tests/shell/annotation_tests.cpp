@@ -548,7 +548,7 @@ private slots:
         QTest::keySequence(window,QKeySequence::SelectEndOfDocument); QTest::keyClick(window,Qt::Key_Backspace);
         QTRY_COMPARE(shell.annotations()->snapshot().first().text,QStringLiteral("short"));
         QTRY_VERIFY(shell.annotations()->snapshot().first().width<expanded.width);
-        QTRY_COMPARE(shell.annotations()->snapshot().first().height,24.0);
+        QTRY_COMPARE(shell.annotations()->snapshot().first().height,shell.annotations()->defaultTextHeight());
         QTest::keyClick(window,Qt::Key_Z,Qt::ControlModifier);
         QTRY_COMPARE(shell.annotations()->snapshot().first().text,text);
         QTest::keySequence(window,QKeySequence::Redo);
@@ -666,7 +666,7 @@ private slots:
         model.undo(); QCOMPARE(model.snapshot().first(),before);
         model.redo(); QCOMPARE(model.snapshot().first(),after);
         model.select(id); model.setText(id,QStringLiteral("short"),24);
-        QCOMPARE(model.snapshot().first().height,24.0); QVERIFY(model.snapshot().first().width<200); model.finishEditing();
+        QCOMPARE(model.snapshot().first().height,model.defaultTextHeight()); QVERIFY(model.snapshot().first().width<200); model.finishEditing();
         model.resize(id,2,2,10000,10000);
         const auto bounded=model.snapshot().first();
         QCOMPARE(bounded.width,570.0); QCOMPARE(bounded.height,780.0);
@@ -779,13 +779,15 @@ private slots:
         click("formatItalic"); click("formatColor2"); click("formatLarger");
         QTest::qWait(20);
         style=shell.annotations()->snapshot().first().styles.first();
-        QVERIFY(style.bold && style.italic); QCOMPARE(style.size,15.0); QCOMPARE(style.color,QColor("#e5484d"));
-        QTRY_COMPARE(popup->property("current").toMap()["size"].toDouble(),15.0);
+        QVERIFY(style.bold && style.italic); QCOMPARE(style.size,13.0); QCOMPARE(style.color,QColor("#e5484d"));
+        QTRY_COMPARE(popup->property("current").toMap()["size"].toDouble(),13.0);
+        // The chosen size becomes the size of the next new answer.
+        QCOMPARE(shell.annotations()->defaultFontSize(),13.0);
         QVERIFY(popup->property("current").toMap()["italic"].toBool());
         QCOMPARE(style.start,0); QCOMPARE(style.length,5);
         QCOMPARE(shell.annotations()->snapshot().first().text,QStringLiteral("hello answer"));
         auto* controller=editor->parentItem()->parentItem()->findChild<AnnotationText*>(); QVERIFY(controller);
-        const auto rest=controller->selectionStyle(6,12); QVERIFY(!rest["bold"].toBool()); QCOMPARE(rest["size"].toDouble(),14.0);
+        const auto rest=controller->selectionStyle(6,12); QVERIFY(!rest["bold"].toBool()); QCOMPARE(rest["size"].toDouble(),12.0);
         const auto artifacts=qEnvironmentVariable("LANGLERN_FORMAT_ARTIFACT_DIR");
         if(!artifacts.isEmpty()) {
             QTest::qWait(80); QFile image(QDir(artifacts).filePath("format-popover.png")); QVERIFY(image.open(QIODevice::WriteOnly|QIODevice::NewOnly));
@@ -938,6 +940,15 @@ private slots:
         QTRY_COMPARE(shell.annotations()->snapshot().size(),1);
         auto* editor=findItem(window->contentItem(),QStringLiteral("annotationEditor")); QVERIFY(editor);
         QTRY_VERIFY(editor->hasActiveFocus());
+        {
+            // The click marks the caret: left edge of the box, centred on its single line.
+            const auto created=shell.annotations()->snapshot().first(); const auto g=shell.annotations()->geometry(0);
+            const auto origin=g.pdfToDisplay.map(created.anchor);
+            QCOMPARE(created.fontSize,12.0); QCOMPARE(created.height,shell.annotations()->defaultTextHeight());
+            const double pixel=1.5/shell.pageHeight(0);
+            QVERIFY2(std::abs(origin.x()-.25)<pixel,qPrintable(QString::number(origin.x())));
+            QVERIFY2(std::abs(origin.y()+created.height/2/g.units.height()-.3)<pixel,qPrintable(QString::number(origin.y())));
+        }
         const double initialWidth=shell.annotations()->snapshot().first().width;
         QVERIFY(initialWidth<48);
         for(const char c:QByteArray("answer")) QTest::keyClick(window,c);

@@ -47,6 +47,12 @@ ApplicationWindow {
         dark: shellTheme.dark
     }
     WorkspaceState { id: workspace }
+    // The last text size the user picked is the size of every new answer, also after restart.
+    Component.onCompleted: window.shell.annotations.defaultFontSize = workspace.textSize
+    Connections {
+        target: window.shell.annotations
+        function onDefaultFontSizeChanged(): void { workspace.textSize = window.shell.annotations.defaultFontSize }
+    }
     OfflineServices { id: offline }
     Connections {
         target: window.shell

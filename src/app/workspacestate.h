@@ -22,6 +22,8 @@ class WorkspaceState : public QObject {
     Q_PROPERTY(bool english READ english WRITE setEnglish NOTIFY preferencesChanged)
     Q_PROPERTY(QString lookupLanguage READ lookupLanguage WRITE setLookupLanguage NOTIFY preferencesChanged)
     Q_PROPERTY(QString frenchVoice READ frenchVoice WRITE setFrenchVoice NOTIFY preferencesChanged)
+    Q_PROPERTY(double textSize READ textSize WRITE setTextSize NOTIFY preferencesChanged)
+    Q_PROPERTY(double inkWidth READ inkWidth WRITE setInkWidth NOTIFY preferencesChanged)
 public:
     explicit WorkspaceState(QObject* parent=nullptr);
     ~WorkspaceState() override;
@@ -38,6 +40,8 @@ public:
     bool english() const { return english_; }
     QString lookupLanguage() const { return lookupLanguage_; }
     QString frenchVoice() const { return frenchVoice_; }
+    double textSize() const { return textSize_; }
+    double inkWidth() const { return inkWidth_; }
     void setDocument(QString path);
     void setLayout(int value);
     void setToolbar(int value);
@@ -46,6 +50,8 @@ public:
     void setEnglish(bool value);
     void setLookupLanguage(QString value);
     void setFrenchVoice(QString value);
+    void setTextSize(double value);
+    void setInkWidth(double value);
     Q_INVOKABLE void remember(const QUrl& file, const QString& title, int pages, int page);
     Q_INVOKABLE void updateProgress(const QUrl& file,int pages,int page);
     Q_INVOKABLE void forget(const QUrl& file);
@@ -71,6 +77,7 @@ private:
     bool english_=false;
     QString lookupLanguage_=QStringLiteral("fr");
     QString frenchVoice_=QStringLiteral("male");
+    double textSize_, inkWidth_;
     QThread writerThread_;
     QObject* writer_=nullptr;
     QTimer timer_;

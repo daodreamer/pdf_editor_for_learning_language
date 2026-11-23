@@ -79,20 +79,36 @@ void AnnotationModel::record(TextAnnotation before,TextAnnotation after) {
     if(before==after) return;
     record(Command{std::move(before),std::move(after),{}, {}});
 }
+static double lineHeight(const QString& family,double size) {
+    QFont font(family); font.setPixelSize(qRound(size));
+    return std::ceil(QFontMetricsF(font).height());
+}
+void AnnotationModel::setDefaultFontSize(double size) {
+    if(!std::isfinite(size)) return;
+    size=std::clamp(std::round(size),AnnotationConfig::minTextSize,AnnotationConfig::maxTextSize);
+    if(size==defaultFontSize_) return;
+    defaultFontSize_=size; emit defaultFontSizeChanged();
+}
+double AnnotationModel::defaultTextHeight() const { return lineHeight(TextAnnotation{}.family,defaultFontSize_); }
 QString AnnotationModel::create(int page,double x,double y,double maximumWidth,double fieldHeight,double lineSpacing,int lines) {
-    if(!geometry_.contains(page) || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(maximumWidth) || !std::isfinite(fieldHeight) || fieldHeight<=0 || maximumWidth<0 || x<0 || y<0 || x>=1 || y>=1) return {};
+    if(!geometry_.contains(page) || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(maximumWidth) || !std::isfinite(fieldHeight) || fieldHeight<0 || maximumWidth<0 || x<0 || y<0 || x>=1 || y>=1) return {};
     if(!std::isfinite(lineSpacing) || lineSpacing<0 || lines<1 || lines>64 || (lines>1 && !(lineSpacing>0))) return {};
     cancelGesture(); clearInkSelection(); finishEditing();
     // Leave room for a usable editor at the right/bottom edge.
     const auto g=geometry_[page];
     x=std::min(x,std::max(0.0,1-(maximumWidth>0?std::min(48.0,maximumWidth):48)/g.units.width()));
-    y=std::min(y,std::max(0.0,1-24/g.units.height()));
     TextAnnotation n;
+    n.fontSize=defaultFontSize_;
+    // 0 = a plain answer: exactly one line of the default font tall.
+    const bool plain=fieldHeight==0;
+    if(plain) fieldHeight=lineHeight(n.family,n.fontSize);
+    y=std::min(y,std::max(0.0,1-fieldHeight/g.units.height()));
     n.order=nextTextOrder_++;
     n.id=QUuid::createUuid().toString(QUuid::WithoutBraces); n.page=page;
     n.anchor=g.displayToPdf.map(QPointF(x,y)); n.right=g.right(); n.down=g.down();
-    if(fieldHeight<24) {
-        n.fontSize=std::clamp(double(qRound(fieldHeight*.62)),8.0,14.0);
+    if(plain) n.minimumHeight=n.height=fieldHeight;
+    else if(fieldHeight<24) {
+        n.fontSize=std::min(n.fontSize,std::clamp(double(qRound(fieldHeight*.62)),8.0,14.0));
         n.minimumHeight=n.height=fieldHeight;
     }
     if(lines>1) {
@@ -149,7 +165,7 @@ void AnnotationModel::setEditorText(const QString& id,const QString& text,double
             if(n.maximumWidth==0) n.maximumWidth=n.width;
             n.widthLocked=false; changedRoles.append(WidthLocked);
         }
-        if(!(n.lineSpacing>0)) n.minimumHeight=n.fontSize<14?14:24;
+        if(!(n.lineSpacing>0)) n.minimumHeight=lineHeight(n.family,n.fontSize);
     }
     QFont font(n.family); font.setPixelSize(qRound(n.fontSize));
     QTextDocument layout; layout.setDocumentMargin(0); layout.setDefaultFont(font);

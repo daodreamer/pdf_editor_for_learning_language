@@ -596,7 +596,10 @@ QString ShellState::createTextBox(double x,double y) {
     if(x<left || x>=left+w || y<model_.top(page) || y>=model_.top(page)+h) return {};
     finishTextEditing(); textSelection_.clear();
     focusPage(page);
-    return annotations_.create(page,(x-left)/w,(y-model_.top(page))/h);
+    // The pointer marks the caret: left edge of the box, vertically centred on its first line.
+    const auto g=annotations_.geometry(page);
+    const double half=g.valid ? annotations_.defaultTextHeight()/2/g.units.height() : 0;
+    return annotations_.create(page,(x-left)/w,std::max(0.0,(y-model_.top(page))/h-half));
 }
 
 bool ShellState::containsPage(double x,double y) const {

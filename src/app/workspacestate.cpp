@@ -1,4 +1,5 @@
 #include "workspacestate.h"
+#include "inkstroke.h"
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -7,9 +8,18 @@
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <algorithm>
+#include <cmath>
 #include <QElapsedTimer>
 
-WorkspaceState::WorkspaceState(QObject* parent):QObject(parent) {
+static double textSizeValue(const QVariant& v) {
+    bool ok=false; const double size=std::round(v.toDouble(&ok));
+    return ok && std::isfinite(size) ? std::clamp(size,AnnotationConfig::minTextSize,AnnotationConfig::maxTextSize) : AnnotationConfig::defaultTextSize;
+}
+static double inkWidthValue(const QVariant& v) {
+    bool ok=false; const double width=std::round(v.toDouble(&ok)*2)/2; // slider step 0.5 pt
+    return ok && std::isfinite(width) ? std::clamp(width,AnnotationConfig::minInkWidth,AnnotationConfig::maxInkWidth) : AnnotationConfig::defaultInkWidth;
+}
+WorkspaceState::WorkspaceState(QObject* parent):QObject(parent),textSize_(AnnotationConfig::defaultTextSize),inkWidth_(AnnotationConfig::defaultInkWidth) {
     QElapsedTimer initialization;initialization.start();
     auto root=qEnvironmentVariable("LANGLERN_WORKSPACE_DIR");
     if(root.isEmpty()) root=QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
@@ -29,6 +39,8 @@ WorkspaceState::WorkspaceState(QObject* parent):QObject(parent) {
                 english_=data.value("english").toBool();
                 lookupLanguage_=data.value("lookupLanguage").toString()==QLatin1String("en")?QStringLiteral("en"):QStringLiteral("fr");
                 frenchVoice_=data.value("frenchVoice").toString()==QLatin1String("female")?QStringLiteral("female"):QStringLiteral("male");
+                if(data.contains("textSize")) textSize_=textSizeValue(data.value("textSize"));
+                if(data.contains("inkWidth")) inkWidth_=inkWidthValue(data.value("inkWidth"));
             } else error_=tr("书架数据无法读取，原文件已保留。本次不自动覆盖。");
         } else error_=tr("书架数据无法读取，原文件已保留。本次不自动覆盖。");
     }
@@ -60,7 +72,7 @@ void WorkspaceState::save() {
     },Qt::QueuedConnection);
 }
 QVariantMap WorkspaceState::snapshot() const {
-    return {{"version",1},{"books",books_},{"words",words_},{"bookmarks",bookmarks_},{"layout",layout_},{"toolbar",toolbar_},{"paper",paper_},{"nightDim",nightDim_},{"english",english_},{"lookupLanguage",lookupLanguage_},{"frenchVoice",frenchVoice_}};
+    return {{"version",1},{"books",books_},{"words",words_},{"bookmarks",bookmarks_},{"layout",layout_},{"toolbar",toolbar_},{"paper",paper_},{"nightDim",nightDim_},{"english",english_},{"lookupLanguage",lookupLanguage_},{"frenchVoice",frenchVoice_},{"textSize",textSize_},{"inkWidth",inkWidth_}};
 }
 void WorkspaceState::scheduleSave() {
     const auto candidate=snapshot();
@@ -69,6 +81,7 @@ void WorkspaceState::scheduleSave() {
         layout_=accepted_.value("layout").toInt();toolbar_=accepted_.value("toolbar").toInt();paper_=accepted_.value("paper").toBool();nightDim_=accepted_.value("nightDim",true).toBool();
         english_=accepted_.value("english").toBool();lookupLanguage_=accepted_.value("lookupLanguage",QStringLiteral("fr")).toString();
         frenchVoice_=accepted_.value("frenchVoice",QStringLiteral("male")).toString();
+        textSize_=textSizeValue(accepted_.value("textSize"));inkWidth_=inkWidthValue(accepted_.value("inkWidth"));
         error_=tr("书架数据已达到 8 MiB 上限，本次修改未保存。请删除不再需要的生词或笔记。");emit changed();emit preferencesChanged();return;
     }
     accepted_=candidate;if(!loadBlocked_)error_.clear();timer_.start();
@@ -128,3 +141,5 @@ void WorkspaceState::grade(int index,int grade) {
     words_[index]=word;emit changed();scheduleSave();
 }
 void WorkspaceState::removeWord(int index) { if(index<0||index>=words_.size())return;words_.removeAt(index);emit changed();scheduleSave(); }
+void WorkspaceState::setTextSize(double v) { if(!std::isfinite(v))return;v=textSizeValue(v);if(textSize_==v)return;textSize_=v;emit preferencesChanged();scheduleSave(); }
+void WorkspaceState::setInkWidth(double v) { if(!std::isfinite(v))return;v=inkWidthValue(v);if(inkWidth_==v)return;inkWidth_=v;emit preferencesChanged();scheduleSave(); }

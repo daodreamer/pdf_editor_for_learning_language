@@ -29,4 +29,8 @@ inline constexpr double smoothDerivativeCutoff = 5.0;
 inline constexpr double inkSlowFactor = 1.12, inkFastFactor = 0.68;
 inline constexpr double inkSlowSpeed = 0.15, inkFastSpeed = 2.2; // logical px per ms
 inline constexpr double inkFactorResponseMs = 35;
+// New text answers and pen strokes start from the user's last choice; these are
+// the first-run values and the accepted ranges (text px == PDF units, ink in pt).
+inline constexpr double defaultTextSize = 12, minTextSize = 8, maxTextSize = 72;
+inline constexpr double defaultInkWidth = 2, minInkWidth = 0.5, maxInkWidth = 16;
 }

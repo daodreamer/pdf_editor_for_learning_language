@@ -53,7 +53,9 @@ Popup {
     x: Math.max(8, Math.min((parent ? parent.width : 400) - width - 8, (selectionTop.x + selectionBottom.x) / 2 - width / 2))
     y: Math.max(8, Math.min((parent ? parent.height : 900) - height - 8,
         selectionTop.y - height - 12 >= 8 ? selectionTop.y - height - 12 : selectionBottom.y + 12))
+    signal sizeChosen(real size)
     function apply(property: string, value: var): void {
+        if (property === "size") sizeChosen(value)
         const start = editor.selectionStart, end = editor.selectionEnd
         formatter.format(start, end, property, value)
         editor.select(start, end)
@@ -107,17 +109,17 @@ Popup {
             id: smallerButton
             objectName: "formatSmaller"
             width: 30; height: 32; text: "A−"; font.pixelSize: 13; focusPolicy: Qt.NoFocus
-            onClicked: popover.apply("size", Math.max(8, (popover.current.size || 14) - 1))
+            onClicked: popover.apply("size", Math.max(8, (popover.current.size || 12) - 1))
             contentItem: Text { text: smallerButton.text; font: smallerButton.font; color: popover.foreground; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
             background: Rectangle { radius: 16; color: smallerButton.hovered ? popover.tint : "transparent" }
             Accessible.name: qsTr("减小字号")
         }
-        Text { width: 26; height: 32; text: popover.current.size || 14; font.pixelSize: 12; color: popover.foreground; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+        Text { width: 26; height: 32; text: popover.current.size || 12; font.pixelSize: 12; color: popover.foreground; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
         ToolButton {
             id: largerButton
             objectName: "formatLarger"
             width: 30; height: 32; text: "A+"; font.pixelSize: 15; focusPolicy: Qt.NoFocus
-            onClicked: popover.apply("size", Math.min(72, (popover.current.size || 14) + 1))
+            onClicked: popover.apply("size", Math.min(72, (popover.current.size || 12) + 1))
             contentItem: Text { text: largerButton.text; font: largerButton.font; color: popover.foreground; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
             background: Rectangle { radius: 16; color: largerButton.hovered ? popover.tint : "transparent" }
             Accessible.name: qsTr("增大字号")

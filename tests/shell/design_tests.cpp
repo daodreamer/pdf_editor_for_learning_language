@@ -38,11 +38,14 @@ private slots:
             state.grade(0,3);QCOMPARE(state.dueCount(),0);state.setLayout(2);state.setToolbar(1);state.setPaper(true);
             QVERIFY(state.nightDim());state.setNightDim(false);
             QCOMPARE(state.lookupLanguage(),QStringLiteral("fr"));state.setLookupLanguage("en");
+            QCOMPARE(state.textSize(),12.0);QCOMPARE(state.inkWidth(),2.0);
+            state.setTextSize(200);QCOMPARE(state.textSize(),72.0);state.setTextSize(17);state.setInkWidth(3.4);QCOMPARE(state.inkWidth(),3.5);
         }
         WorkspaceState restored;restored.setDocument(url.toString());
         QCOMPARE(restored.books().size(),1);QCOMPARE(restored.books()[0].toMap()["page"].toInt(),3);
         QCOMPARE(restored.bookmarks(),QVariantList({1,3}));QCOMPARE(restored.words()[0].toMap()["meaning"].toString(),QStringLiteral("周末"));
         QCOMPARE(restored.dueCount(),0);QCOMPARE(restored.lookupLanguage(),QStringLiteral("en"));QCOMPARE(restored.layout(),2);QCOMPARE(restored.toolbar(),1);QVERIFY(restored.paper());QVERIFY(!restored.nightDim());
+        QCOMPARE(restored.textSize(),17.0);QCOMPARE(restored.inkWidth(),3.5);
         restored.toggleBookmark(3);QVERIFY(!restored.bookmarked(3));
         restored.forget(url);restored.updateProgress(url,8,4);QVERIFY(restored.books().isEmpty());
     }

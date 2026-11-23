@@ -58,6 +58,7 @@ Item {
         dark: note.shell.dark
         active: note.selected && !note.resizing && !note.moving && !note.marking && note.Window.window.active
         positionRevision: note.x + note.y + note.viewportX + note.viewportY + note.unitScale
+        onSizeChosen: function(size) { note.shell.annotations.defaultFontSize = size }
     }
     readonly property real unitScale: pageWidth / notePageUnits.width
     property point dragOffset: Qt.point(0, 0)

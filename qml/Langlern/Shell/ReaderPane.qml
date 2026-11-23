@@ -140,6 +140,10 @@ Item {
                 nightDim: pane.workspace.nightDim
                 marking: pane.tool === 3; reading: pane.tool === 4
                 services: pane.services
+                // The last pen width the user picked stays for new strokes and next launches.
+                property bool penRestored: false
+                Component.onCompleted: { penWidth = pane.workspace.inkWidth; penRestored = true }
+                onInkWidthChanged: if (penRestored) pane.workspace.inkWidth = inkWidth
                 onInputModeChanged: {
                     const map = {0: 0, 2: 2, 3: 1, 4: 5}
                     if (inputMode in map && !(pane.tool === 3 && inputMode === 0)) pane.tool = map[inputMode]
@@ -256,7 +260,7 @@ Item {
                     RowLayout {
                         Layout.fillWidth: true
                         Label { text: qsTr("粗细"); color: pane.theme.muted }
-                        Slider { objectName: "penWidthSlider"; Layout.fillWidth: true; from: 0.5; to: 16; stepSize: 0.5; value: document.inkWidth; onMoved: document.inkWidth = value; Accessible.name: qsTr("画笔粗细，单位 PDF 点") }
+                        Slider { objectName: "penWidthSlider"; Layout.fillWidth: true; from: 0.5; to: 16; stepSize: 0.5; value: document.inkWidth; onMoved: document.penWidth = value; Accessible.name: qsTr("画笔粗细，单位 PDF 点") }
                         Label { text: qsTr("%1 pt").arg(document.inkWidth.toFixed(1)); color: pane.theme.text; Layout.preferredWidth: 48 }
                     }
                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 24; radius: height / 2; color: pane.theme.fill
