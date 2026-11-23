@@ -1,0 +1,72 @@
+%PDF-1.7
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 2 /Kids [4 0 R 6 0 R] >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 5 0 R /Resources << /Font << /F1 3 0 R >> >>  >>
+endobj
+5 0 obj
+<< /Length 1022 >>
+stream
+BT /F1 13 Tf 72 780 Td (Cochez la case : vous aimez le sport et la lecture ?) Tj ET
+q 0.85 0.15 0.2 RG 0.8 w 72 740 8 8 re S Q
+BT /F1 11 Tf 86 740 Td (le sport) Tj ET
+q 0.85 0.15 0.2 RG 0.8 w 180 740 8 8 re S Q
+BT /F1 11 Tf 194 740 Td (la lecture) Tj ET
+q 0.85 0.15 0.2 RG 0.8 w 300 740 8 8 re S Q
+BT /F1 11 Tf 314 740 Td (la danse) Tj ET
+q 0 0 0 RG 0.8 w 72 700 8 8 re S Q
+BT /F1 11 Tf 86 700 Td (oui) Tj ET
+q 0 0 0 RG 0.8 w 180 700 8 8 re S Q
+BT /F1 11 Tf 194 700 Td (non) Tj ET
+q 0 0 0 RG 0.8 w 300 700 8 8 re S Q
+BT /F1 11 Tf 314 700 Td (peut-etre) Tj ET
+q 0 0 0 rg 72 640 8 8 re f Q
+BT /F1 11 Tf 86 640 Td (plein) Tj ET
+q 0 0 0 RG 0.8 w 180 640 8 8 re S Q
+q 0 G 0.8 w 181 641 m 187 647 l S 187 641 m 181 647 l S Q
+BT /F1 11 Tf 194 640 Td (deja coche) Tj ET
+q 0 0 0 RG 0.8 w 300 620 30 30 re S Q
+BT /F1 11 Tf 340 630 Td (cadre) Tj ET
+q 0 G 0.8 w 72 560 8 8 re S 80 560 8 8 re S 88 560 8 8 re S 72 568 8 8 re S 80 568 8 8 re S 88 568 8 8 re S Q
+q 0 0 0 RG 0.8 w 180 564 3 3 re S Q
+BT /F1 11 Tf 190 562 Td (petit) Tj ET
+
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] /Contents 7 0 R /Resources << /Font << /F1 3 0 R >> >> /Rotate 90 >>
+endobj
+7 0 obj
+<< /Length 255 >>
+stream
+q 0.85 0.15 0.2 RG 0.8 w 72 500 8 8 re S Q
+BT /F1 11 Tf 86 500 Td (le sport) Tj ET
+q 0.85 0.15 0.2 RG 0.8 w 180 500 8 8 re S Q
+BT /F1 11 Tf 194 500 Td (la lecture) Tj ET
+q 0.85 0.15 0.2 RG 0.8 w 300 500 8 8 re S Q
+BT /F1 11 Tf 314 500 Td (la danse) Tj ET
+
+endstream
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000218 00000 n 
+0000000345 00000 n 
+0000001419 00000 n 
+0000001556 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+1862
+%%EOF

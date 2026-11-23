@@ -1,6 +1,7 @@
 #include "annotationmodel.h"
 #include "textstyles.h"
 #include "inkpath.h"
+#include "answerfonts.h"
 #include <QUuid>
 #include <QLineF>
 #include <QSet>
@@ -80,7 +81,7 @@ void AnnotationModel::record(TextAnnotation before,TextAnnotation after) {
     record(Command{std::move(before),std::move(after),{}, {}});
 }
 static double lineHeight(const QString& family,double size) {
-    QFont font(family); font.setPixelSize(qRound(size));
+    const auto font=AnswerFonts::font(family,size);
     return std::ceil(QFontMetricsF(font).height());
 }
 void AnnotationModel::setDefaultFontSize(double size) {
@@ -89,7 +90,14 @@ void AnnotationModel::setDefaultFontSize(double size) {
     if(size==defaultFontSize_) return;
     defaultFontSize_=size; emit defaultFontSizeChanged();
 }
-double AnnotationModel::defaultTextHeight() const { return lineHeight(TextAnnotation{}.family,defaultFontSize_); }
+void AnnotationModel::setDefaultTextColor(QColor color) {
+    if(!color.isValid()) return;
+    color.setAlpha(255);
+    if(color==defaultTextColor_) return;
+    defaultTextColor_=color; emit defaultTextStyleChanged();
+}
+double AnnotationModel::defaultTextHeight() const { return lineHeight(AnswerFonts::learning,defaultFontSize_); }
+QFont AnnotationModel::answerFont(const QString& family,double size) const { return AnswerFonts::font(family,size); }
 QString AnnotationModel::create(int page,double x,double y,double maximumWidth,double fieldHeight,double lineSpacing,int lines) {
     if(!geometry_.contains(page) || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(maximumWidth) || !std::isfinite(fieldHeight) || fieldHeight<0 || maximumWidth<0 || x<0 || y<0 || x>=1 || y>=1) return {};
     if(!std::isfinite(lineSpacing) || lineSpacing<0 || lines<1 || lines>64 || (lines>1 && !(lineSpacing>0))) return {};
@@ -98,7 +106,9 @@ QString AnnotationModel::create(int page,double x,double y,double maximumWidth,d
     const auto g=geometry_[page];
     x=std::min(x,std::max(0.0,1-(maximumWidth>0?std::min(48.0,maximumWidth):48)/g.units.width()));
     TextAnnotation n;
+    n.family=AnswerFonts::learning;
     n.fontSize=defaultFontSize_;
+    n.color=defaultTextColor_;
     // 0 = a plain answer: exactly one line of the default font tall.
     const bool plain=fieldHeight==0;
     if(plain) fieldHeight=lineHeight(n.family,n.fontSize);
@@ -116,7 +126,7 @@ QString AnnotationModel::create(int page,double x,double y,double maximumWidth,d
         n.lineSpacing=lineSpacing;
         n.minimumHeight=n.height=fieldHeight+(lines-1)*lineSpacing;
     }
-    QFont font(n.family); font.setPixelSize(qRound(n.fontSize));
+    const auto font=AnswerFonts::font(n.family,n.fontSize);
     n.width=std::min(std::ceil(QFontMetricsF(font).horizontalAdvance(QStringLiteral("this")))+2,(1-x)*g.units.width());
     n.widthLocked=false;
     n.maximumWidth=maximumWidth;
@@ -167,7 +177,7 @@ void AnnotationModel::setEditorText(const QString& id,const QString& text,double
         }
         if(!(n.lineSpacing>0)) n.minimumHeight=lineHeight(n.family,n.fontSize);
     }
-    QFont font(n.family); font.setPixelSize(qRound(n.fontSize));
+    const auto font=AnswerFonts::font(n.family,n.fontSize);
     QTextDocument layout; layout.setDocumentMargin(0); layout.setDefaultFont(font);
     QTextOption option; option.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
     layout.setDefaultTextOption(option); layout.setPlainText(text); applyTextStyles(layout,n.styles); applyLineSpacing(layout,n.lineSpacing);
@@ -213,7 +223,7 @@ void AnnotationModel::resize(const QString& id,double x,double y,double width,do
     n.widthLocked=true;
     n.maximumWidth=0;
     n.minimumHeight=std::clamp(height,std::min(24.0,g.units.height()),g.units.height());
-    QFont font(n.family); font.setPixelSize(qRound(n.fontSize));
+    const auto font=AnswerFonts::font(n.family,n.fontSize);
     QTextDocument layout; layout.setDocumentMargin(0); layout.setDefaultFont(font);
     QTextOption option; option.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
     layout.setDefaultTextOption(option); layout.setPlainText(n.text); layout.setTextWidth(n.width);
@@ -469,6 +479,57 @@ void AnnotationModel::removeInk() {
     Command c; c.inkBefore={stroke}; record(std::move(c)); emit inkChanged(stroke.page);
 }
 
+QList<InkStroke> AnnotationModel::boxMark(int page,QRectF box) const {
+    QList<InkStroke> result;
+    const auto g=geometry_.value(page);
+    if(!g.valid || !box.isValid()) return result;
+    const double grow=.35*std::max(box.width(),box.height());
+    const auto area=box.adjusted(-grow,-grow,grow,grow);
+    for(const auto& s:strokes_) {
+        if(s.page!=page || s.points.isEmpty()) continue;
+        bool inside=true;
+        for(const auto& p:s.points) if(!area.contains(g.pdfToDisplay.map(p))) { inside=false; break; }
+        if(inside) result.append(s);
+    }
+    return result;
+}
+bool AnnotationModel::toggleBoxMark(int page,QRectF box,bool cross,QColor color) {
+    cancelGesture(); finishEditing(); clearInkSelection();
+    const auto g=geometry_.value(page);
+    if(!g.valid || !box.isValid() || !color.isValid() || !QRectF(0,0,1,1).contains(box.center())) return false;
+    Command c;
+    c.inkBefore=boxMark(page,box);
+    if(!c.inkBefore.isEmpty()) {
+        for(const auto& s:c.inkBefore) strokes_.remove(s.id);
+        record(std::move(c)); emit inkChanged(page);
+        return false;
+    }
+    color.setAlpha(255);
+    // Width follows the printed box (in PDF units): about a pen stroke for a 7-8 pt box.
+    const double side=std::min(box.width()*g.units.width(),box.height()*g.units.height());
+    const double width=std::clamp(side*.14,.8,2.5);
+    auto at=[&](double x,double y) { return g.displayToPdf.map(QPointF(box.x()+x*box.width(),box.y()+y*box.height())); };
+    auto stroke=[&](QList<QPointF> points) {
+        InkStroke s;
+        s.id=QUuid::createUuid().toString(QUuid::WithoutBraces); s.page=page; s.points=std::move(points);
+        s.color=color; s.width=width; s.order=nextInkOrder_++;
+        return s;
+    };
+    if(cross) {
+        c.inkAfter={stroke({at(.2,.2),at(.8,.8)}),stroke({at(.8,.2),at(.2,.8)})};
+    } else {
+        // Tick: short down stroke, sharp turn, long rise. Samples right beside the turn
+        // keep the midpoint-quadratic ink path from rounding it off.
+        const QPointF a(.16,.5),v(.42,.8),b(.9,.12);
+        auto mix=[](QPointF p,QPointF q,double t) { return p+(q-p)*t; };
+        const QList<QPointF> shape{a,mix(a,v,.9),v,mix(v,b,.06),b};
+        QList<QPointF> points; for(const auto& p:shape) points.append(at(p.x(),p.y()));
+        c.inkAfter={stroke(points)};
+    }
+    for(const auto& s:c.inkAfter) strokes_[s.id]=s;
+    record(std::move(c)); emit inkChanged(page);
+    return true;
+}
 void AnnotationModel::restore(const AnnotationSnapshot& snapshot) {
     cancelGesture();
     beginResetModel(); notes_.clear(); strokes_.clear(); visible_.clear();

@@ -19,6 +19,7 @@ Item {
     signal optimizeRequested()
     property int tool: 0
     property bool penOptions: false
+    property bool textOptions: false
     readonly property int spreadFirst: Math.floor((shell.currentPage - 1) / 2) * 2 + 1
     readonly property bool editingField: {
         const item = Window.window ? Window.window.activeFocusItem : null
@@ -52,6 +53,7 @@ Item {
     readonly property var hints: [qsTr("点空白处打字 · 按住拖动书写 · 双击后按住拖动选文"), qsTr("直接在页面书写 · Ctrl / Command + Z 撤销"), qsTr("点空白处输入答案 · Esc 完成编辑"), qsTr("点击文字答案：✓ → × → 清除 · 用打字工具补充订正"), qsTr("拖选文字以复制或朗读 · 扫描页自动离线识别"), qsTr("点击或划过笔迹擦除 · 文字答案可选中后删除")]
     function pick(index: int): void {
         penOptions = index === 1 && (tool !== 1 || !penOptions)
+        textOptions = index === 2 && (tool !== 2 || !textOptions)
         tool = index
         document.switchMode([0, 3, 2, 0, 1, 4][index])
     }
@@ -64,6 +66,16 @@ Item {
         Rectangle { z: -1; anchors.fill: parent; anchors.topMargin: 2; anchors.bottomMargin: -2; radius: parent.radius; color: pane.theme.shadow }
     }
     component Divider: Rectangle { width: 1; height: 20; color: pane.theme.line }
+    // Round on/off button of the typing settings (bold, italic, tick-box mark).
+    component StyleToggle: ToolButton {
+        id: toggle
+        property bool on: false
+        property bool boldFace: false
+        property bool italicFace: false
+        implicitWidth: 32; implicitHeight: 32; focusPolicy: Qt.NoFocus
+        contentItem: Text { text: toggle.text; font.pixelSize: 15; font.bold: toggle.boldFace; font.italic: toggle.italicFace; color: toggle.on ? pane.theme.accentText : pane.theme.text; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+        background: Rectangle { radius: height / 2; color: toggle.on ? pane.theme.tint : toggle.hovered ? pane.theme.fill : "transparent" }
+    }
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 10
@@ -159,7 +171,7 @@ Item {
             }
             Rectangle {
                 anchors.top: parent.top; anchors.topMargin: 4; anchors.horizontalCenter: parent.horizontalCenter
-                width: Math.min(parent.width - ((pane.tool === 0 || pane.tool === 1) ? 270 : 28), hint.implicitWidth + 36); height: 32; radius: 16
+                width: Math.min(parent.width - ((pane.tool <= 2) ? 270 : 28), hint.implicitWidth + 36); height: 32; radius: 16
                 color: pane.theme.bar; border.color: pane.theme.line
                 Label { id: hint; anchors.fill: parent; anchors.leftMargin: 18; anchors.rightMargin: 18; text: pane.hints[pane.tool]; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignHCenter; color: pane.theme.muted; font.pixelSize: 12 }
             }
@@ -181,6 +193,29 @@ Item {
                 background: Rectangle { radius: height / 2; color: pane.penOptions ? pane.theme.tint : penButton.hovered ? pane.theme.fill : pane.theme.bar; border.color: pane.penOptions ? "transparent" : pane.theme.line }
                 onClicked: pane.penOptions = !pane.penOptions
                 Accessible.name: qsTr("画笔颜色与粗细设置")
+            }
+            AbstractButton {
+                id: textButton
+                objectName: "textSettingsButton"
+                visible: pane.tool === 2
+                anchors.right: parent.right; anchors.top: parent.top; anchors.topMargin: 2
+                implicitHeight: 36; implicitWidth: textRow.implicitWidth + 26
+                hoverEnabled: true
+                contentItem: Item {
+                    Row {
+                        id: textRow
+                        anchors.centerIn: parent; spacing: 8
+                        Text {
+                            text: "A"; anchors.verticalCenter: parent.verticalCenter
+                            font.pixelSize: 15; font.bold: pane.shell.annotations.defaultBold; font.italic: pane.shell.annotations.defaultItalic
+                            color: pane.shell.annotations.defaultTextColor
+                        }
+                        Text { text: qsTr("文字 · %1 px").arg(pane.shell.annotations.defaultFontSize); font.pixelSize: 12; color: pane.textOptions ? pane.theme.accentText : pane.theme.text; anchors.verticalCenter: parent.verticalCenter }
+                    }
+                }
+                background: Rectangle { radius: height / 2; color: pane.textOptions ? pane.theme.tint : textButton.hovered ? pane.theme.fill : pane.theme.bar; border.color: pane.textOptions ? "transparent" : pane.theme.line }
+                onClicked: pane.textOptions = !pane.textOptions
+                Accessible.name: qsTr("文字颜色、字号与样式设置")
             }
             AudioStrip {
                 visible: pane.audioVisible
@@ -276,6 +311,103 @@ Item {
                 }
             }
             ColorDialog { id: penColorDialog; title: qsTr("选择画笔颜色"); onAccepted: document.inkColor = selectedColor }
+            Rectangle {
+                id: textPanel
+                objectName: "textSettingsPanel"
+                readonly property bool blocksInkInput: true
+                readonly property AnnotationModel notes: pane.shell.annotations
+                visible: pane.textOptions && pane.tool === 2
+                anchors.top: parent.top; anchors.topMargin: 46; anchors.right: parent.right
+                width: Math.min(330, parent.width - 24); height: textColumn.implicitHeight + 28; radius: 22; color: pane.theme.card; border.color: pane.theme.line
+                Rectangle { z: -1; anchors.fill: parent; anchors.topMargin: 4; anchors.bottomMargin: -4; radius: parent.radius; color: pane.theme.shadow }
+                MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons; onWheel: function(wheel) { wheel.accepted = true } }
+                ColumnLayout {
+                    id: textColumn
+                    anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 14; spacing: 10
+                    RowLayout {
+                        Layout.fillWidth: true; spacing: 8
+                        Repeater {
+                            model: ["#1e468c", "#1d1d1f", "#e5484d", "#e69819", "#30a46c", "#8e4ec6"]
+                            ToolButton {
+                                id: textSwatch
+                                required property string modelData
+                                required property int index
+                                objectName: "textColor" + index
+                                implicitWidth: 28; implicitHeight: 28; focusPolicy: Qt.NoFocus
+                                readonly property bool chosen: Qt.colorEqual(textPanel.notes.defaultTextColor, textSwatch.modelData)
+                                background: Item {
+                                    Rectangle { anchors.fill: parent; radius: width / 2; color: "transparent"; border.width: textSwatch.chosen ? 2 : 0; border.color: textSwatch.modelData }
+                                    Rectangle { anchors.centerIn: parent; width: textSwatch.chosen ? 18 : 22; height: width; radius: width / 2; color: textSwatch.modelData }
+                                }
+                                onClicked: textPanel.notes.defaultTextColor = modelData
+                                Accessible.name: qsTr("文字颜色 %1").arg(modelData)
+                            }
+                        }
+                        Item { Layout.fillWidth: true }
+                        DesignButton { objectName: "customTextColor"; theme: pane.theme; text: qsTr("自选"); implicitHeight: 28; onClicked: { textColorDialog.selectedColor = textPanel.notes.defaultTextColor; textColorDialog.open() } Accessible.name: qsTr("自选文字颜色") }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Label { text: qsTr("字号"); color: pane.theme.muted }
+                        Slider { objectName: "textSizeSlider"; Layout.fillWidth: true; from: 8; to: 36; stepSize: 1; value: textPanel.notes.defaultFontSize; onMoved: textPanel.notes.defaultFontSize = value; Accessible.name: qsTr("新文字答案的字号") }
+                        Label { text: qsTr("%1 px").arg(textPanel.notes.defaultFontSize); color: pane.theme.text; Layout.preferredWidth: 42 }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true; spacing: 4
+                        Label { text: qsTr("样式"); color: pane.theme.muted; Layout.rightMargin: 6 }
+                        StyleToggle { objectName: "textDefaultBold"; text: "B"; boldFace: true; on: textPanel.notes.defaultBold; onClicked: textPanel.notes.defaultBold = !textPanel.notes.defaultBold; Accessible.name: qsTr("新答案加粗") }
+                        StyleToggle { objectName: "textDefaultItalic"; text: "I"; italicFace: true; on: textPanel.notes.defaultItalic; onClicked: textPanel.notes.defaultItalic = !textPanel.notes.defaultItalic; Accessible.name: qsTr("新答案倾斜") }
+                        Item { Layout.fillWidth: true }
+                        // The bundled answer fonts, embedded on export so the PDF matches the page.
+                        Label { text: qsTr("字体 基于 Andika · 霞鹜文楷"); color: pane.theme.muted; font.pixelSize: 11 }
+                    }
+                    Rectangle {
+                        Layout.fillWidth: true; Layout.preferredHeight: Math.max(34, preview.implicitHeight + 12); radius: 12; color: pane.theme.fill
+                        Text {
+                            id: preview
+                            anchors.left: parent.left; anchors.right: parent.right; anchors.leftMargin: 14; anchors.rightMargin: 14; anchors.verticalCenter: parent.verticalCenter
+                            text: qsTr("Réponse · 答案"); elide: Text.ElideRight
+                            font: {
+                                const f = textPanel.notes.answerFont("Langlern Sans + Kai", textPanel.notes.defaultFontSize)
+                                f.bold = textPanel.notes.defaultBold
+                                f.italic = textPanel.notes.defaultItalic
+                                return f
+                            }
+                            color: textPanel.notes.defaultTextColor
+                        }
+                    }
+                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: pane.theme.line }
+                    RowLayout {
+                        Layout.fillWidth: true; spacing: 4
+                        Label { text: qsTr("选择框"); color: pane.theme.muted; Layout.rightMargin: 6 }
+                        Repeater {
+                            model: [qsTr("按语言"), "✓", "✗"]
+                            StyleToggle {
+                                required property string modelData
+                                required property int index
+                                objectName: "checkMarkStyle" + index
+                                implicitWidth: index === 0 ? 64 : 36
+                                text: modelData; on: pane.shell.checkMarkStyle === index
+                                onClicked: pane.shell.checkMarkStyle = index
+                                Accessible.name: [qsTr("选择框标记跟随页面语言"), qsTr("选择框标记为对号"), qsTr("选择框标记为叉号")][index]
+                            }
+                        }
+                        Item { Layout.fillWidth: true }
+                    }
+                    Label {
+                        Layout.fillWidth: true; wrapMode: Text.Wrap; color: pane.theme.muted; font.pixelSize: 11
+                        text: {
+                            const page = pane.shell.currentPage - 1
+                            const style = pane.shell.checkMarkStyle
+                            // Re-evaluate when OCR language or page text changes.
+                            const cross = pane.shell.ocrLanguage.length >= 0 && pane.shell.textSelection.version >= 0 && pane.shell.crossMarks(page)
+                            return style === 0 ? qsTr("点击页面上的方框即可标记；法语、德语等用 ✗，英语、中文用 ✓。本页：%1").arg(cross ? "✗" : "✓")
+                                               : qsTr("点击页面上的方框即可标记，再点一次取消。")
+                        }
+                    }
+                }
+            }
+            ColorDialog { id: textColorDialog; title: qsTr("选择文字颜色"); onAccepted: textPanel.notes.defaultTextColor = selectedColor }
         }
         Rectangle {
             visible: pane.workspace.layout === 2 && pane.width > 900

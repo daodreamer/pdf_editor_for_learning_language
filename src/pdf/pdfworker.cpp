@@ -1,6 +1,7 @@
 #include "pdfworker.h"
 #include "inkpath.h"
 #include "answerlines.h"
+#include "checkboxes.h"
 #include "exporttext.h"
 #include "scancleanup.h"
 #include <QCoreApplication>
@@ -300,6 +301,21 @@ void PdfWorker::execute(const PdfRequest& r) {
         result.errorCode = QStringLiteral("render");
         require(QSysInfo::ByteOrder == QSysInfo::LittleEndian, "当前图像路径需要 little-endian BGRA。");
         const qint64 imageBudget = std::clamp(r.maxBytes,qint64(4),maxImageBytes);
+        // A white page bitmap of `width` pixels for detection (transient, not cached;
+        // null image when the page cannot be drawn at that size).
+        const auto draw = [&](int width) {
+            const double ratio = h / w;
+            const double pixelHeight = std::ceil(width * ratio);
+            if (!(pixelHeight > 0) || pixelHeight > maxDimension || qint64(width) * qint64(pixelHeight) * 4 > maxImageBytes) return QImage();
+            QImage image(width, int(pixelHeight), QImage::Format_ARGB32);
+            if (image.isNull()) return image;
+            image.fill(Qt::white);
+            TrackedHandle<ScopedFPDFBitmap> bitmap(FPDFBitmap_CreateEx(width, image.height(), FPDFBitmap_BGRA,
+                image.bits(), int(image.bytesPerLine())));
+            if (!bitmap) return QImage();
+            FPDF_RenderPageBitmap(bitmap.get(), page.get(), 0, 0, width, image.height(), 0, FPDF_ANNOT);
+            return image;
+        };
         const auto render = [&](int wanted, bool preview) {
             if (!current(r.revision)) return;
             const double ratio = h / w;
@@ -336,7 +352,24 @@ void PdfWorker::execute(const PdfRequest& r) {
             }
             qInfo("pdf_frame session=%llu revision=%llu page=%d preview=%d width=%d height=%d bytes=%lld worker_ms=%.3f",
                 r.session, r.revision, r.page, preview, width, height, qint64(frame.image.sizeInBytes()), timer.nsecsElapsed() / 1e6);
+            const QImage shown = frame.image;
             emit frameReady(std::move(frame));
+            // Tick boxes come after the page is on screen, from their own fixed-scale render
+            // (once per page per session; ShellState asks only while it has no result).
+            if(!r.ocrOnly && !preview && r.detectBoxes && current(r.revision)) {
+                QElapsedTimer detection; detection.start();
+                const int detectWidth=std::clamp(int(std::lround(w*CheckBoxes::pixelsPerPoint)),1,CheckBoxes::maxWidth);
+                const auto source=shown.width()==detectWidth?shown:draw(detectWidth);
+                auto boxes=result;
+                boxes.errorCode.clear();
+                boxes.boxesOnly=true;
+                // A page too large to draw at this scale simply has no detected boxes.
+                if(!source.isNull()) boxes.checkBoxes=CheckBoxes::detect(source,boxes.geometry.units);
+                boxes.checkBoxesReady=true;
+                qInfo("pdf_boxes session=%llu page=%d boxes=%lld width=%d worker_ms=%.3f",r.session,r.page,
+                    qint64(boxes.checkBoxes.size()),detectWidth,detection.nsecsElapsed()/1e6);
+                emit frameReady(std::move(boxes));
+            }
         };
         if (r.width > previewWidth && !r.skipPreview) render(previewWidth, true);
         render(r.width, r.previewOnly);
@@ -372,11 +405,12 @@ void PdfWorker::exportPdf(quint64 session,QString source,QString target,QByteArr
         for(int p:changed) require(p>=0 && p<pages, "标注页码超出文档范围。");
         auto ordered=changed.values(); std::sort(ordered.begin(),ordered.end());
         const auto prepared=prepareExportText(snapshot.notes);
-        ScopedFPDFFont font;
-        if(!prepared.notes.isEmpty()) {
-            font.reset(FPDFText_LoadCidType2Font(document.get(),reinterpret_cast<const uint8_t*>(prepared.font.constData()),
-                uint32_t(prepared.font.size()),prepared.cmap.constData(),reinterpret_cast<const uint8_t*>(prepared.cidToGid.constData()),uint32_t(prepared.cidToGid.size())));
-            require(bool(font),"嵌入字体和 Unicode 映射失败。");
+        std::vector<ScopedFPDFFont> embedded; QList<FPDF_FONT> fonts;
+        for(const auto& f:prepared.fonts) {
+            embedded.emplace_back(FPDFText_LoadCidType2Font(document.get(),reinterpret_cast<const uint8_t*>(f.data.constData()),
+                uint32_t(f.data.size()),f.cmap.constData(),reinterpret_cast<const uint8_t*>(f.cidToGid.constData()),uint32_t(f.cidToGid.size())));
+            require(bool(embedded.back()),"嵌入字体和 Unicode 映射失败。");
+            fonts.append(embedded.back().get());
         }
         int completed=0;
         for(int index:ordered) {
@@ -430,7 +464,7 @@ void PdfWorker::exportPdf(quint64 session,QString source,QString target,QByteArr
             const auto bottom=origin+down;
             FPDFPageObj_Transform(object.get(),right.x()/ow,right.y()/ow,-down.x()/oh,-down.y()/oh,bottom.x(),bottom.y());
             FPDFPage_InsertObject(page.get(),object.release());
-            for(const auto& note:prepared.notes) if(note.note.page==index) insertExportText(document.get(),page.get(),font.get(),note);
+            for(const auto& note:prepared.notes) if(note.note.page==index) insertExportText(document.get(),page.get(),fonts,note);
             require(FPDFPage_GenerateContent(page.get()),"生成 PDF 页面内容失败。");
             emit exportProgress(session,++completed,int(ordered.size()));
         }

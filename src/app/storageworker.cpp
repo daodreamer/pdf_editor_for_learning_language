@@ -1,4 +1,5 @@
 #include "storageworker.h"
+#include "answerfonts.h"
 #include "textstyles.h"
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -106,7 +107,7 @@ bool StorageWorker::decode(const QByteArray& bytes,const QByteArray& identity,An
             n.order=v["order"].toString().toULongLong(&ok);
             if(!ok || n.order>=9007199254740991ULL || textOrders.contains(n.order)) throw std::runtime_error("text order");
             textOrders.insert(n.order);
-            if(n.family!=QStringLiteral("Noto Sans SC") || n.text.size()>1000000) throw std::runtime_error("text/font");
+            if(!AnswerFonts::supported(n.family) || n.text.size()>1000000) throw std::runtime_error("text/font");
             s.notes.append(std::move(n));
         }
         for(const auto& value:data["ink"].toArray()) {

@@ -528,3 +528,5 @@ ReadingModel集中提供每页left/top/height与二维pageAtPosition命中；模
 导出按字符位置稳定排序字形，避免字体/格式 run 的遍历顺序改变阅读顺序；按颜色、字号和粗斜体拆分原生文字对象。比较实际排版 face 与随附字体的 head/maxp 表，版本或字形不匹配时明确拒绝导出，不能把同名字体的 glyph ID 静默用于另一字体。只随附 regular 的合成粗斜体已在本机验证；未验收其他设备同名不同字体或 macOS 的显示一致性。
 
 本机验证（2026-10-16）：Release 构建和 qmllint 成功；最终 CTest 8/8 组通过（54.33 s），其中文字标注 11 项通过，存储/导出 10 项通过、1 项大型文件检查因未设置 `LANGLERN_LARGE_PDF` 跳过。覆盖选区限定格式、连续更改与按钮状态、局部撤销重做、整框历史恢复、IME、外部仅颜色格式更新、带格式的真实磁盘快照往返、损坏格式拒绝及 PDF 导出。独立 PyMuPDF 回读实际输出，确认 22 号红色 Bonjour、18 号绿色中文、填充/描边粗体、倾斜矩阵、Unicode 文字和原文件散列，渲染后可见红/绿字形；检查了浅深色 UI 与导出页面。证据目录：`benchmarks/results/2026-10-16-text-format-verified-194015/`，包含窗口截图、PDF、回读图、测试日志和 `verification.json`。macOS、sanitizer 和大型扫描文件性能本轮未执行，不作通过声明。
+
+2026-11-23 选择框：`CheckBoxes::detect`（`src/pdf/checkboxes.*`）在 PDF 工作线程上对每页一次的固定 2.7 px/pt 专用渲染检测印刷方框，于显示帧之后以 `boxesOnly` 帧返回，`ReadingModel` 按页保存（不随像素缓存淘汰，计入 CPU 统计）。`ShellState::checkBoxAt/toggleCheckBox` 命中检测结果，`AnnotationModel::toggleBoxMark` 以一条历史记录添加或移除框内的 ✓/✗ 笔迹（普通 InkStroke，存储与导出格式不变）；✓/✗ 由 `ShellState::crossMarks` 按页面文字或 OCR 语言决定。打字工具默认样式（颜色/加粗/倾斜）在 `AnnotationModel`，持久化在 `WorkspaceState`。详见 [CHECK_BOXES.md](CHECK_BOXES.md)。

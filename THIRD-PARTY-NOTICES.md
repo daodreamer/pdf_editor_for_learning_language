@@ -27,10 +27,18 @@ LinguaPDF 只把它用于本机朗读教材文字，生成的语音是机器合�
 | SoundTouch 2.3.3 | 变速不变调 / tempo change | LGPL-2.1-or-later（独立 DLL / separate DLL） | `speech/SoundTouch-LGPL.txt` |
 | ECDICT | 英汉词典 / English dictionary | MIT | `ECDICT-MIT.txt` |
 | 法语词典（派生自 English Wiktionary，经 Wiktextract/kaikki.org） | 法语查词与变位 / French lookup | CC BY-SA 4.0 | `Wiktionary-CC-BY-SA.txt` |
-| Noto Sans SC | 界面答案与导出字体 / answer & export font | SIL OFL 1.1 | `Noto-OFL.txt` |
+| Noto Sans SC | 答案与导出字体（旧答案、罕用字回退）/ answer & export font (older answers, fallback) | SIL OFL 1.1 | `Noto-OFL.txt` |
+| Langlern Sans（Andika 6.101 的修改版，© SIL International）| 答案字母字体 / answer Latin font | SIL OFL 1.1 | `Andika-OFL.txt` |
+| Langlern Kai（霞鹜文楷 LXGW WenKai 1.530 的修改版，© LXGW，含 Klee © The Klee Project Authors）| 答案汉字字体 / answer Chinese font | SIL OFL 1.1 | `LXGW-WenKai-OFL.txt` |
 | Lucide 图标路径 | 工具栏图标 / icons | ISC（部分源自 Feather，MIT） | `Lucide-ISC.txt` |
 | C++/WinRT 头文件 | Windows API 投影（仅编译期） | MIT | `CppWinRT-MIT.txt` |
 | Microsoft Visual C++ 运行库、d3dcompiler_47.dll | 运行库 / runtime | Microsoft Distributable Code | `Microsoft-Redist.txt`, `windows-sdk/` |
+
+### 答案字体修改说明 / Answer font modifications
+
+Langlern Sans 与 Langlern Kai 是 SIL Open Font License 1.1 下的修改版（Modified Versions），由 `tools/make-answer-fonts.py` 从锁定的上游文件生成：两者的垂直度量（hhea、OS/2 typo/win）改为与 Noto Sans SC 相同；霞鹜文楷另裁剪为 GB2312 字符集与常用标点。按照 OFL 与上游的保留字体名（Andika、SIL；LXGW、霞鹜、霞鶩、落霞孤鹜、落霞孤鶩），修改版改用上述新名称，未使用保留名；字体内的版权、制作者、设计者和许可信息保持原样。字体随软件免费分发，不单独售卖。
+
+Langlern Sans and Langlern Kai are Modified Versions under the SIL OFL 1.1 of Andika (SIL International) and LXGW WenKai (LXGW; includes Klee by The Klee Project Authors): vertical metrics set to those of Noto Sans SC, and WenKai subset to GB2312 plus punctuation. They are renamed so no Reserved Font Name is used; copyright, manufacturer, designer and licence records are kept.
 
 ### 法语词典署名 / French dictionary attribution
 

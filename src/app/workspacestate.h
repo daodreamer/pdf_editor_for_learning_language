@@ -24,6 +24,11 @@ class WorkspaceState : public QObject {
     Q_PROPERTY(QString frenchVoice READ frenchVoice WRITE setFrenchVoice NOTIFY preferencesChanged)
     Q_PROPERTY(double textSize READ textSize WRITE setTextSize NOTIFY preferencesChanged)
     Q_PROPERTY(double inkWidth READ inkWidth WRITE setInkWidth NOTIFY preferencesChanged)
+    // Typing-tool defaults for new answers and the tick-box mark (0 auto, 1 tick, 2 cross).
+    Q_PROPERTY(QString textColor READ textColor WRITE setTextColor NOTIFY preferencesChanged)
+    Q_PROPERTY(bool textBold READ textBold WRITE setTextBold NOTIFY preferencesChanged)
+    Q_PROPERTY(bool textItalic READ textItalic WRITE setTextItalic NOTIFY preferencesChanged)
+    Q_PROPERTY(int checkMark READ checkMark WRITE setCheckMark NOTIFY preferencesChanged)
 public:
     explicit WorkspaceState(QObject* parent=nullptr);
     ~WorkspaceState() override;
@@ -42,6 +47,14 @@ public:
     QString frenchVoice() const { return frenchVoice_; }
     double textSize() const { return textSize_; }
     double inkWidth() const { return inkWidth_; }
+    QString textColor() const { return textColor_; }
+    bool textBold() const { return textBold_; }
+    bool textItalic() const { return textItalic_; }
+    int checkMark() const { return checkMark_; }
+    void setTextColor(QString value);
+    void setTextBold(bool value);
+    void setTextItalic(bool value);
+    void setCheckMark(int value);
     void setDocument(QString path);
     void setLayout(int value);
     void setToolbar(int value);
@@ -78,6 +91,9 @@ private:
     QString lookupLanguage_=QStringLiteral("fr");
     QString frenchVoice_=QStringLiteral("male");
     double textSize_, inkWidth_;
+    QString textColor_=QStringLiteral("#1e468c");
+    bool textBold_=false, textItalic_=false;
+    int checkMark_=0;
     QThread writerThread_;
     QObject* writer_=nullptr;
     QTimer timer_;

@@ -51,6 +51,8 @@ class ShellState : public QObject {
     Q_PROPERTY(QString ocrLanguage READ ocrLanguage WRITE setOcrLanguage NOTIFY ocrChanged)
     Q_PROPERTY(QString ocrStatus READ ocrStatus NOTIFY ocrChanged)
     Q_PROPERTY(bool ocrBusy READ ocrBusy NOTIFY ocrChanged)
+    // Mark drawn into printed tick boxes: 0 follows the page language, 1 tick, 2 cross.
+    Q_PROPERTY(int checkMarkStyle READ checkMarkStyle WRITE setCheckMarkStyle NOTIFY checkMarkStyleChanged)
 public:
     explicit ShellState(QObject* parent = nullptr);
     ~ShellState() override;
@@ -91,6 +93,16 @@ public:
     Q_INVOKABLE QString createTextBox(double x,double y);
     Q_INVOKABLE QRectF answerBlankAt(double x,double y) const;
     Q_INVOKABLE QString createAnswerAt(double x,double y);
+    // Printed tick box under a content point (padded for easier hits), in content coordinates.
+    Q_INVOKABLE QRectF checkBoxAt(double x,double y) const;
+    // Ticks/crosses the box under the point, or clears its mark. False when there is no box.
+    Q_INVOKABLE bool toggleCheckBox(double x,double y);
+    // Whether a box on this page gets a cross (French, German, Spanish, Italian habits)
+    // rather than a tick (English, Chinese): the page's text layer or OCR text decides,
+    // otherwise the document's OCR language.
+    Q_INVOKABLE bool crossMarks(int page) const;
+    int checkMarkStyle() const { return checkMarkStyle_; }
+    void setCheckMarkStyle(int style) { style=std::clamp(style,0,2); if(style!=checkMarkStyle_) { checkMarkStyle_=style; emit checkMarkStyleChanged(); } }
     // Consecutive ruled lines answered as one text: normalized page area (all rules),
     // rule pitch (normalized height) and rule count. lines==0 when nothing is there.
     struct AnswerBlock { QRectF area; QRectF first; double pitch = 0; int lines = 0; };
@@ -139,6 +151,7 @@ public:
 signals:
     void ocrChanged();
     void answerLinesChanged();
+    void checkMarkStyleChanged();
     void textCommitRequested();
     void storageChanged();
     void startupAcknowledged();
@@ -169,6 +182,9 @@ private:
     int ocrBusyPage_ = -1;
     bool ocrSelectionEnabled_ = false;
     QString ocrLanguage_ = QStringLiteral("fra"), ocrStatus_;
+    int checkMarkStyle_ = 0;
+    struct PageBox { int page = -1; QRectF box; };
+    PageBox checkBoxNear(double x,double y) const;
     AnnotationSnapshot annotationSnapshot() const;
     QThread storageThread_;
     StorageWorker* storage_ = nullptr;

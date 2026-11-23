@@ -3,6 +3,7 @@
 #include "inkstroke.h"
 #include <QAbstractListModel>
 #include <QColor>
+#include <QFont>
 #include <QMap>
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
@@ -18,14 +19,26 @@ class AnnotationModel : public QAbstractListModel {
     Q_PROPERTY(QString gestureError READ gestureError NOTIFY gestureErrorChanged)
     Q_PROPERTY(quint64 version READ version NOTIFY contentChanged)
     Q_PROPERTY(double defaultFontSize READ defaultFontSize WRITE setDefaultFontSize NOTIFY defaultFontSizeChanged)
+    // Style of new text answers (set in the typing tool's settings, kept across launches).
+    Q_PROPERTY(QColor defaultTextColor READ defaultTextColor WRITE setDefaultTextColor NOTIFY defaultTextStyleChanged)
+    Q_PROPERTY(bool defaultBold READ defaultBold WRITE setDefaultBold NOTIFY defaultTextStyleChanged)
+    Q_PROPERTY(bool defaultItalic READ defaultItalic WRITE setDefaultItalic NOTIFY defaultTextStyleChanged)
 public:
     enum Role { Id=Qt::UserRole+1, Page, Anchor, BoxWidth, BoxHeight, FontSize, Text, Family, Color, PageUnits, Order, WidthLocked, Styles, LineSpacing };
     explicit AnnotationModel(QObject* parent=nullptr) : QAbstractListModel(parent) { connect(this,&AnnotationModel::contentChanged,this,[this]{++version_;}); }
     quint64 version() const { return version_; }
     double defaultFontSize() const { return defaultFontSize_; }
     void setDefaultFontSize(double size);
+    QColor defaultTextColor() const { return defaultTextColor_; }
+    void setDefaultTextColor(QColor color);
+    bool defaultBold() const { return defaultBold_; }
+    void setDefaultBold(bool bold) { if(bold!=defaultBold_) { defaultBold_=bold; emit defaultTextStyleChanged(); } }
+    bool defaultItalic() const { return defaultItalic_; }
+    void setDefaultItalic(bool italic) { if(italic!=defaultItalic_) { defaultItalic_=italic; emit defaultTextStyleChanged(); } }
     // Height of one line of a new plain answer at the default size, in PDF units.
     double defaultTextHeight() const;
+    // The font an answer of this family/size is laid out and drawn with (see AnswerFonts).
+    Q_INVOKABLE QFont answerFont(const QString& family,double size) const;
     Q_INVOKABLE QVariantMap pageStats(int page) const;
     int rowCount(const QModelIndex& parent={}) const override { return parent.isValid()?0:int(visible_.size()); }
     QVariant data(const QModelIndex&,int role) const override;
@@ -54,6 +67,11 @@ public:
     void endInk();
     Q_INVOKABLE void cancelGesture();
     Q_INVOKABLE void removeInk();
+    // A printed tick box (normalized page rect): removes the mark already drawn in it,
+    // otherwise draws a tick or a cross as ink. One history step; true when drawn.
+    bool toggleBoxMark(int page, QRectF box, bool cross, QColor color);
+    // Ink lying entirely inside the (slightly enlarged) box: an existing mark.
+    QList<InkStroke> boxMark(int page, QRectF box) const;
     Q_INVOKABLE bool gestureActive() const { return gesture_ != Gesture::None; }
     Q_INVOKABLE QString create(int page,double x,double y,double maximumWidth=0,double fieldHeight=0,double lineSpacing=0,int lines=1);
     Q_INVOKABLE void select(const QString& id);
@@ -76,6 +94,7 @@ signals:
     void inkSelectionChanged();
     void gestureErrorChanged();
     void defaultFontSizeChanged();
+    void defaultTextStyleChanged();
 private:
     struct Command {
         TextAnnotation before, after;
@@ -113,4 +132,6 @@ private:
     quint64 nextTextOrder_ = 0;
     quint64 version_ = 0;
     double defaultFontSize_ = AnnotationConfig::defaultTextSize;
+    QColor defaultTextColor_ = TextAnnotation{}.color;
+    bool defaultBold_ = false, defaultItalic_ = false;
 };

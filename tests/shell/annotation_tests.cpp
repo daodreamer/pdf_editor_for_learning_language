@@ -3,7 +3,10 @@
 #include "shellstate.h"
 #include "annotationtext.h"
 #include "answerlines.h"
+#include "checkboxes.h"
 #include "exporttext.h"
+#include "answerfonts.h"
+#include <QUuid>
 #include <QPainter>
 #include <QRandomGenerator>
 #include <QFontMetrics>
@@ -11,6 +14,8 @@
 #include <QClipboard>
 #include <QLineF>
 #include <algorithm>
+#include <map>
+#include <functional>
 #include <cmath>
 #include <QGuiApplication>
 #include <QInputMethodEvent>
@@ -23,6 +28,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 // A PDFium worker on its own thread, for detector checks that need no window.
 struct RenderWorker {
@@ -44,6 +51,17 @@ struct RenderWorker {
         QElapsedTimer timer; timer.start();
         while(timer.elapsed()<30000) {
             for(const auto& frame:frames) if(frame.revision==request.revision && !frame.image.isNull()) return frame;
+            QTest::qWait(10);
+        }
+        return {};
+    }
+    // The tick boxes that follow a final render requested with detectBoxes.
+    PdfFrame renderBoxes(PdfRequest request) {
+        request.detectBoxes=true; request.skipPreview=true;
+        if(render(request).image.isNull()) return {};
+        QElapsedTimer timer; timer.start();
+        while(timer.elapsed()<30000) {
+            for(const auto& frame:frames) if(frame.revision==revision && frame.boxesOnly) return frame;
             QTest::qWait(10);
         }
         return {};
@@ -204,6 +222,263 @@ private slots:
         QCOMPARE(areas.size(),AnswerLines::maxLines);
         const auto last=*std::max_element(areas.begin(),areas.end(),[](const auto& a,const auto& b){return a.top()<b.top();});
         QVERIFY(last.left()*1024<=32); QVERIFY(last.right()*1024>=980);
+    }
+    void realTextbookCheckBoxScan() {
+        // Opt-in survey of a whole book: LANGLERN_CHECKBOX_SURVEY=<pdf>. Logs every page's
+        // tick boxes and, with LANGLERN_REAL_ARTIFACT_DIR, writes a contact sheet of crops.
+        const auto path=qEnvironmentVariable("LANGLERN_CHECKBOX_SURVEY");
+        if(path.isEmpty() || !QFileInfo::exists(path)) QSKIP("Opt-in survey: set LANGLERN_CHECKBOX_SURVEY to a local PDF.");
+        const auto output=qEnvironmentVariable("LANGLERN_REAL_ARTIFACT_DIR");
+        RenderWorker worker; int total=0; QElapsedTimer timer; qint64 detectNs=0; double worstMs=0;
+        QList<QImage> crops; QStringList labels;
+        PdfRequest first; first.page=0; first.path=path; first.width=200; first.skipPreview=true;
+        const int pages=worker.render(first).pages; QVERIFY(pages>0);
+        QSet<int> only; for(const auto& v:qEnvironmentVariable("LANGLERN_CHECKBOX_PAGES").split(',',Qt::SkipEmptyParts)) only.insert(v.toInt()-1);
+        for(int page=0;page<pages;++page) {
+            if(!only.isEmpty() && !only.contains(page)) continue;
+            PdfRequest request; request.page=page; request.path=path; request.skipPreview=true;
+            request.width=qEnvironmentVariableIntValue("LANGLERN_CHECKBOX_WIDTH"); if(request.width<=0) request.width=1200;
+            timer.restart(); const auto frame=worker.render(request);
+            const auto found=worker.renderBoxes(request);
+            const auto ns=timer.nsecsElapsed(); detectNs+=ns; worstMs=std::max(worstMs,ns/1e6);
+            QVERIFY(!frame.image.isNull()); QVERIFY(found.checkBoxesReady);
+            const auto boxes=found.checkBoxes;
+            total+=int(boxes.size());
+            if(boxes.isEmpty()) continue;
+            qInfo().noquote()<<"checkboxes page"<<page+1<<boxes.size()<<boxes;
+            const double iw=frame.image.width(),ih=frame.image.height();
+            if(!output.isEmpty()) {
+                auto overlay=frame.image.copy(); QPainter p(&overlay); p.setPen(QPen(Qt::blue,2));
+                for(const auto& r:boxes) p.drawRect(QRectF(r.x()*iw-3,r.y()*ih-3,r.width()*iw+6,r.height()*ih+6));
+                p.end(); QDir().mkpath(output); overlay.save(output+QStringLiteral("/page-%1.png").arg(page+1));
+            }
+            for(const auto& r:boxes) {
+                const QRectF px(r.x()*iw,r.y()*ih,r.width()*iw,r.height()*ih);
+                auto crop=frame.image.copy(QRect(int(px.x()-px.width()*1.5),int(px.y()-px.height()*.8),int(px.width()*8),int(px.height()*2.6)));
+                QPainter p(&crop); p.setPen(QPen(Qt::blue,1)); p.drawRect(QRectF(px.width()*1.5-2,px.height()*.8-2,px.width()+4,px.height()+4)); p.end();
+                crops.append(crop.scaled(240,78,Qt::KeepAspectRatio,Qt::SmoothTransformation)); labels.append(QString::number(page+1));
+            }
+        }
+        qInfo()<<"checkbox_total"<<total<<"pages"<<pages<<"render_and_detect_ms_avg"<<detectNs/1e6/pages<<"max"<<worstMs;
+        if(!output.isEmpty() && !crops.isEmpty()) {
+            const int columns=6,rows=int((crops.size()+columns-1)/columns);
+            QImage sheet(columns*250,rows*100,QImage::Format_RGB32); sheet.fill(Qt::white);
+            QPainter p(&sheet);
+            for(qsizetype i=0;i<crops.size();++i) {
+                const int x=int(i%columns)*250,y=int(i/columns)*100;
+                p.drawImage(x+5,y+18,crops[i]); p.setPen(Qt::red); p.drawText(x+5,y+14,QStringLiteral("p%1").arg(labels[i]));
+            }
+            p.end(); QDir().mkpath(output); QVERIFY(sheet.save(output+"/contact-sheet.png"));
+        }
+        QVERIFY(worker.stop());
+    }
+    void answerFontSet() {
+        // New answers: Langlern Sans (Andika) + Langlern Kai (LXGW WenKai), with Noto's
+        // vertical metrics so ruled-line layout is unchanged; bold uses real bold faces.
+        AnnotationModel model;
+        PageGeometry g; g.displayToPdf=QTransform(600,0,0,-800,0,800);
+        g.pdfToDisplay=g.displayToPdf.inverted(); g.units={600,800}; g.valid=true;
+        model.setGeometry(0,g);
+        const auto id=model.create(0,.2,.2); QVERIFY(!id.isEmpty());
+        QCOMPARE(model.snapshot().first().family,AnswerFonts::learning);
+        for(int size:{9,12,18}) QCOMPARE(QFontMetricsF(AnswerFonts::font(AnswerFonts::learning,size)).height(),QFontMetricsF(AnswerFonts::font(AnswerFonts::legacy,size)).height());
+        auto bold=[](const QString& family) { QFont f(family); f.setPixelSize(12); f.setBold(true); return QFontInfo(f); };
+        QCOMPARE(bold("Langlern Sans").family(),QStringLiteral("Langlern Sans")); QCOMPARE(bold("Langlern Sans").styleName(),QStringLiteral("Bold"));
+        QCOMPARE(bold("Langlern Kai").family(),QStringLiteral("Langlern Kai")); QCOMPARE(bold("Langlern Kai").styleName(),QStringLiteral("Medium"));
+        // Export: one embedded font per face used; real bold faces are not stroked, while
+        // bold on the legacy single-face font still is. Every glyph keeps its own text
+        // (mixed-face lines once attributed a space to the following 中).
+        TextAnnotation n; n.id=QUuid::createUuid().toString(QUuid::WithoutBraces); n.anchor={100,700}; n.right={1,0}; n.down={0,-1};
+        n.family=AnswerFonts::learning; n.width=400; n.height=40; n.text=QStringLiteral("Bonjour 中文练习 oui");
+        n.styles={{0,7,14,QColor("#1e468c"),true,false}};
+        auto legacy=n; legacy.id=QUuid::createUuid().toString(QUuid::WithoutBraces); legacy.family=AnswerFonts::legacy; legacy.order=1;
+        const auto prepared=prepareExportText({n,legacy});
+        QCOMPARE(prepared.notes.size(),2);
+        QVERIFY(prepared.fonts.size()>=4); // Sans Bold, Sans Regular, Kai, Noto
+        for(const auto& glyph:prepared.notes[0].glyphs) QVERIFY(!glyph.syntheticBold);
+        bool stroked=false; for(const auto& glyph:prepared.notes[1].glyphs) stroked=stroked||glyph.syntheticBold;
+        QVERIFY(stroked);
+        int fontsWithZhong=0;
+        for(const auto& font:prepared.fonts) { QVERIFY(!font.cmap.contains("<200b>")); fontsWithZhong+=font.cmap.contains("<4e2d>"); }
+        QCOMPARE(fontsWithZhong,2); // Langlern Kai (new answer) and Noto (legacy answer)
+    }
+    void checkBoxFixtureDetection() {
+        // Fixed-scale detection render: the same boxes at any display width.
+        RenderWorker worker;
+        auto boxes=[&](int page,int width) {
+            PdfRequest request; request.page=page; request.path=LANGLERN_FIXTURE("check-boxes.pdf"); request.width=width;
+            const auto frame=worker.renderBoxes(request);
+            return frame.checkBoxesReady?frame.checkBoxes:QList<QRectF>{QRectF(-1,-1,0,0)};
+        };
+        // Page 1: true boxes (pt, lower-left corner, 8 pt side); distractors must be ignored.
+        const QList<QPointF> expected{{72,740},{180,740},{300,740},{72,700},{180,700},{300,700}};
+        for(int width:{600,1200,2000}) {
+            const auto found=boxes(0,width);
+            qInfo()<<"fixture boxes width"<<width<<found;
+            QCOMPARE(found.size(),expected.size());
+            for(const auto& corner:expected) {
+                const QPointF centre((corner.x()+4)/595,(842-corner.y()-4)/842);
+                bool hit=false; for(const auto& r:found) hit=hit||(r.contains(centre) && std::abs(r.width()*595-8)<1.5 && std::abs(r.height()*842-8)<1.5);
+                QVERIFY2(hit,qPrintable(QStringLiteral("missing box at %1,%2 (width %3)").arg(corner.x()).arg(corner.y()).arg(width)));
+            }
+            QCOMPARE(boxes(0,width),found);
+            // Rotated page: display coordinates after /Rotate 90 (842 pt wide source, 595 x 842 shown).
+            const auto rotated=boxes(1,width);
+            QCOMPARE(rotated.size(),3);
+            for(const auto& r:rotated) QVERIFY(std::abs(r.width()*595-8)<1.5 && std::abs(r.height()*842-8)<1.5);
+        }
+        QVERIFY(boxes(0,600)==boxes(0,2000));
+        QVERIFY(CheckBoxes::detect({}, {600,800}).isEmpty());
+        QVERIFY(CheckBoxes::detect(QImage(10,10,QImage::Format_RGB32),{NAN,800}).isEmpty());
+        QVERIFY(worker.stop());
+    }
+    void checkBoxMarkToggleAndHistory() {
+        AnnotationModel model;
+        PageGeometry g; g.displayToPdf=QTransform(600,0,0,-800,0,800);
+        g.pdfToDisplay=g.displayToPdf.inverted(); g.units={600,800}; g.valid=true;
+        model.setGeometry(0,g);
+        // Unrelated ink nearby stays untouched.
+        QVERIFY(model.beginInk(0,{.3,.3},QColor("#235fbd"),2)); model.appendInk({.4,.4}); model.endInk();
+        QCOMPARE(model.inkSnapshot().size(),1);
+        const QRectF box(.1,.1,8./600,8./800);
+        QVERIFY(model.toggleBoxMark(0,box,true,QColor("#e5484d")));
+        QCOMPARE(model.inkSnapshot().size(),3);
+        QCOMPARE(model.boxMark(0,box).size(),2);
+        for(const auto& s:model.boxMark(0,box)) {
+            QCOMPARE(s.color,QColor("#e5484d")); QVERIFY(s.width>=.8 && s.width<=2.5); QVERIFY(s.pressure.isEmpty());
+            for(const auto& p:s.points) QVERIFY(box.contains(g.pdfToDisplay.map(p)));
+        }
+        QVERIFY(!model.toggleBoxMark(0,box,true,QColor("#e5484d"))); // second click clears
+        QCOMPARE(model.inkSnapshot().size(),1);
+        model.undo(); QCOMPARE(model.boxMark(0,box).size(),2);
+        model.undo(); QCOMPARE(model.boxMark(0,box).size(),0); QCOMPARE(model.inkSnapshot().size(),1);
+        model.redo(); QCOMPARE(model.boxMark(0,box).size(),2);
+        QVERIFY(!model.toggleBoxMark(0,box,false,Qt::black));
+        QVERIFY(model.toggleBoxMark(0,box,false,Qt::black)); // tick: one stroke with a sharp turn
+        QCOMPARE(model.boxMark(0,box).size(),1); QCOMPARE(model.boxMark(0,box).first().points.size(),5);
+        QVERIFY(!model.toggleBoxMark(5,box,false,Qt::black)); // no geometry
+        QVERIFY(!model.toggleBoxMark(0,QRectF(),false,Qt::black));
+    }
+    void checkMarkFollowsLanguage() {
+        ShellState shell;
+        QCOMPARE(shell.ocrLanguage(),QStringLiteral("fra"));
+        QVERIFY(shell.crossMarks(0)); // no page text: the document language decides
+        shell.setOcrLanguage("eng"); QVERIFY(!shell.crossMarks(0));
+        shell.setOcrLanguage("chi_sim"); QVERIFY(!shell.crossMarks(0));
+        shell.setOcrLanguage("fra+eng"); QVERIFY(shell.crossMarks(0));
+        auto page=[](const QString& text) {
+            auto t=std::make_shared<TextPage>();
+            for(auto u:text.toUcs4()) { TextCharacter c; c.unicode=u; t->characters.append(c); }
+            return TextSnapshot(t);
+        };
+        shell.textSelection()->put(0,page(QStringLiteral("Tick the box that matches what you hear and write your answer.")));
+        QVERIFY(!shell.crossMarks(0));
+        shell.setOcrLanguage("eng");
+        shell.textSelection()->put(1,page(QStringLiteral("Cochez la case qui correspond à ce que vous entendez.")));
+        QVERIFY(shell.crossMarks(1));
+        shell.textSelection()->put(2,page(QStringLiteral("Kreuzen Sie an, was Sie hören und was richtig ist.")));
+        QVERIFY(shell.crossMarks(2));
+        shell.textSelection()->put(3,page(QStringLiteral("请在正确的选项前面的方框里打勾，然后朗读句子。")));
+        QVERIFY(!shell.crossMarks(3));
+        shell.setCheckMarkStyle(2); QVERIFY(shell.crossMarks(0)); QVERIFY(shell.crossMarks(3));
+        shell.setCheckMarkStyle(1); QVERIFY(!shell.crossMarks(1));
+        shell.setCheckMarkStyle(7); QCOMPARE(shell.checkMarkStyle(),2);
+    }
+    void checkBoxClickAndTypingDefaults() {
+        ShellState shell; QQmlApplicationEngine engine; QStringList warnings;
+        connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError>& errors){for(const auto& e:errors)warnings.append(e.toString());});
+        engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}}); engine.loadFromModule("Langlern.Shell","Main");
+        auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(window);
+        window->resize(1300,900); window->show(); QVERIFY(QTest::qWaitForWindowExposed(window));
+        shell.selectFile(QUrl::fromLocalFile(LANGLERN_FIXTURE("check-boxes.pdf")));
+        QTRY_VERIFY(shell.storageReady()); QTRY_COMPARE(shell.pageCount(),2);
+        QTRY_VERIFY_WITH_TIMEOUT(shell.model().hasCheckBoxes(0),10000);
+        QCOMPARE(shell.model().checkBoxes(0).size(),6);
+        auto* viewport=findItem(window->contentItem(),"pdfViewport"); QVERIFY(viewport);
+        QTRY_VERIFY(std::abs(viewport->property("contentY").toDouble()-shell.scrollOffset())<.5);
+        auto scene=[&](QPointF p) { return viewport->mapToScene(p-QPointF(viewport->property("contentX").toDouble(),viewport->property("contentY").toDouble())).toPoint(); };
+        const auto box=shell.model().checkBoxes(0).first();
+        const QPointF centre(shell.pageLeft(0)+box.center().x()*shell.pageWidth(),shell.pageTop(0)+box.center().y()*shell.pageHeight(0));
+        QVERIFY(!shell.checkBoxAt(centre.x(),centre.y()).isEmpty());
+        QVERIFY(shell.checkBoxAt(centre.x()+60,centre.y()).isEmpty());
+        // Automatic mode: hovering shows the box hint, a click marks it (French page: cross).
+        QTest::mouseMove(window,scene(centre),30);
+        auto* hint=findItem(window->contentItem(),"answerLineHint"); QVERIFY(hint); QTRY_VERIFY(hint->isVisible());
+        const auto jobs=shell.model().renderJobs;
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,scene(centre));
+        QTRY_COMPARE(shell.annotations()->inkSnapshot().size(),2);
+        QVERIFY(shell.annotations()->snapshot().isEmpty()); // no text box was created
+        QTRY_VERIFY(hint->isVisible());
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,scene(centre));
+        QTRY_COMPARE(shell.annotations()->inkSnapshot().size(),0);
+        QTest::keyClick(window,Qt::Key_Z,Qt::ControlModifier);
+        QTRY_COMPARE(shell.annotations()->inkSnapshot().size(),2);
+        QCOMPARE(shell.model().renderJobs,jobs); // marking never re-renders the PDF
+        const auto output=qEnvironmentVariable("LANGLERN_CHECKBOX_ARTIFACT_DIR");
+        if(!output.isEmpty()) QVERIFY(window->grabWindow().save(output+"/fixture-marked.png"));
+        // Typing tool: its settings panel sets the style of new answers.
+        QTest::keyClick(window,Qt::Key_T);
+        auto* panel=findItem(window->contentItem(),"textSettingsPanel"); QVERIFY(panel); QTRY_VERIFY(panel->isVisible());
+        auto* red=findItem(window->contentItem(),"textColor2"); QVERIFY(red);
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,itemCenter(red));
+        QTRY_COMPARE(shell.annotations()->defaultTextColor(),QColor("#e5484d"));
+        auto* bold=findItem(window->contentItem(),"textDefaultBold"); QVERIFY(bold);
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,itemCenter(bold));
+        QTRY_VERIFY(shell.annotations()->defaultBold());
+        auto* cross=findItem(window->contentItem(),"checkMarkStyle1"); QVERIFY(cross);
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,itemCenter(cross));
+        QTRY_COMPARE(shell.checkMarkStyle(),1);
+        if(!output.isEmpty()) QVERIFY(window->grabWindow().save(output+"/typing-settings.png"));
+        // Close the panel with its button, then type an answer on blank paper.
+        auto* button=findItem(window->contentItem(),"textSettingsButton"); QVERIFY(button);
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,itemCenter(button)); QTRY_VERIFY(!panel->isVisible());
+        const QPointF blank(shell.pageLeft(0)+.5*shell.pageWidth(),shell.pageTop(0)+.45*shell.pageHeight(0));
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,scene(blank));
+        QTRY_COMPARE(shell.annotations()->snapshot().size(),1);
+        auto* editor=findItem(window->contentItem(),"annotationEditor"); QVERIFY(editor); QTRY_VERIFY(editor->hasActiveFocus());
+        for(char c:{'o','u','i'}) QTest::keyClick(window,c);
+        QTRY_COMPARE(shell.annotations()->snapshot().first().text,QStringLiteral("oui"));
+        const auto note=shell.annotations()->snapshot().first();
+        QCOMPARE(note.color,QColor("#e5484d"));
+        QTRY_VERIFY(!shell.annotations()->snapshot().first().styles.isEmpty());
+        const auto styles=shell.annotations()->snapshot().first().styles;
+        QCOMPARE(styles.size(),1); QCOMPARE(styles.first().start,0); QCOMPARE(styles.first().length,3); QVERIFY(styles.first().bold);
+        QTest::keyClick(window,Qt::Key_Escape);
+        // Preferences reach the library file used on the next launch.
+        QTRY_VERIFY_WITH_TIMEOUT([&]{
+            QFile f(caseWorkspace->path()+"/library-v1.json"); if(!f.open(QIODevice::ReadOnly)) return false;
+            const auto v=QJsonDocument::fromJson(f.readAll()).object();
+            return v.value("textColor").toString()==QStringLiteral("#e5484d") && v.value("textBold").toBool() && v.value("checkMark").toInt()==1;
+        }(),5000);
+        QVERIFY2(warnings.isEmpty(),qPrintable(warnings.join('\n')));
+    }
+    void realTextbookCheckBoxes() {
+        // Fixed acceptance sample (book 3, p.34: "oui / non"), plus the workbook and, when
+        // configured, book 2 p.51 (the profile form with 20 boxes) — at two display widths.
+        const auto path=realTextbookPath();
+        if(path.isEmpty()) QSKIP("The configured real textbook is unavailable on this runner; real-PDF acceptance was not performed.");
+        // PDFium is process-global: one worker (one document session) at a time.
+        auto check=[&](const QString& pdf,const std::function<void(const std::function<QList<QRectF>(int,int)>&)>& body) {
+            RenderWorker worker;
+            body([&](int page,int width) { PdfRequest r; r.page=page; r.path=pdf; r.width=width; return worker.renderBoxes(r).checkBoxes; });
+            return worker.stop();
+        };
+        QVERIFY(check(path,[&](const auto& boxes) {
+            for(int width:{700,1500}) {
+                const auto p34=boxes(33,width);
+                qInfo()<<"real p34"<<width<<p34;
+                QCOMPARE(p34.size(),2);
+                QVERIFY(std::abs(p34[0].center().x()-.704)<.006 && std::abs(p34[0].center().y()-.211)<.006);
+                QVERIFY(std::abs(p34[1].center().x()-.765)<.006 && std::abs(p34[1].center().y()-.211)<.006);
+                // Chinese running text around 口 (p.20 "口语", p.78 "入口") is not a box.
+                QVERIFY(boxes(19,width).isEmpty()); QVERIFY(boxes(77,width).isEmpty());
+            }
+        }));
+        const auto workbook=realWorkbookPath();
+        if(!workbook.isEmpty()) QVERIFY(check(workbook,[&](const auto& boxes) { for(int width:{700,1500}) QCOMPARE(boxes(13,width).size(),14); }));
+        const auto book2=qEnvironmentVariable("LANGLERN_LARGE_PDF");
+        if(QFileInfo(book2).fileName().contains(QStringLiteral("你好法语2学生用书")))
+            QVERIFY(check(book2,[&](const auto& boxes) { for(int width:{700,1500}) QCOMPARE(boxes(50,width).size(),20); }));
     }
     void previewKeepsFinalAnswerGeometry() {
         RenderWorker worker;

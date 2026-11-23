@@ -24,6 +24,11 @@ public:
     bool doublePage() const { return doublePage_; }
     void put(int page, QImage image, int requestedWidth, bool final, QList<QRectF> answerLines={}, bool linesReady=false);
     QList<QRectF> answerLines(int page) const;
+    // Printed tick boxes: found once per page from a fixed-scale render and kept for the
+    // document session (small: at most CheckBoxes::maxBoxes rects per page).
+    void setCheckBoxes(int page, QList<QRectF> boxes);
+    bool hasCheckBoxes(int page) const { return boxes_.contains(page); }
+    QList<QRectF> checkBoxes(int page) const { return boxes_.value(page); }
     void setBudgets(qint64 cpu, qint64 gpu);
     QImage image(int page) const;
     bool ready(int page, int width) const;
@@ -63,6 +68,7 @@ private:
     void updateWidth();
     double rowHeight(int page) const;
     struct Entry { QImage pixels; int requestedWidth = 0; bool final = false; quint64 use = 0; QList<QRectF> answerLines; };
+    QHash<int, QList<QRectF>> boxes_;
     QList<QSizeF> sizes_;
     double minRatio_ = 792.0 / 612.0; // shortest page height/width, for plannedPages()
     QList<bool> known_;

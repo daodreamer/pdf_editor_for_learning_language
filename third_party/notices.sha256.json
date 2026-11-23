@@ -1,11 +1,19 @@
 [
   {
+    "file": "notices/Andika-OFL.txt",
+    "sha256": "43ee152fcd7be0c6eb3468f3012e776cb75bf88f5dec548be0aa4619bf438f9e"
+  },
+  {
     "file": "notices/CppWinRT-MIT.txt",
     "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
   },
   {
     "file": "notices/ECDICT-MIT.txt",
     "sha256": "f8552dd246f61a4e064569eae6194a01c6b3d63b03bf27c6ca863593c549ed0f"
+  },
+  {
+    "file": "notices/LXGW-WenKai-OFL.txt",
+    "sha256": "1a25e35da1031c6c3436fde545bb9cb5aca954e9873afe510c834b8b79bd21a0"
   },
   {
     "file": "notices/Lucide-ISC.txt",
@@ -16,8 +24,16 @@
     "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
   },
   {
+    "file": "notices/Wiktionary-CC-BY-SA.txt",
+    "sha256": "968149a3b2032b933ed6839d7ca55df62df31be7f9ec84bf6d80b40989b86a05"
+  },
+  {
     "file": "notices/ocr/Leptonica-license.txt",
     "sha256": "87829abb5bbb00b55a107365da89e9a33f86c4250169e5a1e5588505be7d5806"
+  },
+  {
+    "file": "notices/ocr/Tesseract-LICENSE.txt",
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
   },
   {
     "file": "notices/ocr/libpng-LICENSE.txt",
@@ -28,12 +44,12 @@
     "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
   },
   {
-    "file": "notices/ocr/Tesseract-LICENSE.txt",
-    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
-  },
-  {
     "file": "notices/ocr/zlib-LICENSE.txt",
     "sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2"
+  },
+  {
+    "file": "notices/pdfium/LICENSE",
+    "sha256": "8854f4388f1ca13b3ad9baa42e95f5546b4c0b17109c159256d3eca7be39b09b"
   },
   {
     "file": "notices/pdfium/abseil.txt",
@@ -92,10 +108,6 @@
     "sha256": "452390433ba0f88aa3e2b122c647741b72a0c117cd6ed7a329b49785aecb5511"
   },
   {
-    "file": "notices/pdfium/LICENSE",
-    "sha256": "8854f4388f1ca13b3ad9baa42e95f5546b4c0b17109c159256d3eca7be39b09b"
-  },
-  {
     "file": "notices/pdfium/llvm-libc.txt",
     "sha256": "3b6226c32e168c83b891d8d6f0d3c29c2116dc3ef93dc93c307b54f279ecf383"
   },
@@ -144,6 +156,10 @@
     "sha256": "84c6d82dc7de80f5b73f231edfd3ddc5b53513908117452bfa37ea36bb4b7e0a"
   },
   {
+    "file": "notices/speech/Supertonic-OpenRAIL-M.txt",
+    "sha256": "0d944a9110fed9a9602d60e0423a272903e7bd21ab060490774efc77c2275e9f"
+  },
+  {
     "file": "notices/speech/Supertonic-code-MIT.txt",
     "sha256": "0dfe0d0ba84416fe3879d9a34f4909d8d0137c78d1e95834177b0414ac096fa2"
   },
@@ -154,14 +170,6 @@
   {
     "file": "notices/speech/Supertonic-modifications.txt",
     "sha256": "145f3bf4dc914cca966c6b5b3f2543c1e996ae6684c73a1e791941363891008c"
-  },
-  {
-    "file": "notices/speech/Supertonic-OpenRAIL-M.txt",
-    "sha256": "0d944a9110fed9a9602d60e0423a272903e7bd21ab060490774efc77c2275e9f"
-  },
-  {
-    "file": "notices/Wiktionary-CC-BY-SA.txt",
-    "sha256": "968149a3b2032b933ed6839d7ca55df62df31be7f9ec84bf6d80b40989b86a05"
   },
   {
     "file": "notices/windows-sdk/sdk_license.rtf",

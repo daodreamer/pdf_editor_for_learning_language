@@ -49,5 +49,65 @@
     "cmake": "3.31.6",
     "ninja": "1.11.1.3",
     "aqtinstall": "3.3.0"
-  }
+  },
+  "answerFonts": [
+    {
+      "file": "Andika-Regular.ttf",
+      "url": "https://raw.githubusercontent.com/google/fonts/fffdadf0f0c9cc1ec8b407063424a8bfbee05611/ofl/andika/Andika-Regular.ttf",
+      "sha256": "202b96b1f174a4a43baefe885b40dacacb81786755efd08ed4b7704e79c45515",
+      "kind": "metrics",
+      "output": "LanglernSans-Regular.ttf",
+      "weight": "Regular",
+      "family": "Langlern Sans",
+      "postscript": "LanglernSans",
+      "unique": "6.101 metrics"
+    },
+    {
+      "file": "Andika-Bold.ttf",
+      "url": "https://raw.githubusercontent.com/google/fonts/fffdadf0f0c9cc1ec8b407063424a8bfbee05611/ofl/andika/Andika-Bold.ttf",
+      "sha256": "4361126189a2d0e0da66999352db58aaf1b4ca940faf8a8239d725f8303d890d",
+      "kind": "metrics",
+      "output": "LanglernSans-Bold.ttf",
+      "weight": "Bold",
+      "family": "Langlern Sans",
+      "postscript": "LanglernSans",
+      "unique": "6.101 metrics"
+    },
+    {
+      "file": "Andika-OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/fffdadf0f0c9cc1ec8b407063424a8bfbee05611/ofl/andika/OFL.txt",
+      "sha256": "43ee152fcd7be0c6eb3468f3012e776cb75bf88f5dec548be0aa4619bf438f9e",
+      "kind": "licence",
+      "output": "LanglernSans-OFL.txt"
+    },
+    {
+      "file": "LXGWWenKai-Regular.ttf",
+      "url": "https://github.com/lxgw/LxgwWenKai/releases/download/v1.530/LXGWWenKai-Regular.ttf",
+      "sha256": "2d73eea94ad808999d90c0000c239a84a33b09d4bc6ab6c5b8bbf1eda8a7fc8b",
+      "kind": "subset",
+      "weight": "Regular",
+      "output": "LanglernKai-Regular.ttf",
+      "family": "Langlern Kai",
+      "postscript": "LanglernKai",
+      "unique": "1.530 GB2312"
+    },
+    {
+      "file": "LXGWWenKai-Medium.ttf",
+      "url": "https://github.com/lxgw/LxgwWenKai/releases/download/v1.530/LXGWWenKai-Medium.ttf",
+      "sha256": "f4b8a34d1f838fe411540cb7c97b1c384ac9738a876c4104500bc42508b2312a",
+      "kind": "subset",
+      "weight": "Medium",
+      "output": "LanglernKai-Medium.ttf",
+      "family": "Langlern Kai",
+      "postscript": "LanglernKai",
+      "unique": "1.530 GB2312"
+    },
+    {
+      "file": "LXGWWenKai-OFL.txt",
+      "url": "https://raw.githubusercontent.com/lxgw/LxgwWenKai/v1.530/OFL.txt",
+      "sha256": "1a25e35da1031c6c3436fde545bb9cb5aca954e9873afe510c834b8b79bd21a0",
+      "kind": "licence",
+      "output": "LanglernKai-OFL.txt"
+    }
+  ]
 }

@@ -21,7 +21,7 @@ payload 包含 notes 与 ink：
 | notes.id / page | UUID，零起始页号 |
 | notes.anchor / right / down | PDF 原始页面坐标及正交单位方向，保留 CropBox、固有旋转与 UserUnit 契约 |
 | notes.width / height / size | 原始页面单位中的框宽高与字体大小；高度随编辑器内容扩展 |
-| notes.text / family / color | 已提交文字（不含 IME preedit）、受控 Noto Sans SC、`#AARRGGBB` |
+| notes.text / family / color | 已提交文字（不含 IME preedit）；字体组只接受 `Langlern Sans + Kai`（2026-11-23 起新建答案）或 `Noto Sans SC`（此前的答案，保持原样）；`#AARRGGBB` |
 | notes.widthLocked | 可选布尔值；新建为 false，仅手动 resize 设为 true。换行和到达页边不再自动锁宽。缺失时按 true 读取以保留旧答案版式；删除文字时解除锁宽，以原宽度为自动换行上限 |
 | notes.minimumHeight | 可选正数，缺失为 24；用户手动调整的高度下限，实际框高还会为完整文字排版扩展 |
 | notes.maximumWidth | 可选非负数，缺失/0 表示使用页面剩余宽度；横线创建的答案以横线宽度为上限。删减文字时可缩小实际框宽/高，minimumHeight 恢复为 24；手动 resize 会清除此上限 |
@@ -32,6 +32,8 @@ payload 包含 notes 与 ink：
 | ink.width / color / order | 原始单位笔宽、`#AARRGGBB`、字符串创建序号 |
 
 文字层在笔迹层之上；两类内部按创建序号恢复和导出。视口、选中态、IME 预编辑、在途笔迹/移动及撤销历史不持久化；擦除在途快照仍保留未提交前的笔迹。关闭前提交 IME 并结束文字事务，取消未完成手势。
+
+选择框标记（2026-11-23）是普通 ink 记录（✓ 一笔、✗ 两笔，无 pressure），不增加字段。新答案的默认颜色写入既有 `notes.color`，默认加粗/倾斜写入既有 `notes.styles`。
 
 紧凑虚线答案复用现有字段：基础 size 为 9、minimumHeight 为 14 PDF pt，不增加快照版本。删除文字时，紧凑答案回到 14 pt 最小高度，普通答案仍为 24 pt；实际内容高度继续参与排版。旧快照读取规则不变。
 

@@ -28,7 +28,7 @@ void ReadingModel::reset(int count) {
     beginResetModel();
     sizes_.fill(QSizeF(612,792), count);
     known_.fill(false, count);
-    tops_.clear(); active_.clear(); cache_.clear(); y_ = 0;
+    tops_.clear(); active_.clear(); cache_.clear(); boxes_.clear(); y_ = 0;
     lookups = exactHits = degradedHits = misses = renderJobs = evictions = 0;
     endResetModel();
     rebuild(0, 0);
@@ -176,6 +176,10 @@ QList<QRectF> ReadingModel::answerLines(int p) const {
     const auto it=cache_.constFind(p);
     return it==cache_.cend()?QList<QRectF>{}:it->answerLines;
 }
+void ReadingModel::setCheckBoxes(int p,QList<QRectF> boxes) {
+    if(p<0 || p>=count()) return;
+    boxes.squeeze(); boxes_.insert(p,std::move(boxes));
+}
 void ReadingModel::put(int p,QImage image,int width,bool final,QList<QRectF> lines,bool linesReady) {
     if (image.isNull() || image.sizeInBytes() > pageBudget()) return;
     if (!final) {
@@ -197,7 +201,9 @@ void ReadingModel::put(int p,QImage image,int width,bool final,QList<QRectF> lin
     const int row = int(active_.indexOf(p));
     if (row >= 0) emit dataChanged(index(row),index(row),{Pixels});
 }
-qint64 ReadingModel::cpuBytes() const { qint64 n=0; for (const auto& e:cache_) n+=e.pixels.sizeInBytes()+e.answerLines.capacity()*qint64(sizeof(QRectF)); return n; }
+qint64 ReadingModel::cpuBytes() const { qint64 n=0; for (const auto& e:cache_) n+=e.pixels.sizeInBytes()+e.answerLines.capacity()*qint64(sizeof(QRectF));
+    for (const auto& b:boxes_) n+=b.capacity()*qint64(sizeof(QRectF));
+    return n; }
 qint64 ReadingModel::gpuBytes() const { qint64 n=0; for(int p:active_) n+=image(p).sizeInBytes(); return n; }
 void ReadingModel::evict() {
     while (cpuBytes() > config.cpuBytes && !cache_.isEmpty()) {

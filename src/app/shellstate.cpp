@@ -1,5 +1,6 @@
 #include "shellstate.h"
 #include "runtimepaths.h"
+#include "answerfonts.h"
 
 #include <QFileInfo>
 #include <QStandardPaths>
@@ -8,6 +9,7 @@
 #include <QStyleHints>
 #include <QInputMethod>
 #include <algorithm>
+#include <limits>
 #include <cmath>
 
 ShellState::ShellState(QObject* parent) : QObject(parent) {
@@ -188,6 +190,7 @@ void ShellState::schedule() {
         r.width = ReadingConfig::previewWidth;
         r.previewOnly = true;
     }
+    r.detectBoxes = !textTask && !ocrTask && !r.previewOnly && candidate >= 0 && !model_.hasCheckBoxes(r.page);
     if (textTask || ocrTask) {
         // No bitmap allocation, and no renderJobs increment for text extraction.
     } else if (candidate < 0) {
@@ -294,6 +297,13 @@ QPointF ShellState::zoomAt(double zoom,double x,double y,double viewX,double vie
     return origin;
 }
 void ShellState::acceptFrame(const PdfFrame& frame) {
+    // Tick boxes depend only on the document page, so a newer request does not void them.
+    if (frame.boxesOnly) {
+        if (shuttingDown_ || frame.session != session_ || frame.page < 0 || frame.page >= pageCount_) return;
+        model_.setCheckBoxes(frame.page,frame.checkBoxes);
+        emit answerLinesChanged();
+        return;
+    }
     if (shuttingDown_ || frame.session != session_ || frame.revision != revision_) {
         emit renderDiscarded(frame.revision);
         return;
@@ -611,6 +621,69 @@ QString ShellState::createAnswerAt(double x,double y) {
     return annotations_.create(page,block.area.x(),block.area.y(),block.area.width()*g.units.width(),
         block.first.height()*g.units.height(),block.pitch*g.units.height(),block.lines);
 }
+ShellState::PageBox ShellState::checkBoxNear(double x,double y) const {
+    if(!containsPage(x,y)) return {};
+    const int page=model_.pageAtPosition(x,y);
+    const double w=model_.pageWidth(),h=model_.height(page);
+    if(!(w>0) || !(h>0)) return {};
+    const QPointF point((x-model_.left(page))/w,(y-model_.top(page))/h);
+    PageBox best; double distance=std::numeric_limits<double>::max();
+    for(const auto& box:model_.checkBoxes(page)) {
+        // Generous target: a quarter of the box around it, at least ~4 logical px.
+        const double padX=std::max(box.width()*.25,4/w),padY=std::max(box.height()*.25,4/h);
+        if(!box.adjusted(-padX,-padY,padX,padY).contains(point)) continue;
+        const auto d=box.center()-point; const double dd=QPointF::dotProduct(d,d);
+        if(dd<distance) { distance=dd; best={page,box}; }
+    }
+    return best;
+}
+QRectF ShellState::checkBoxAt(double x,double y) const {
+    const auto hit=checkBoxNear(x,y);
+    if(hit.page<0) return {};
+    const double w=model_.pageWidth(),h=model_.height(hit.page);
+    const auto& b=hit.box;
+    const double pad=std::max(3.0,b.width()*w*.3);
+    return QRectF(model_.left(hit.page)+b.x()*w-pad,model_.top(hit.page)+b.y()*h-pad,b.width()*w+2*pad,b.height()*h+2*pad);
+}
+bool ShellState::toggleCheckBox(double x,double y) {
+    const auto hit=checkBoxNear(x,y);
+    if(hit.page<0) return false;
+    finishTextEditing(); textSelection_.clear(); focusPage(hit.page);
+    annotations_.toggleBoxMark(hit.page,hit.box,crossMarks(hit.page),annotations_.defaultTextColor());
+    return true;
+}
+bool ShellState::crossMarks(int page) const {
+    if(checkMarkStyle_!=0) return checkMarkStyle_==2;
+    // Count common function words per language in the page text (PDF text layer or OCR).
+    static const QSet<QString> french{"le","la","les","des","du","est","et","une","un","vous","je","nous","il","elle","ce","que","qui","pour","pas","sur","au","aux","avec","dans","mon","votre"};
+    static const QSet<QString> german{"der","die","das","und","ist","nicht","ich","sie","mit","ein","eine","zu","den","auf","ihr","wir","sind"};
+    static const QSet<QString> spanish{"el","los","las","y","es","por","con","una","del","usted","yo","está","son"};
+    static const QSet<QString> italian{"il","gli","che","è","per","non","con","una","della","sono","io","lei"};
+    static const QSet<QString> english{"the","and","is","are","you","of","to","in","it","that","with","for","this","what","your","i"};
+    if(const auto text=textSelection_.snapshot(page); text && !text->characters.isEmpty()) {
+        int cross=0,tick=0,han=0; QString word;
+        auto flush=[&] {
+            if(word.isEmpty()) return;
+            if(french.contains(word) || german.contains(word) || spanish.contains(word) || italian.contains(word)) ++cross;
+            if(english.contains(word)) ++tick;
+            word.clear();
+        };
+        for(const auto& c:text->characters) {
+            const char32_t u=c.unicode;
+            if(u>=0x4e00 && u<=0x9fff) { ++han; flush(); continue; }
+            if(QChar::isLetter(u)) {
+                // Letters only these languages use count on their own.
+                if(QStringLiteral("éèêëàâçîïôûùœäöüßñ").contains(QString::fromUcs4(&u,1).toLower())) ++cross;
+                word+=QString::fromUcs4(&u,1).toLower();
+            } else if(u!=U'\'' && u!=U'\u2019') flush();
+            else word.clear(); // l'école, j'ai: the elided article is not a word here
+        }
+        flush();
+        if(cross+tick>=3) return cross>tick;
+        if(han>=10) return false; // Chinese: 打勾
+    }
+    return !ocrLanguage_.startsWith(QLatin1String("eng")) && !ocrLanguage_.startsWith(QLatin1String("chi"));
+}
 QString ShellState::createTextBox(double x,double y) {
     if(shuttingDown_ || !storageReady_ || transitioning_ || !pageCount_ || !std::isfinite(x) || !std::isfinite(y)) return {};
     const int page=model_.pageAtPosition(x,y);
@@ -642,11 +715,7 @@ void ShellState::syncAnnotations() {
     annotations_.setActivePages(active);
 }
 
-static bool initializeAnnotationFont() {
-    static int font=-1;
-    if(font<0) font=QFontDatabase::addApplicationFont(runtimeDataDir()+QStringLiteral("/fonts/NotoSansSC-Regular.ttf"));
-    return font>=0;
-}
+static bool initializeAnnotationFont() { return AnswerFonts::registerAll(); }
 void ShellState::initializeStorage() {
     qRegisterMetaType<AnnotationSnapshot>();
     const auto overrideRoot=qEnvironmentVariable("LANGLERN_WORKSPACE_DIR");

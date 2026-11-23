@@ -31,6 +31,16 @@ Item {
     property alias textEditor: editor
     property alias formatPopover: formattingPopover
     property bool applyingModel: false
+    // A new, empty answer takes the typing tool's default bold/italic with its first
+    // committed text (colour and size are already the note's base style).
+    property bool styleDefaults: noteText.length === 0
+    function applyDefaultStyle(): void {
+        if (!styleDefaults || applyingModel || !selected || editor.length === 0 || editor.preeditText.length > 0) return
+        styleDefaults = false
+        const notes = shell.annotations
+        if (notes.defaultBold) formatting.format(0, editor.length, "bold", true)
+        if (notes.defaultItalic) formatting.format(0, editor.length, "italic", true)
+    }
     onNoteTextChanged: scheduleRestore()
     onNoteStylesChanged: scheduleRestore()
     function scheduleRestore(): void { applyingModel = true; Qt.callLater(restoreStyles) }
@@ -139,8 +149,7 @@ Item {
             wrapMode: TextEdit.Wrap
             horizontalAlignment: TextEdit.AlignLeft
             color: note.noteColor
-            font.family: note.noteFamily
-            font.pixelSize: note.noteFontSize
+            font: note.shell.annotations.answerFont(note.noteFamily, note.noteFontSize)
             selectByMouse: true
             persistentSelection: false
             Accessible.name: qsTr("第 %1 页文字答案").arg(note.notePage + 1)
@@ -161,7 +170,7 @@ Item {
                 note.shell.annotations.setEditorText(note.noteId, formatting.plainText(), preeditText.length > 0 ? note.noteHeight : Math.max(24, contentHeight), formatting.styles())
             }
             function scheduleSync(): void { pendingSync = true; Qt.callLater(syncText) }
-            onTextChanged: scheduleSync()
+            onTextChanged: { note.applyDefaultStyle(); scheduleSync() }
             onContentHeightChanged: scheduleSync()
             Keys.onEscapePressed: { note.shell.finishTextEditing(); focus = false }
             Keys.onPressed: function(event) {

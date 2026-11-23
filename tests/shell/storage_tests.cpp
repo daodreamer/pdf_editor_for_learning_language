@@ -1,4 +1,5 @@
 #include "testsupport.h"
+#include "answerfonts.h"
 #include "legacydata.h"
 #include "shellstate.h"
 #include <QDir>
@@ -102,6 +103,18 @@ private slots:
         QVERIFY(!StorageWorker::decode(StorageWorker::encode(invalid,identity),identity,restored,error));
         invalid=original; invalid.notes[0].styles={{0,200,14,Qt::red,true,false}};
         QVERIFY(!StorageWorker::decode(StorageWorker::encode(invalid,identity),identity,restored,error));
+    }
+    void answerFontFamilies() {
+        // New answers name the bundled learning font set; older files keep Noto Sans SC.
+        for(const auto& family:{AnswerFonts::learning,AnswerFonts::legacy}) {
+            auto snapshot=sample(); snapshot.notes[0].family=family;
+            AnnotationSnapshot decoded; QString error;
+            QVERIFY2(StorageWorker::decode(StorageWorker::encode(snapshot,"id"),"id",decoded,error),qPrintable(error));
+            QCOMPARE(decoded.notes.first().family,family);
+        }
+        auto unknown=sample(); unknown.notes[0].family=QStringLiteral("Helvetica");
+        AnnotationSnapshot decoded; QString error;
+        QVERIFY(!StorageWorker::decode(StorageWorker::encode(unknown,"id"),"id",decoded,error));
     }
     void backupVersionsLocksAndFailures() {
         QTemporaryDir dir; const auto identity=StorageWorker::digest(fixture); const auto main=dir.filePath(QString::fromLatin1(identity)+".json");

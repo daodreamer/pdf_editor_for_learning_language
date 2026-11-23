@@ -98,12 +98,16 @@ ColumnLayout {
     onInputModeChanged: shell.ocrSelectionEnabled = inputMode === 1 && !regionSelection
     onRegionSelectionChanged: shell.ocrSelectionEnabled = inputMode === 1 && !regionSelection
     property rect answerHint: Qt.rect(0, 0, 0, 0)
+    // The hint covers a printed tick box (click marks it) rather than a ruled blank.
+    property bool answerHintBox: false
     readonly property bool answerHintsEnabled: !marking && !reading && (inputMode === 0 || inputMode === 2) && shell.storageReady
     onAnswerHintsEnabledChanged: updateAnswerHint()
     function updateAnswerHint(): void {
         if (!answerHintsEnabled || !answerHover.hovered || viewport.moving || wheelGlide.running || shell.annotations.gestureActive() || inkInput.selectingText) { answerHint = Qt.rect(0, 0, 0, 0); return }
         const p = viewport.contentItem.mapFromItem(answerHover.parent, answerHover.point.position.x, answerHover.point.position.y)
-        answerHint = shell.answerBlankAt(p.x, p.y)
+        const box = shell.checkBoxAt(p.x, p.y)
+        answerHintBox = box.width > 0
+        answerHint = answerHintBox ? box : shell.answerBlankAt(p.x, p.y)
     }
     Connections { target: view.shell; function onAnswerLinesChanged(): void { view.updateAnswerHint() } function onSelectionChanged(): void { view.updateAnswerHint() } }
     Connections { target: view.shell.annotations; function onContentChanged(): void { view.answerHint = Qt.rect(0, 0, 0, 0) } function onSelectionChanged(): void { view.answerHint = Qt.rect(0, 0, 0, 0) } }
@@ -471,18 +475,21 @@ ColumnLayout {
             x: view.answerHint.x; y: view.answerHint.y
             width: view.answerHint.width; height: view.answerHint.height
             visible: view.answerHintsEnabled && width > 0 && height > 0
-            color: view.wash(0.09); border.color: view.wash(0.45); radius: 4
+            color: view.wash(0.09); border.color: view.wash(0.45); radius: view.answerHintBox ? 6 : 4
             readonly property bool blocksInkInput: true
             MouseArea {
                 anchors.fill: parent
-                cursorShape: Qt.IBeamCursor
+                cursorShape: view.answerHintBox ? Qt.PointingHandCursor : Qt.IBeamCursor
                 // Hover feedback may disappear on press; focus the existing editor immediately.
                 onPressed: function(mouse) {
                     const p = mapToItem(viewport.contentItem, mouse.x, mouse.y)
-                    view.shell.createAnswerAt(p.x, p.y)
+                    if (view.answerHintBox) {
+                        view.shell.toggleCheckBox(p.x, p.y)
+                        Qt.callLater(view.updateAnswerHint)
+                    } else view.shell.createAnswerAt(p.x, p.y)
                 }
                 Accessible.role: Accessible.Button
-                Accessible.name: qsTr("点击填写横线答案")
+                Accessible.name: view.answerHintBox ? qsTr("点击勾选或取消选择框") : qsTr("点击填写横线答案")
             }
         }
         Shortcut {

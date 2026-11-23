@@ -1,5 +1,6 @@
 #include "workspacestate.h"
 #include "inkstroke.h"
+#include <QColor>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -14,6 +15,10 @@
 static double textSizeValue(const QVariant& v) {
     bool ok=false; const double size=std::round(v.toDouble(&ok));
     return ok && std::isfinite(size) ? std::clamp(size,AnnotationConfig::minTextSize,AnnotationConfig::maxTextSize) : AnnotationConfig::defaultTextSize;
+}
+static QString textColorValue(const QVariant& v) {
+    const QColor color(v.toString());
+    return color.isValid() ? color.name(QColor::HexRgb) : QStringLiteral("#1e468c");
 }
 static double inkWidthValue(const QVariant& v) {
     bool ok=false; const double width=std::round(v.toDouble(&ok)*2)/2; // slider step 0.5 pt
@@ -41,6 +46,9 @@ WorkspaceState::WorkspaceState(QObject* parent):QObject(parent),textSize_(Annota
                 frenchVoice_=data.value("frenchVoice").toString()==QLatin1String("female")?QStringLiteral("female"):QStringLiteral("male");
                 if(data.contains("textSize")) textSize_=textSizeValue(data.value("textSize"));
                 if(data.contains("inkWidth")) inkWidth_=inkWidthValue(data.value("inkWidth"));
+                if(data.contains("textColor")) textColor_=textColorValue(data.value("textColor"));
+                textBold_=data.value("textBold").toBool(); textItalic_=data.value("textItalic").toBool();
+                checkMark_=qBound(0,data.value("checkMark").toInt(),2);
             } else error_=tr("书架数据无法读取，原文件已保留。本次不自动覆盖。");
         } else error_=tr("书架数据无法读取，原文件已保留。本次不自动覆盖。");
     }
@@ -72,7 +80,8 @@ void WorkspaceState::save() {
     },Qt::QueuedConnection);
 }
 QVariantMap WorkspaceState::snapshot() const {
-    return {{"version",1},{"books",books_},{"words",words_},{"bookmarks",bookmarks_},{"layout",layout_},{"toolbar",toolbar_},{"paper",paper_},{"nightDim",nightDim_},{"english",english_},{"lookupLanguage",lookupLanguage_},{"frenchVoice",frenchVoice_},{"textSize",textSize_},{"inkWidth",inkWidth_}};
+    return {{"version",1},{"books",books_},{"words",words_},{"bookmarks",bookmarks_},{"layout",layout_},{"toolbar",toolbar_},{"paper",paper_},{"nightDim",nightDim_},{"english",english_},{"lookupLanguage",lookupLanguage_},{"frenchVoice",frenchVoice_},{"textSize",textSize_},{"inkWidth",inkWidth_},
+        {"textColor",textColor_},{"textBold",textBold_},{"textItalic",textItalic_},{"checkMark",checkMark_}};
 }
 void WorkspaceState::scheduleSave() {
     const auto candidate=snapshot();
@@ -82,6 +91,8 @@ void WorkspaceState::scheduleSave() {
         english_=accepted_.value("english").toBool();lookupLanguage_=accepted_.value("lookupLanguage",QStringLiteral("fr")).toString();
         frenchVoice_=accepted_.value("frenchVoice",QStringLiteral("male")).toString();
         textSize_=textSizeValue(accepted_.value("textSize"));inkWidth_=inkWidthValue(accepted_.value("inkWidth"));
+        textColor_=textColorValue(accepted_.value("textColor"));textBold_=accepted_.value("textBold").toBool();
+        textItalic_=accepted_.value("textItalic").toBool();checkMark_=qBound(0,accepted_.value("checkMark").toInt(),2);
         error_=tr("书架数据已达到 8 MiB 上限，本次修改未保存。请删除不再需要的生词或笔记。");emit changed();emit preferencesChanged();return;
     }
     accepted_=candidate;if(!loadBlocked_)error_.clear();timer_.start();
@@ -142,4 +153,8 @@ void WorkspaceState::grade(int index,int grade) {
 }
 void WorkspaceState::removeWord(int index) { if(index<0||index>=words_.size())return;words_.removeAt(index);emit changed();scheduleSave(); }
 void WorkspaceState::setTextSize(double v) { if(!std::isfinite(v))return;v=textSizeValue(v);if(textSize_==v)return;textSize_=v;emit preferencesChanged();scheduleSave(); }
+void WorkspaceState::setTextColor(QString v) { v=textColorValue(v);if(textColor_==v)return;textColor_=v;emit preferencesChanged();scheduleSave(); }
+void WorkspaceState::setTextBold(bool v) { if(textBold_==v)return;textBold_=v;emit preferencesChanged();scheduleSave(); }
+void WorkspaceState::setTextItalic(bool v) { if(textItalic_==v)return;textItalic_=v;emit preferencesChanged();scheduleSave(); }
+void WorkspaceState::setCheckMark(int v) { v=qBound(0,v,2);if(checkMark_==v)return;checkMark_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setInkWidth(double v) { if(!std::isfinite(v))return;v=inkWidthValue(v);if(inkWidth_==v)return;inkWidth_=v;emit preferencesChanged();scheduleSave(); }

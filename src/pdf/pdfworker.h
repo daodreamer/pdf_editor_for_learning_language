@@ -24,6 +24,8 @@ struct PdfRequest {
     bool previewOnly = false;
     bool textOnly = false;
     bool ocrOnly = false;
+    // Also find printed tick boxes (once per page: the result does not depend on zoom).
+    bool detectBoxes = false;
 };
 struct PdfFrame {
     quint64 session = 0;
@@ -44,6 +46,10 @@ struct PdfFrame {
     bool ocrOnly = false;
     QList<QRectF> answerLines;
     bool answerLinesReady = false;
+    // Printed tick boxes, from a dedicated render at CheckBoxes::pixelsPerPoint.
+    QList<QRectF> checkBoxes;
+    bool checkBoxesReady = false;
+    bool boxesOnly = false; // follows the page frame; carries no image
 };
 Q_DECLARE_METATYPE(PdfFrame)
 

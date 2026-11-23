@@ -47,12 +47,28 @@ ApplicationWindow {
         dark: shellTheme.dark
     }
     WorkspaceState { id: workspace }
-    // The last text size the user picked is the size of every new answer, also after restart.
-    Component.onCompleted: window.shell.annotations.defaultFontSize = workspace.textSize
+    // The last text style the user picked is the style of every new answer, also after restart.
+    Component.onCompleted: {
+        // Read everything first: each assignment writes the model's current style back.
+        const notes = window.shell.annotations
+        const saved = { size: workspace.textSize, color: workspace.textColor, bold: workspace.textBold, italic: workspace.textItalic }
+        window.shell.checkMarkStyle = workspace.checkMark
+        notes.defaultFontSize = saved.size
+        notes.defaultTextColor = saved.color
+        notes.defaultBold = saved.bold
+        notes.defaultItalic = saved.italic
+    }
     Connections {
         target: window.shell.annotations
         function onDefaultFontSizeChanged(): void { workspace.textSize = window.shell.annotations.defaultFontSize }
+        function onDefaultTextStyleChanged(): void {
+            const notes = window.shell.annotations
+            workspace.textColor = notes.defaultTextColor.toString()
+            workspace.textBold = notes.defaultBold
+            workspace.textItalic = notes.defaultItalic
+        }
     }
+    Connections { target: window.shell; function onCheckMarkStyleChanged(): void { workspace.checkMark = window.shell.checkMarkStyle } }
     OfflineServices { id: offline }
     Connections {
         target: window.shell
