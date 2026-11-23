@@ -1,4 +1,5 @@
 #include "exporttext.h"
+#include "runtimepaths.h"
 #include "textstyles.h"
 #include <QCoreApplication>
 #include <QFile>
@@ -25,7 +26,7 @@ QByteArray utf16Hex(const QString& text) {
 ExportText prepareExportText(const QList<TextAnnotation>& notes) {
     ExportText result;
     if(notes.isEmpty()) return result;
-    QFile file(QCoreApplication::applicationDirPath()+"/fonts/NotoSansSC-Regular.ttf");
+    QFile file(runtimeDataDir()+"/fonts/NotoSansSC-Regular.ttf");
     check(file.open(QIODevice::ReadOnly),"缺少导出字体文件。"); result.font=file.readAll();
     const QRawFont sourceFont(result.font,14,QFont::PreferDefaultHinting);
     check(sourceFont.isValid(),"内嵌字体文件无效。");

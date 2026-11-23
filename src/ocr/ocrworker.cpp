@@ -1,4 +1,5 @@
 #include "ocrworker.h"
+#include "runtimepaths.h"
 #include "readingconfig.h"
 #include <tesseract/baseapi.h>
 #include <tesseract/resultiterator.h>
@@ -22,7 +23,7 @@ constexpr qint64 diskBudget = 128 * 1024 * 1024;
 constexpr int diskEntries = 256;
 QString modelDirectory() {
     const auto override = qEnvironmentVariable("LANGLERN_TESSDATA");
-    return override.isEmpty() ? QCoreApplication::applicationDirPath() + "/tessdata" : override;
+    return override.isEmpty() ? runtimeDataDir() + "/tessdata" : override;
 }
 bool readModel(const char* path,std::vector<char>* output) {
     QFile file(QString::fromUtf8(path));

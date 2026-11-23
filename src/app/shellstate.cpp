@@ -1,4 +1,5 @@
 #include "shellstate.h"
+#include "runtimepaths.h"
 
 #include <QFileInfo>
 #include <QStandardPaths>
@@ -617,7 +618,7 @@ void ShellState::syncAnnotations() {
 
 static bool initializeAnnotationFont() {
     static int font=-1;
-    if(font<0) font=QFontDatabase::addApplicationFont(QCoreApplication::applicationDirPath()+QStringLiteral("/fonts/NotoSansSC-Regular.ttf"));
+    if(font<0) font=QFontDatabase::addApplicationFont(runtimeDataDir()+QStringLiteral("/fonts/NotoSansSC-Regular.ttf"));
     return font>=0;
 }
 void ShellState::initializeStorage() {

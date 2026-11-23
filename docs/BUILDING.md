@@ -233,6 +233,22 @@ macOS 媒体与语音（2026-11-18 起与 Windows 功能对等）：
 
 **ONNX Runtime 来源变更（Windows 与 macOS）**：2026-11-18 起 github.com/microsoft/onnxruntime 及其发布页返回 404，原锁定的 `onnxruntime-win-x64-1.23.2.zip` 无法再下载。两个平台统一改用 Microsoft 官方 NuGet 包 `Microsoft.ML.OnnxRuntime` 1.23.2：nupkg SHA-512 与 nuget.org 目录条目一致，LICENSE/ThirdPartyNotices 与已审查文本逐字节相同；`bootstrap-speech.py` 把包内 `build/native/include` 与 `runtimes/<平台>/native` 解到 `.deps/speech-source/onnxruntime-<平台>-1.23.2-nuget/{include,lib}`，并逐文件校验锁文件中的字节数与 SHA-256（Windows：`onnxruntime.dll`、`onnxruntime.lib`、`onnxruntime_providers_shared.dll`；macOS：`libonnxruntime.dylib`）。原 zip 的 URL 与散列保留在锁文件 `replaces` 字段。**未验证**：NuGet 中的 win-x64 DLL 是否与原 zip 中已审查的 DLL 逐字节相同（本机无原 zip，镜像站拒绝自动下载）；Windows 机器若仍有旧缓存 `.deps/speech-source/onnxruntime-win-x64-1.23.2`，下次运行 `bootstrap-speech.py` 会逐个打印 “identical to / DIFFERS from the cached release zip”，请据此确认。Windows 构建与 CI 在本次改动后尚未执行。
 
+### 本机 `.app` 打包（2026-11-18）
+
+构建后运行：
+
+```sh
+.tools/venv/bin/python tools/package-macos.py --sample-pdf "$HOME/Documents/French/你好法语3学生用书第二版.pdf"
+```
+
+输出 `build/packages/LinguaPDF-<版本>-macos-arm64/LinguaPDF.app`（约 454 MiB）及同名 zip（约 230 MiB）和 `.sha256`。脚本步骤：复制构建出的 `LinguaPDF.app`；把 `fonts/`、`tessdata/`、`dictionary/`、`voices/`、许可证、锁文件和 Qt SBOM/第三方声明放入 `Contents/Resources`；`macdeployqt` 打包 Qt 框架与 QML 插件（只保留 SQLite 驱动）；删除指向构建目录的 RPATH 并检查所有 Mach-O 不再引用构建路径；ad-hoc 签名并 `codesign --verify --deep --strict`；用 `DYLD_PRINT_LIBRARIES` 运行启动探针，确认 Qt/PDFium 只从包内或系统加载；再在隔离工作区用样例 PDF 打开并等到首帧渲染。
+
+运行时数据由 `src/pdf/runtimepaths.h` 定位：`.app` 内为 `Contents/Resources`，构建目录里的 `.app` 回退到构建根目录，Windows 与测试程序仍为可执行文件同目录。`Info.plist` 声明 PDF 为可打开的文档类型（Finder“打开方式”、拖到 Dock 图标），由 `QFileOpenEvent` 处理；图标 `assets/icons/linguapdf.icns` 由 `tools/make-macos-icon.py` 按与 Windows 图标相同的几何生成。
+
+实测：包内启动约 284 ms 可交互（Metal），用包内 PDFium 打开 291516513 bytes 真实教材并渲染首帧；把测试程序指向包内语音、OCR 模型和词库，`speech` 6/6、`ocr` 8/8、`design` 18/18 通过。
+
+限制：ad-hoc 签名、未公证，只适合在构建它的这台 Mac 上使用；分发给其他 Mac 需要 Apple Developer ID 签名、hardened runtime 与公证，且语音 dylib 目前放在 `Contents/Resources`（公证时应移到 `Contents/Frameworks`）。未做 DMG、自动更新或 Universal（x86_64）构建；发行许可审查（DISTRIBUTION.md）仍只覆盖 Windows 包。
+
 为 macOS 修复的问题：
 
 - **AGL 链接失败**：Qt 6.8.3 `FindWrapOpenGL` 总是链接 `-framework AGL`，新版 SDK 已移除 AGL（运行时目录仍在，故 `find_library` 会误找到）。根 `CMakeLists.txt` 仅在当前 SDK 缺 AGL 时从 `WrapOpenGL::WrapOpenGL` 去掉它；不修改 Qt 安装。

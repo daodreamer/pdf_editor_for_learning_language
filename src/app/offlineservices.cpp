@@ -1,4 +1,5 @@
 #include "offlineservices.h"
+#include "runtimepaths.h"
 #include "naturalspeech.h"
 #include "scancleanup.h"
 #include "frenchdictionary.h"
@@ -212,7 +213,7 @@ void OfflineServices::recognize(QImage image,QString document,int page,QString l
 namespace {
 QString dictionaryPath(const char* variable, const QString& name) {
     auto path=qEnvironmentVariable(variable);
-    return path.isEmpty()?QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("dictionary/")+name):path;
+    return path.isEmpty()?QDir(runtimeDataDir()).filePath(QStringLiteral("dictionary/")+name):path;
 }
 }
 void OfflineServices::setLookupLanguage(QString language) {

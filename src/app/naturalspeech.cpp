@@ -1,4 +1,5 @@
 #include "naturalspeech.h"
+#include "runtimepaths.h"
 #include "../speech/speechapi.h"
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -211,7 +212,7 @@ public:
 
 QString NaturalSpeech::defaultRoot() {
     const auto root=qEnvironmentVariable("LANGLERN_SPEECH_DIR");
-    return root.isEmpty()?QCoreApplication::applicationDirPath()+"/voices/supertonic3-fr":root;
+    return root.isEmpty()?runtimeDataDir()+"/voices/supertonic3-fr":root;
 }
 bool NaturalSpeech::installed(const QString& root) {
 #ifdef Q_OS_WIN

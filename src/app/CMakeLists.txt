@@ -14,6 +14,15 @@ if(WIN32)
     configure_file(linguapdf.rc.in "${CMAKE_CURRENT_BINARY_DIR}/linguapdf.rc" @ONLY)
     target_sources(langlern PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/linguapdf.rc")
 endif()
+if(APPLE)
+    # LinguaPDF.app: icon and Info.plist (PDF "Open With"). Runtime data stays beside the bundle in the
+    # build tree; tools/package-macos.py copies it into Contents/Resources (see runtimepaths.h).
+    set(langlern_icns "${PROJECT_SOURCE_DIR}/assets/icons/linguapdf.icns")
+    set_source_files_properties("${langlern_icns}" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    target_sources(langlern PRIVATE "${langlern_icns}")
+    set_target_properties(langlern PROPERTIES MACOSX_BUNDLE ON
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in")
+endif()
 target_link_libraries(langlern PRIVATE shell_ui shell_uiplugin Qt6::QuickControls2)
 target_compile_definitions(langlern PRIVATE LANGLERN_BUILD_TYPE="$<CONFIG>" LINGUAPDF_VERSION="${PROJECT_VERSION}")
 langlern_warnings(langlern)

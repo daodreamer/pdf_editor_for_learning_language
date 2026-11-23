@@ -9,6 +9,7 @@
 #include <QImage>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QFileOpenEvent>
 #include <QKeyEvent>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
@@ -17,9 +18,28 @@
 #include <QStandardPaths>
 #include <QTimer>
 #include <QtQml/QQmlExtensionPlugin>
+#include <functional>
 #include <memory>
 
 Q_IMPORT_QML_PLUGIN(LanglernShellPlugin)
+
+namespace {
+class FileOpenFilter : public QObject {
+public:
+    explicit FileOpenFilter(std::function<void(const QString&)> open) : open_(std::move(open)) {}
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override {
+        if (event->type() == QEvent::FileOpen) {
+            const auto path = static_cast<QFileOpenEvent*>(event)->file();
+            if (!path.isEmpty()) open_(path);
+            return true;
+        }
+        return QObject::eventFilter(watched, event);
+    }
+private:
+    std::function<void(const QString&)> open_;
+};
+}
 
 int main(int argc, char* argv[]) {
     QElapsedTimer clock;
@@ -137,6 +157,11 @@ int main(int argc, char* argv[]) {
         const auto path = parser.positionalArguments().first();
         QTimer::singleShot(0, &shell, [&shell, path] { shell.selectFile(QUrl::fromLocalFile(path)); });
     }
+    // Finder "Open With" / dragging a PDF onto the Dock icon arrives as QFileOpenEvent on macOS.
+    FileOpenFilter fileOpen([&shell](const QString& path) {
+        QTimer::singleShot(0, &shell, [&shell, path] { shell.selectFile(QUrl::fromLocalFile(path)); });
+    });
+    app.installEventFilter(&fileOpen);
     log(QStringLiteral("window_show_returned"));
     return app.exec();
 }
