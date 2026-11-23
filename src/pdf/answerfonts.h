@@ -7,7 +7,7 @@
 // Bundled answer fonts. notes.family names a font set, not a single face:
 //  - "Langlern Sans + Kai" (new answers): Langlern Sans (Andika by SIL) for letters,
 //    Langlern Kai (a GB2312 subset of LXGW WenKai) for Chinese, Noto Sans SC for any
-//    character outside both. Bold uses the real Bold / Medium faces. Both were renamed and
+//    character outside both. Bold uses real bold faces (Kai: the WenKai Medium design). Both were renamed and
 //    given Noto's vertical metrics (tools/make-answer-fonts.py), so line heights and
 //    baselines match the legacy face.
 //  - "Noto Sans SC": answers written before the switch keep their look.

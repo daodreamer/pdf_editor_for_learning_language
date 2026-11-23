@@ -20,7 +20,7 @@ QFont AnswerFonts::font(const QString& family,double pixelSize) {
 QStringList AnswerFonts::files() {
     const auto dir=runtimeDataDir()+QStringLiteral("/fonts/");
     return {dir+QStringLiteral("NotoSansSC-Regular.ttf"),dir+QStringLiteral("LanglernSans-Regular.ttf"),dir+QStringLiteral("LanglernSans-Bold.ttf"),
-        dir+QStringLiteral("LanglernKai-Regular.ttf"),dir+QStringLiteral("LanglernKai-Medium.ttf")};
+        dir+QStringLiteral("LanglernKai-Regular.ttf"),dir+QStringLiteral("LanglernKai-Bold.ttf")};
 }
 bool AnswerFonts::registerAll() {
     static QMutex mutex; static int state=0; // 0 not tried, 1 ok, -1 failed

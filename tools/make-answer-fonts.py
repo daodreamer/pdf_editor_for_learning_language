@@ -7,7 +7,8 @@ Name, so they are renamed; copyright, manufacturer, designer and licence records
 
 - Andika (SIL; reserved names "Andika", "SIL") -> "Langlern Sans", glyphs unchanged.
 - LXGW WenKai (reserved names "LXGW", "霞鹜", ...) -> "Langlern Kai", subset to GB2312 plus
-  punctuation (characters outside it fall back to Noto Sans SC).
+  punctuation (characters outside it fall back to Noto Sans SC). Its Medium design becomes
+  the family's Bold member (WenKai has no heavier weight).
 
 Run with the project venv (fontTools): .tools/venv/bin/python tools/make-answer-fonts.py
 """
@@ -61,6 +62,15 @@ def match_noto_metrics(font, noto):
     font["OS/2"].fsSelection = (font["OS/2"].fsSelection & ~(1 << 7)) | (noto["OS/2"].fsSelection & (1 << 7))
 
 
+def make_bold_member(font):
+    # The family's Bold style (weight class 700, bold style bits), so Windows (which
+    # groups faces by the legacy family name) and macOS both pick this file for bold.
+    os2 = font["OS/2"]
+    os2.usWeightClass = 700
+    os2.fsSelection = (os2.fsSelection & ~((1 << 6) | (1 << 0))) | (1 << 5)
+    font["head"].macStyle = (font["head"].macStyle & ~0b10) | 0b1
+
+
 def rename(font, family, postscript, weight, unique):
     # Only name records are replaced; copyright, manufacturer, designer, URLs and
     # licence keep the credit to the original authors.
@@ -103,6 +113,8 @@ for entry in lock:
             subsetter.populate(text="".join(sorted(gb2312())), unicodes=unicodes)
             subsetter.subset(font)
         match_noto_metrics(font, noto)
+        if entry["weight"] == "Bold":
+            make_bold_member(font)
         rename(font, entry["family"], entry["postscript"], entry["weight"], entry["unique"])
         font.save(out / entry["output"])
     data = (out / entry["output"]).read_bytes()

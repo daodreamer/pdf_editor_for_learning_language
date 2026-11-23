@@ -6,6 +6,8 @@
 #include "checkboxes.h"
 #include "exporttext.h"
 #include "answerfonts.h"
+#include "runtimepaths.h"
+#include <QRawFont>
 #include <QUuid>
 #include <QPainter>
 #include <QRandomGenerator>
@@ -282,9 +284,15 @@ private slots:
         const auto id=model.create(0,.2,.2); QVERIFY(!id.isEmpty());
         QCOMPARE(model.snapshot().first().family,AnswerFonts::learning);
         for(int size:{9,12,18}) QCOMPARE(QFontMetricsF(AnswerFonts::font(AnswerFonts::learning,size)).height(),QFontMetricsF(AnswerFonts::font(AnswerFonts::legacy,size)).height());
-        auto bold=[](const QString& family) { QFont f(family); f.setPixelSize(12); f.setBold(true); return QFontInfo(f); };
-        QCOMPARE(bold("Langlern Sans").family(),QStringLiteral("Langlern Sans")); QCOMPARE(bold("Langlern Sans").styleName(),QStringLiteral("Bold"));
-        QCOMPARE(bold("Langlern Kai").family(),QStringLiteral("Langlern Kai")); QCOMPARE(bold("Langlern Kai").styleName(),QStringLiteral("Medium"));
+        // The bold file itself must be chosen (a synthesized bold of Regular also reports
+        // "Bold"): compare the head table of the face Qt resolves with the bundled file.
+        auto boldFace=[](const QString& family,const QString& file) {
+            QFont f(family); f.setPixelSize(12); f.setBold(true);
+            QFile bundled(runtimeDataDir()+"/fonts/"+file); if(!bundled.open(QIODevice::ReadOnly)) return false;
+            return QRawFont::fromFont(f).fontTable("head")==QRawFont(bundled.readAll(),12).fontTable("head");
+        };
+        QVERIFY(boldFace("Langlern Sans","LanglernSans-Bold.ttf"));
+        QVERIFY(boldFace("Langlern Kai","LanglernKai-Bold.ttf"));
         // Export: one embedded font per face used; real bold faces are not stroked, while
         // bold on the legacy single-face font still is. Every glyph keeps its own text
         // (mixed-face lines once attributed a space to the following 中).
@@ -397,13 +405,23 @@ private slots:
         auto* viewport=findItem(window->contentItem(),"pdfViewport"); QVERIFY(viewport);
         QTRY_VERIFY(std::abs(viewport->property("contentY").toDouble()-shell.scrollOffset())<.5);
         auto scene=[&](QPointF p) { return viewport->mapToScene(p-QPointF(viewport->property("contentX").toDouble(),viewport->property("contentY").toDouble())).toPoint(); };
+        // Let the window, layout and nearby-page rendering settle before taking positions:
+        // a late resize moves the page, and a late frame clears the hover hint and counts
+        // as a render.
+        auto settled=[&] {
+            for(int page:shell.model().priority()) if(!shell.model().ready(page,shell.model().targetWidth(page,window->devicePixelRatio()))) return false;
+            return !shell.busy() && shell.model().nextUnknown()<0;
+        };
+        QTRY_VERIFY_WITH_TIMEOUT(settled(),10000); QTest::qWait(200);
+        QTRY_VERIFY(std::abs(viewport->property("contentY").toDouble()-shell.scrollOffset())<.5);
         const auto box=shell.model().checkBoxes(0).first();
         const QPointF centre(shell.pageLeft(0)+box.center().x()*shell.pageWidth(),shell.pageTop(0)+box.center().y()*shell.pageHeight(0));
         QVERIFY(!shell.checkBoxAt(centre.x(),centre.y()).isEmpty());
         QVERIFY(shell.checkBoxAt(centre.x()+60,centre.y()).isEmpty());
         // Automatic mode: hovering shows the box hint, a click marks it (French page: cross).
         QTest::mouseMove(window,scene(centre),30);
-        auto* hint=findItem(window->contentItem(),"answerLineHint"); QVERIFY(hint); QTRY_VERIFY(hint->isVisible());
+        auto* hint=findItem(window->contentItem(),"answerLineHint"); QVERIFY(hint);
+        QTRY_VERIFY(hint->isVisible());
         const auto jobs=shell.model().renderJobs;
         QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,scene(centre));
         QTRY_COMPARE(shell.annotations()->inkSnapshot().size(),2);

@@ -151,7 +151,7 @@ PyMuPDF 1.26.5 / MuPDF 只做独立进程的本地验证，是 AGPL-3.0/商业�
 
 ## 答案字体：Langlern Sans + Langlern Kai（2026-11-23）
 
-新建答案使用两款随附字体：字母用 **Langlern Sans**（Andika 6.101，SIL，为识字与语言学习设计，带真正的粗体），汉字用 **Langlern Kai**（霞鹜文楷 LXGW WenKai v1.530 的 Regular 与 Medium，Medium 作粗体）。两者之外的字符回退到原有 Noto Sans SC；此前写的答案保留 Noto Sans SC。来源在 `third_party/dependencies.lock.json` 的 `answerFonts` 中锁定（URL + SHA-256，Andika 取 google/fonts 提交 `fffdadf0f0c9cc1ec8b407063424a8bfbee05611`，文楷取 v1.530 发布文件），由 `tools/make-answer-fonts.py`（fontTools）可重复生成到 `assets/fonts/`，两次生成逐字节相同。
+新建答案使用两款随附字体：字母用 **Langlern Sans**（Andika 6.101，SIL，为识字与语言学习设计，带真正的粗体），汉字用 **Langlern Kai**（霞鹜文楷 LXGW WenKai v1.530 的 Regular 与 Medium；Medium 设计改登记为字体族的 Bold 成员，Windows 按旧式字体族名归组，否则会合成粗体而不用该文件）。两者之外的字符回退到原有 Noto Sans SC；此前写的答案保留 Noto Sans SC。来源在 `third_party/dependencies.lock.json` 的 `answerFonts` 中锁定（URL + SHA-256，Andika 取 google/fonts 提交 `fffdadf0f0c9cc1ec8b407063424a8bfbee05611`，文楷取 v1.530 发布文件），由 `tools/make-answer-fonts.py`（fontTools）可重复生成到 `assets/fonts/`，两次生成逐字节相同。
 
 处理：两款字体的垂直度量改为与 Noto Sans SC 相同（Andika 原行高 1.61 em，会让答案框变高、基线偏离印刷横线）；文楷裁剪为 GB2312 字符集与常用标点（每个字重约 3.65 MB，原约 26 MB）。按 SIL OFL 与上游保留字体名，修改版改名，详见 `THIRD-PARTY-NOTICES.md`“答案字体修改说明”与 `DISTRIBUTION.md`。导出只嵌入实际用到的字体文件，每个一份 CID 字体；粗体使用真实粗体字形，只有落到常规字形（旧 Noto 答案、罕用字回退）时才用描边加粗。
 
@@ -160,7 +160,7 @@ PyMuPDF 1.26.5 / MuPDF 只做独立进程的本地验证，是 AGPL-3.0/商业�
 | `LanglernSans-Regular.ttf` | 670068 | `7d0e3db9c965809aa646bd4ce981bb40e79c8170b788594b906c244ff9e99c1e` |
 | `LanglernSans-Bold.ttf` | 681180 | `76bd7900f6ea80b1eeda1aeaedf508c89d6def360ba4d76c4e087c4ea1660c9c` |
 | `LanglernKai-Regular.ttf` | 3654780 | `5f6362442afa78dbacb8495daf6184502f0485654297812df59ec59ba903783d` |
-| `LanglernKai-Medium.ttf` | 3657364 | `51a27f01decab6211f3d20e9f6a20749f0a21e7515b6b819bbc23f9bfb50c142` |
+| `LanglernKai-Bold.ttf` | 3657268 | `503febb63747f2eb14b610012f1a52783b90668886c8581a7d952088df94acd5` |
 
 已知：Qt 6.8 在混合字体的行里，`QGlyphRun::stringIndexes` 可能把一种字体的字形（例如空格）指向另一字体绘制的字符（随后的“中”），导出会写错 Unicode。导出现按字体 cmap 校验每个字形，不符时改挂到最近的、确由该字形绘制且未被占用的字符；`answerFontSet` 测试覆盖。
 

@@ -96,8 +96,8 @@
       "url": "https://github.com/lxgw/LxgwWenKai/releases/download/v1.530/LXGWWenKai-Medium.ttf",
       "sha256": "f4b8a34d1f838fe411540cb7c97b1c384ac9738a876c4104500bc42508b2312a",
       "kind": "subset",
-      "weight": "Medium",
-      "output": "LanglernKai-Medium.ttf",
+      "weight": "Bold",
+      "output": "LanglernKai-Bold.ttf",
       "family": "Langlern Kai",
       "postscript": "LanglernKai",
       "unique": "1.530 GB2312"
