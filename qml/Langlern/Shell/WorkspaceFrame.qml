@@ -166,6 +166,8 @@ Rectangle {
         wrapMode: Text.WordWrap; color: frame.theme.danger; textFormat: Text.PlainText
         background: Rectangle { radius: Math.min(height / 2, 20); color: frame.theme.card; border.color: frame.theme.line }
     }
+    // ⌘, on macOS (system Settings convention), Ctrl+, on Windows.
+    Shortcut { sequence: "Ctrl+,"; onActivated: settings.open() }
     Popup {
         id: settings
         parent: Overlay.overlay; anchors.centerIn: parent

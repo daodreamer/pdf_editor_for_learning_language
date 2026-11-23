@@ -270,6 +270,29 @@ void ShellState::setZoom(double zoom) {
     model_.recordDemand(page_,model_.targetWidth(page_,dpr_));
     request();
 }
+QPointF ShellState::zoomAt(double zoom,double x,double y,double viewX,double viewY) {
+    const QPointF unchanged(x-viewX,model_.offset());
+    if (shuttingDown_ || !std::isfinite(zoom) || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(viewX) || !std::isfinite(viewY)) return unchanged;
+    zoom = std::clamp(zoom,0.25,4.0);
+    if (zoom_ == zoom) return unchanged;
+    const int page = pageCount_ > 0 ? model_.pageAtPosition(x,y,true) : -1;
+    QPointF fraction;
+    if (page >= 0) fraction = {(x-model_.left(page))/model_.pageWidth(),(y-model_.top(page))/model_.height(page)};
+    annotations_.cancelGesture();
+    zoom_ = zoom;
+    model_.setViewport(model_.offset(),viewportHeight_,viewportWidth_,zoom_);
+    QPointF origin(x-viewX,model_.offset());
+    if (page >= 0) {
+        origin = {model_.left(page)+fraction.x()*model_.pageWidth()-viewX,model_.top(page)+fraction.y()*model_.height(page)-viewY};
+        model_.setViewport(origin.y(),viewportHeight_,viewportWidth_,zoom_); // same zoom: only scrolls, clamped
+        origin.setY(model_.offset());
+    }
+    origin.setX(std::clamp(origin.x(),0.0,std::max(0.0,model_.contentWidth()-viewportWidth_)));
+    emit layoutChanged();
+    model_.recordDemand(page_,model_.targetWidth(page_,dpr_));
+    request();
+    return origin;
+}
 void ShellState::acceptFrame(const PdfFrame& frame) {
     if (shuttingDown_ || frame.session != session_ || frame.revision != revision_) {
         emit renderDiscarded(frame.revision);

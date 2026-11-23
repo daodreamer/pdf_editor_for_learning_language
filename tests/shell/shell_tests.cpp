@@ -404,6 +404,34 @@ private slots:
         const double afterPixelZoom=shell.zoom();
         wheel({},{},Qt::ControlModifier);
         QCOMPARE(shell.zoom(),afterPixelZoom);
+        // Zoom about a point: the page spot under the pointer stays under it.
+        shell.setZoom(1); shell.goToPage(1); QTRY_VERIFY(!shell.busy());
+        const QPointF view(100,120);
+        const QPointF spot(shell.pageLeft(0)+.3*shell.pageWidth(),shell.pageTop(0)+.4*shell.pageHeight(0));
+        const auto origin=shell.zoomAt(1.5,spot.x(),spot.y(),view.x(),view.y());
+        QCOMPARE(shell.zoom(),1.5);
+        QVERIFY(std::abs(shell.pageLeft(0)+.3*shell.pageWidth()-origin.x()-view.x())<.5);
+        QVERIFY(std::abs(shell.pageTop(0)+.4*shell.pageHeight(0)-origin.y()-view.y())<.5);
+        QTRY_VERIFY(std::abs(viewport->property("contentY").toDouble()-origin.y())<.5);
+        // Ctrl+wheel (⌘ on macOS) zooms about the pointer and moves the viewport with it.
+        const double zoomBeforeWheel=shell.zoom();
+        wheel({},QPoint(0,120),Qt::ControlModifier);
+        QTRY_VERIFY(std::abs(shell.zoom()-zoomBeforeWheel*1.1)<1e-6);
+        // Platform reading and zoom keys.
+        shell.setZoom(1); QTRY_VERIFY(!shell.busy());
+        QTest::keyClick(window,Qt::Key_Equal,Qt::ControlModifier); QTRY_VERIFY(std::abs(shell.zoom()-1.2)<1e-6);
+        QTest::keyClick(window,Qt::Key_Minus,Qt::ControlModifier); QTRY_VERIFY(std::abs(shell.zoom()-1)<1e-6);
+        QTest::keyClick(window,Qt::Key_Equal,Qt::ControlModifier); QTest::keyClick(window,Qt::Key_0,Qt::ControlModifier);
+        QTRY_COMPARE(shell.zoom(),1.0);
+        // Opening a book hands the keyboard to the page (not the library search field).
+        QTRY_COMPARE(window->activeFocusItem()->objectName(),QStringLiteral("textSelectionMouse"));
+        QTest::keyClick(window,Qt::Key_End); QTRY_COMPARE(shell.currentPage(),shell.pageCount());
+        QTest::keyClick(window,Qt::Key_Home); QTRY_COMPARE(shell.currentPage(),1);
+        const double beforePageDown=viewport->property("contentY").toDouble();
+        QTest::keyClick(window,Qt::Key_PageDown); QTRY_VERIFY(viewport->property("contentY").toDouble()>beforePageDown+viewport->height()*.5);
+        QTest::keyClick(window,Qt::Key_Home); QTRY_COMPARE(shell.currentPage(),1);
+        QTest::keyClick(window,Qt::Key_Right); QTRY_COMPARE(shell.currentPage(),2);
+        QTest::keyClick(window,Qt::Key_Left); QTRY_COMPARE(shell.currentPage(),1);
         shell.setZoom(1);
         shell.goToPage(2);
         QTRY_VERIFY(!shell.busy());

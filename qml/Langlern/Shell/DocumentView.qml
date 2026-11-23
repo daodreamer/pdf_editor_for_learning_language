@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
+import QtQuick.Templates as T
 
 ColumnLayout {
     id: view
@@ -23,6 +24,62 @@ ColumnLayout {
     Shortcut { sequence: "Ctrl+Shift+P"; enabled: view.visible; onActivated: view.switchMode(3) }
     Shortcut { sequence: "Ctrl+Shift+E"; enabled: view.visible; onActivated: view.switchMode(4) }
     Shortcut { sequence: "Ctrl+Shift+M"; enabled: view.visible; onActivated: view.switchMode(5) }
+    // Zoom about a viewport point (default: its centre) so that spot of the page stays put.
+    function zoomBy(factor: real, viewX: real, viewY: real): void {
+        if (!(factor > 0) || !shell.pageCount) return
+        const origin = shell.zoomAt(shell.zoom * factor, viewport.contentX + viewX, viewport.contentY + viewY, viewX, viewY)
+        viewport.contentX = origin.x
+    }
+    // The page owns the keyboard once a book is shown, so reading keys work without a click
+    // (otherwise focus stays in the library's search field behind the reader).
+    function takeKeyboard(): void {
+        const item = Window.window ? Window.window.activeFocusItem : null
+        if (visible && shell.pageCount > 0 && !(item instanceof TextEdit && item.visible && item.objectName === "annotationEditor")) selectionMouse.forceActiveFocus()
+    }
+    onVisibleChanged: if (visible) Qt.callLater(takeKeyboard)
+    property var keyboardSession: -1
+    Connections {
+        target: view.shell
+        function onSelectionChanged(): void {
+            if (view.shell.pageCount > 0 && view.keyboardSession !== view.shell.sessionId) { view.keyboardSession = view.shell.sessionId; Qt.callLater(view.takeKeyboard) }
+        }
+    }
+    function zoomCentered(factor: real): void { zoomBy(factor, viewport.width / 2, viewport.height / 2) }
+    function stepPage(step: int): void {
+        const columns = shell.doublePage ? 2 : 1
+        shell.goToPage(Math.max(1, Math.min(shell.pageCount, shell.currentPage + step * columns)))
+    }
+    // Reading keys only when no text field, button, slider or list owns the keyboard.
+    readonly property bool documentKeys: {
+        const item = Window.window ? Window.window.activeFocusItem : null
+        return view.visible && view.shell.pageCount > 0 && !(item instanceof TextInput || item instanceof TextEdit
+            || item instanceof T.AbstractButton || item instanceof T.Slider || item instanceof T.SpinBox || item instanceof T.ComboBox)
+    }
+    readonly property bool zoomKeys: view.visible && view.shell.pageCount > 0
+    // System conventions: StandardKey resolves to ⌘ on macOS and Ctrl on Windows;
+    // "Ctrl+=" covers the unshifted + key on common layouts.
+    Shortcut { sequences: [StandardKey.ZoomIn, "Ctrl+="]; enabled: view.zoomKeys; onActivated: view.zoomCentered(1.2) }
+    Shortcut { sequences: [StandardKey.ZoomOut]; enabled: view.zoomKeys; onActivated: view.zoomCentered(1 / 1.2) }
+    Shortcut { sequence: "Ctrl+0"; enabled: view.zoomKeys; onActivated: view.shell.setZoom(1) }
+    Shortcut { sequences: [StandardKey.MoveToNextPage, "Space"]; enabled: view.documentKeys; onActivated: wheelGlide.glide(viewport.height * 0.9) }
+    Shortcut { sequences: [StandardKey.MoveToPreviousPage, "Shift+Space"]; enabled: view.documentKeys; onActivated: wheelGlide.glide(-viewport.height * 0.9) }
+    // macOS: ⌘↑/⌘↓ and Home/End are already the standard bindings; Windows adds bare Home/End to Ctrl+Home/End.
+    readonly property bool mac: Qt.platform.os === "osx"
+    Shortcut { sequences: view.mac ? [StandardKey.MoveToStartOfDocument] : [StandardKey.MoveToStartOfDocument, "Home"]; enabled: view.documentKeys; onActivated: view.shell.goToPage(1) }
+    Shortcut { sequences: view.mac ? [StandardKey.MoveToEndOfDocument] : [StandardKey.MoveToEndOfDocument, "End"]; enabled: view.documentKeys; onActivated: view.shell.goToPage(view.shell.pageCount) }
+    Shortcut { sequence: "Down"; enabled: view.documentKeys; onActivated: wheelGlide.glide(60) }
+    Shortcut { sequence: "Up"; enabled: view.documentKeys; onActivated: wheelGlide.glide(-60) }
+    // Left/Right turn pages; when zoomed wider than the window they pan instead.
+    Shortcut {
+        sequence: "Right"; enabled: view.documentKeys
+        onActivated: viewport.contentWidth > viewport.width + 1 && viewport.contentX < viewport.contentWidth - viewport.width - 1
+            ? viewport.contentX = Math.min(viewport.contentWidth - viewport.width, viewport.contentX + 60) : view.stepPage(1)
+    }
+    Shortcut {
+        sequence: "Left"; enabled: view.documentKeys
+        onActivated: viewport.contentWidth > viewport.width + 1 && viewport.contentX > 1
+            ? viewport.contentX = Math.max(0, viewport.contentX - 60) : view.stepPage(-1)
+    }
     property color inkColor: inkColors.colors[inkColors.currentIndex]
     property real inkWidth: inkSize.value
     property bool marking: false
@@ -223,13 +280,31 @@ ColumnLayout {
                 if (next === target) stop()
             }
         }
+        // ⌘+scroll (macOS) / Ctrl+scroll (Windows; precision-touchpad pinch arrives this way too).
+        // Mouse notches step 10%; touchpad pixel deltas zoom proportionally so a swipe stays smooth.
         WheelHandler {
+            id: wheelZoom
+            objectName: "wheelZoom"
             acceptedModifiers: Qt.ControlModifier
+            target: null
             onWheel: function(event) {
-                const delta = event.angleDelta.y || event.pixelDelta.y
-                if (delta !== 0)
-                    view.shell.setZoom(view.shell.zoom * (delta > 0 ? 1.1 : 1 / 1.1))
+                const pixels = event.pixelDelta.y, angle = event.angleDelta.y
+                const factor = pixels !== 0 ? Math.exp(pixels * 0.004) : Math.pow(1.1, angle / 120)
+                if (factor !== 1) {
+                    const p = viewport.mapFromItem(null, wheelZoom.point.scenePosition.x, wheelZoom.point.scenePosition.y)
+                    view.zoomBy(Math.max(0.5, Math.min(2, factor)), p.x, p.y)
+                }
                 event.accepted = true
+            }
+        }
+        // Trackpad pinch (macOS native gesture) and touchscreen pinch, about the fingers.
+        PinchHandler {
+            id: pinchZoom
+            objectName: "pinchZoom"
+            target: null
+            onScaleChanged: function(delta) {
+                const p = viewport.mapFromItem(null, pinchZoom.centroid.scenePosition.x, pinchZoom.centroid.scenePosition.y)
+                view.zoomBy(delta, p.x, p.y)
             }
         }
         MouseArea {

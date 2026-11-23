@@ -114,6 +114,9 @@ public:
     void setDoublePage(bool enabled);
     Q_INVOKABLE void updateViewport(double y, double height, double width, double dpr);
     Q_INVOKABLE void setZoom(double zoom);
+    // Zoom keeping the document point under (x,y) (content coordinates) at viewport
+    // position (viewX,viewY); returns the new content origin {contentX, contentY}.
+    Q_INVOKABLE QPointF zoomAt(double zoom,double x,double y,double viewX,double viewY);
     double pageRatio() const { return model_.ratio(page_); }
     QString errorCode() const { return errorCode_; }
     Q_INVOKABLE void selectFile(const QUrl& url);

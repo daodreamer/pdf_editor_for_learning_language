@@ -91,6 +91,16 @@ ApplicationWindow {
         onTriggered: helpLoader.active = true
     }
     Shortcut { sequences: [StandardKey.Quit]; onActivated: window.close() }
+    // Platform window conventions: ⌃⌘F / F11 full screen, ⌘M minimise and ⌘? help on macOS,
+    // Ctrl+F4 closes the document on Windows (Ctrl+W comes from closeAction).
+    readonly property bool mac: Qt.platform.os === "osx"
+    Shortcut {
+        sequences: [StandardKey.FullScreen]
+        onActivated: window.visibility = window.visibility === Window.FullScreen ? Window.Windowed : Window.FullScreen
+    }
+    Shortcut { sequence: "Ctrl+M"; enabled: window.mac; onActivated: window.showMinimized() }
+    Shortcut { sequences: [StandardKey.HelpContents]; enabled: window.mac; onActivated: helpLoader.active = true }
+    Shortcut { sequence: "Ctrl+F4"; enabled: !window.mac && closeAction.enabled; onActivated: closeAction.trigger() }
     Shortcut { sequence: "F6"; enabled: window.probeEnabled; onActivated: window.probeAcknowledged() }
 
     function chooseFile(): void {
@@ -154,8 +164,11 @@ ApplicationWindow {
                     Label {
                         width: parent.width
                         // Qt maps "Ctrl" shortcuts and Qt.ControlModifier to Command on macOS.
-                        readonly property string mod: Qt.platform.os === "osx" ? "⌘" : "Ctrl"
-                        text: mod + qsTr(" 为修饰键：\nO  打开 PDF    W  关闭文档    S  保存\nZ / %2  撤销 / 重做（编辑时为文字历史）\nC  复制选中原文\nShift+A  自动：空白输入 / 原文拖选\nShift+S / T  原文选择 / 输入答案\nShift+P / E / M  画笔 / 整笔擦除 / 移动笔迹\nShift+L  切换主题\n滚轮  阅读    %1+滚轮  缩放\nEsc / %1+Enter  完成文字编辑\n%1+Delete  删除选中文字框\nDelete  删除选中笔迹\n\n答案自动保存在本机。导出时使用新的 PDF 文件名。\nF1  快捷键    Tab / Shift+Tab  切换焦点").arg(mod).arg(Qt.platform.os === "osx" ? "Shift+Z" : "Y")
+                        readonly property bool mac: Qt.platform.os === "osx"
+                        readonly property string mod: mac ? "⌘" : "Ctrl+"
+                        text: (mac
+                            ? qsTr("文件\n⌘O  打开 PDF    ⌘W  关闭文档    ⌘S  保存\n⌘,  外观与布局    ⌘Q  退出\n\n阅读与缩放\n滚动 / 空格 / ⇧空格 / PageUp·PageDown  翻屏\n↑ ↓  滚动    ← →  上一页 / 下一页（放大时左右平移）\n⌘↑ / ⌘↓  首页 / 末页    ⌘⌥G  跳到页码\n⌘+滚动 / 触控板双指捏合  以指针为中心缩放\n⌘+ / ⌘−  放大 / 缩小    ⌘0  适应页宽\n⌃⌘F  全屏    ⌘M  最小化\n\n编辑\n⌘Z / ⇧⌘Z  撤销 / 重做（编辑时为文字历史）\n⌘C  复制选中原文\n⇧⌘A  自动：空白输入 / 原文拖选\n⇧⌘S / ⇧⌘T  原文选择 / 输入答案\n⇧⌘P / ⇧⌘E / ⇧⌘M  画笔 / 整笔擦除 / 移动笔迹\n⇧⌘L  切换主题\nEsc / ⌘↩  完成文字编辑\n⌘⌦（fn+⌘+Delete）  删除选中文字框\nDelete  删除选中笔迹\n\n答案自动保存在本机。导出时使用新的 PDF 文件名。\n⌘?  快捷键    Tab / ⇧Tab  切换焦点")
+                            : qsTr("文件\nCtrl+O  打开 PDF    Ctrl+W / Ctrl+F4  关闭文档    Ctrl+S  保存\nCtrl+,  外观与布局    Ctrl+Q  退出\n\n阅读与缩放\n滚轮 / 空格 / Shift+空格 / PageUp·PageDown  翻屏\n↑ ↓  滚动    ← →  上一页 / 下一页（放大时左右平移）\nHome / End（Ctrl+Home / Ctrl+End）  首页 / 末页    Ctrl+G  跳到页码\nCtrl+滚轮 / 触控板双指捏合  以指针为中心缩放\nCtrl++ / Ctrl+−  放大 / 缩小    Ctrl+0  适应页宽\nF11  全屏\n\n编辑\nCtrl+Z / Ctrl+Y  撤销 / 重做（编辑时为文字历史）\nCtrl+C  复制选中原文\nCtrl+Shift+A  自动：空白输入 / 原文拖选\nCtrl+Shift+S / T  原文选择 / 输入答案\nCtrl+Shift+P / E / M  画笔 / 整笔擦除 / 移动笔迹\nCtrl+Shift+L  切换主题\nEsc / Ctrl+Enter  完成文字编辑\nCtrl+Delete  删除选中文字框\nDelete  删除选中笔迹\n\n答案自动保存在本机。导出时使用新的 PDF 文件名。\nF1  快捷键    Tab / Shift+Tab  切换焦点"))
                         lineHeight: 1.6
                         wrapMode: Text.WordWrap
                         color: shellTheme.text

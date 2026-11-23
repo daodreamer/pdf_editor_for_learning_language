@@ -30,6 +30,12 @@ Item {
     Shortcut { sequence: "C"; enabled: pane.visible && !pane.editingField; onActivated: pane.pick(3) }
     Shortcut { sequence: "R"; enabled: pane.visible && !pane.editingField; onActivated: pane.pick(4) }
     Shortcut { sequence: "E"; enabled: pane.visible && !pane.editingField; onActivated: pane.pick(5) }
+    // Go to page: ⌘⌥G on macOS (Preview), Ctrl+G on Windows.
+    Shortcut {
+        sequence: Qt.platform.os === "osx" ? "Ctrl+Alt+G" : "Ctrl+G"
+        enabled: pane.visible && pane.shell.pageCount > 0
+        onActivated: { pageNumber.contentItem.forceActiveFocus(); pageNumber.contentItem.selectAll() }
+    }
     ToolTip {
         id: feedback; parent: pane; timeout: 6000
         // A quiet rounded toast above the bottom capsules instead of the stock tooltip box.
@@ -99,6 +105,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     DesignButton { objectName: "previousPageButton"; theme: pane.theme; text: "‹"; anchors.verticalCenter: parent.verticalCenter; enabled: pane.shell.doublePage ? pane.spreadFirst > 1 : pane.shell.currentPage > 1; onClicked: pane.shell.goToPage(pane.shell.doublePage ? pane.spreadFirst - 2 : pane.shell.currentPage - 1); Accessible.name: pane.shell.doublePage ? qsTr("上一组") : qsTr("上一页") }
                     SpinBox {
+                        id: pageNumber
                         objectName: "pageNumber"; width: 52; height: 30
                         anchors.verticalCenter: parent.verticalCenter
                         from: 1; to: pane.shell.pageCount; value: pane.shell.currentPage; editable: true
