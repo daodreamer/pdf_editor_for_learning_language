@@ -1,6 +1,7 @@
 #pragma once
 #include <QObject>
 #include <QVariantList>
+#include <QStringList>
 #include <QUrl>
 #include <QThread>
 #include <QTimer>
@@ -29,6 +30,11 @@ class WorkspaceState : public QObject {
     Q_PROPERTY(bool textBold READ textBold WRITE setTextBold NOTIFY preferencesChanged)
     Q_PROPERTY(bool textItalic READ textItalic WRITE setTextItalic NOTIFY preferencesChanged)
     Q_PROPERTY(int checkMark READ checkMark WRITE setCheckMark NOTIFY preferencesChanged)
+    // Input source follows the document language; per-language source picks (language → system
+    // source id, absent = automatic); languages whose missing-keyboard notice the user turned off.
+    Q_PROPERTY(bool inputSwitching READ inputSwitching WRITE setInputSwitching NOTIFY preferencesChanged)
+    Q_PROPERTY(QVariantMap inputChoices READ inputChoices NOTIFY preferencesChanged)
+    Q_PROPERTY(QStringList inputNoticesOff READ inputNoticesOff NOTIFY preferencesChanged)
 public:
     explicit WorkspaceState(QObject* parent=nullptr);
     ~WorkspaceState() override;
@@ -51,6 +57,13 @@ public:
     bool textBold() const { return textBold_; }
     bool textItalic() const { return textItalic_; }
     int checkMark() const { return checkMark_; }
+    bool inputSwitching() const { return inputSwitching_; }
+    void setInputSwitching(bool value);
+    QVariantMap inputChoices() const { return inputChoices_; }
+    // Empty id goes back to automatic.
+    Q_INVOKABLE void setInputChoice(const QString& language,const QString& id);
+    QStringList inputNoticesOff() const { return inputNoticesOff_; }
+    Q_INVOKABLE void silenceInputNotice(const QString& language);
     void setTextColor(QString value);
     void setTextBold(bool value);
     void setTextItalic(bool value);
@@ -94,6 +107,9 @@ private:
     QString textColor_=QStringLiteral("#1e468c");
     bool textBold_=false, textItalic_=false;
     int checkMark_=0;
+    bool inputSwitching_=true;
+    QVariantMap inputChoices_;
+    QStringList inputNoticesOff_;
     QThread writerThread_;
     QObject* writer_=nullptr;
     QTimer timer_;

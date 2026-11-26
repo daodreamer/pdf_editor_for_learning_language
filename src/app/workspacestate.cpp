@@ -20,6 +20,20 @@ static QString textColorValue(const QVariant& v) {
     const QColor color(v.toString());
     return color.isValid() ? color.name(QColor::HexRgb) : QStringLiteral("#1e468c");
 }
+// Short language codes and system source ids only; anything else in the file is dropped.
+static QVariantMap inputChoicesValue(const QVariant& v) {
+    QVariantMap result; const auto map=v.toMap();
+    for(auto it=map.begin();it!=map.end() && result.size()<32;++it) {
+        const auto id=it.value().toString();
+        if(it.key().size()<=8 && !it.key().isEmpty() && !id.isEmpty() && id.size()<=256) result.insert(it.key(),id);
+    }
+    return result;
+}
+static QStringList inputNoticesValue(const QVariant& v) {
+    QStringList result;
+    for(const auto& value:v.toList()) if(const auto code=value.toString(); !code.isEmpty() && code.size()<=8 && !result.contains(code) && result.size()<32) result.append(code);
+    return result;
+}
 static double inkWidthValue(const QVariant& v) {
     bool ok=false; const double width=std::round(v.toDouble(&ok)*2)/2; // slider step 0.5 pt
     return ok && std::isfinite(width) ? std::clamp(width,AnnotationConfig::minInkWidth,AnnotationConfig::maxInkWidth) : AnnotationConfig::defaultInkWidth;
@@ -49,6 +63,9 @@ WorkspaceState::WorkspaceState(QObject* parent):QObject(parent),textSize_(Annota
                 if(data.contains("textColor")) textColor_=textColorValue(data.value("textColor"));
                 textBold_=data.value("textBold").toBool(); textItalic_=data.value("textItalic").toBool();
                 checkMark_=qBound(0,data.value("checkMark").toInt(),2);
+                inputSwitching_=data.value("inputSwitching",true).toBool();
+                inputChoices_=inputChoicesValue(data.value("inputChoices"));
+                inputNoticesOff_=inputNoticesValue(data.value("inputNoticesOff"));
             } else error_=tr("书架数据无法读取，原文件已保留。本次不自动覆盖。");
         } else error_=tr("书架数据无法读取，原文件已保留。本次不自动覆盖。");
     }
@@ -81,7 +98,8 @@ void WorkspaceState::save() {
 }
 QVariantMap WorkspaceState::snapshot() const {
     return {{"version",1},{"books",books_},{"words",words_},{"bookmarks",bookmarks_},{"layout",layout_},{"toolbar",toolbar_},{"paper",paper_},{"nightDim",nightDim_},{"english",english_},{"lookupLanguage",lookupLanguage_},{"frenchVoice",frenchVoice_},{"textSize",textSize_},{"inkWidth",inkWidth_},
-        {"textColor",textColor_},{"textBold",textBold_},{"textItalic",textItalic_},{"checkMark",checkMark_}};
+        {"textColor",textColor_},{"textBold",textBold_},{"textItalic",textItalic_},{"checkMark",checkMark_},
+        {"inputSwitching",inputSwitching_},{"inputChoices",inputChoices_},{"inputNoticesOff",inputNoticesOff_}};
 }
 void WorkspaceState::scheduleSave() {
     const auto candidate=snapshot();
@@ -93,6 +111,8 @@ void WorkspaceState::scheduleSave() {
         textSize_=textSizeValue(accepted_.value("textSize"));inkWidth_=inkWidthValue(accepted_.value("inkWidth"));
         textColor_=textColorValue(accepted_.value("textColor"));textBold_=accepted_.value("textBold").toBool();
         textItalic_=accepted_.value("textItalic").toBool();checkMark_=qBound(0,accepted_.value("checkMark").toInt(),2);
+        inputSwitching_=accepted_.value("inputSwitching",true).toBool();inputChoices_=inputChoicesValue(accepted_.value("inputChoices"));
+        inputNoticesOff_=inputNoticesValue(accepted_.value("inputNoticesOff"));
         error_=tr("书架数据已达到 8 MiB 上限，本次修改未保存。请删除不再需要的生词或笔记。");emit changed();emit preferencesChanged();return;
     }
     accepted_=candidate;if(!loadBlocked_)error_.clear();timer_.start();
@@ -158,3 +178,14 @@ void WorkspaceState::setTextBold(bool v) { if(textBold_==v)return;textBold_=v;em
 void WorkspaceState::setTextItalic(bool v) { if(textItalic_==v)return;textItalic_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setCheckMark(int v) { v=qBound(0,v,2);if(checkMark_==v)return;checkMark_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setInkWidth(double v) { if(!std::isfinite(v))return;v=inkWidthValue(v);if(inkWidth_==v)return;inkWidth_=v;emit preferencesChanged();scheduleSave(); }
+void WorkspaceState::setInputSwitching(bool v) { if(inputSwitching_==v)return;inputSwitching_=v;emit preferencesChanged();scheduleSave(); }
+void WorkspaceState::setInputChoice(const QString& language,const QString& id) {
+    if(language.isEmpty() || language.size()>8 || id.size()>256) return;
+    if(id.isEmpty() ? !inputChoices_.contains(language) : inputChoices_.value(language).toString()==id) return;
+    if(id.isEmpty()) inputChoices_.remove(language); else inputChoices_.insert(language,id);
+    emit preferencesChanged();scheduleSave();
+}
+void WorkspaceState::silenceInputNotice(const QString& language) {
+    if(language.isEmpty() || language.size()>8 || inputNoticesOff_.contains(language)) return;
+    inputNoticesOff_.append(language);emit preferencesChanged();scheduleSave();
+}

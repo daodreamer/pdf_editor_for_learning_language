@@ -9,7 +9,8 @@ qt_add_executable(langlern_tests
     storage_tests.cpp
     design_tests.cpp
     ocr_selection_tests.cpp
-    natural_speech_tests.cpp)
+    natural_speech_tests.cpp
+    input_tests.cpp)
 set_target_properties(langlern_tests PROPERTIES WIN32_EXECUTABLE FALSE)
 # pdfium: export layout headers used by the annotation suite.
 target_link_libraries(langlern_tests PRIVATE shell_ui shell_uiplugin Qt6::Test Qt6::QuickControls2 pdfium)
@@ -35,7 +36,8 @@ set(langlern_suites
     storage_export storage 180
     design_workflows design 120
     ocr_selection ocr 180
-    natural_speech speech 180)
+    natural_speech speech 180
+    input_sources input 120)
 list(LENGTH langlern_suites count)
 math(EXPR last "${count} - 1")
 foreach(index RANGE 0 ${last} 3)

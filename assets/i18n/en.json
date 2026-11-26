@@ -222,5 +222,20 @@
   "离线发音": "Offline pronunciation",
   "主题": "Theme",
   "暖纸色（浅色模式）": "Warm paper (light mode)",
-  "夜读柔光（深色模式柔化页面亮度）": "Soft night pages (dim pages in dark mode)"
+  "夜读柔光（深色模式柔化页面亮度）": "Soft night pages (dim pages in dark mode)",
+  "德语": "German",
+  "西班牙语": "Spanish",
+  "意大利语": "Italian",
+  "输入法": "Input source",
+  "按文档语言切换系统输入法": "Switch input source to the document language",
+  "当前文档以%1为主。使用 LinguaPDF 时切换，切到其他窗口时恢复原输入法。": "This document is mainly in %1. LinguaPDF switches while you use it and restores your previous input source when you leave.",
+  "打开文档后自动识别语言。使用 LinguaPDF 时切换，切到其他窗口时恢复原输入法。": "The language is detected when a document opens. LinguaPDF switches while you use it and restores your previous input source when you leave.",
+  "自动选择%1输入法": "Automatic (%1 input source)",
+  "文档语言使用的输入法": "Input source for the document language",
+  "系统尚未安装%1输入法。": "No %1 input source is installed.",
+  "打开系统设置": "Open System Settings",
+  "未找到%1输入法": "No %1 input source",
+  "这份文档以%1为主，但系统中还没有%1键盘或输入法。在系统设置中添加后回到 LinguaPDF，输入法会自动切换。": "This document is mainly in %1, but no %1 keyboard or input method is installed. Add one in system settings and return to LinguaPDF; it will switch automatically.",
+  "不再提示": "Don't show again",
+  "知道了": "OK"
 }

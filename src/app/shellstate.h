@@ -9,6 +9,7 @@
 #include "annotationmodel.h"
 #include "storageworker.h"
 #include "ocrworker.h"
+#include "languagedetect.h"
 #include <functional>
 #include <QTimer>
 #include <QCache>
@@ -53,6 +54,9 @@ class ShellState : public QObject {
     Q_PROPERTY(bool ocrBusy READ ocrBusy NOTIFY ocrChanged)
     // Mark drawn into printed tick boxes: 0 follows the page language, 1 tick, 2 cross.
     Q_PROPERTY(int checkMarkStyle READ checkMarkStyle WRITE setCheckMarkStyle NOTIFY checkMarkStyleChanged)
+    // Main language of the open document (ISO 639-1, e.g. "fr"), from the text pages seen so far;
+    // the file name or OCR language until they say enough. Empty without a document.
+    Q_PROPERTY(QString documentLanguage READ documentLanguage NOTIFY documentLanguageChanged)
 public:
     explicit ShellState(QObject* parent = nullptr);
     ~ShellState() override;
@@ -101,6 +105,7 @@ public:
     // rather than a tick (English, Chinese): the page's text layer or OCR text decides,
     // otherwise the document's OCR language.
     Q_INVOKABLE bool crossMarks(int page) const;
+    QString documentLanguage() const { return documentLanguage_; }
     int checkMarkStyle() const { return checkMarkStyle_; }
     void setCheckMarkStyle(int style) { style=std::clamp(style,0,2); if(style!=checkMarkStyle_) { checkMarkStyle_=style; emit checkMarkStyleChanged(); } }
     // Consecutive ruled lines answered as one text: normalized page area (all rules),
@@ -152,6 +157,7 @@ signals:
     void ocrChanged();
     void answerLinesChanged();
     void checkMarkStyleChanged();
+    void documentLanguageChanged();
     void textCommitRequested();
     void storageChanged();
     void startupAcknowledged();
@@ -183,6 +189,12 @@ private:
     bool ocrSelectionEnabled_ = false;
     QString ocrLanguage_ = QStringLiteral("fra"), ocrStatus_;
     int checkMarkStyle_ = 0;
+    void noteLanguage(int page,const TextSnapshot& text);
+    void updateDocumentLanguage();
+    void resetDocumentLanguage();
+    struct PageLanguage { LanguageEvidence evidence; bool ocr = false; };
+    QHash<int,PageLanguage> pageLanguages_;
+    QString documentLanguage_;
     struct PageBox { int page = -1; QRectF box; };
     PageBox checkBoxNear(double x,double y) const;
     AnnotationSnapshot annotationSnapshot() const;

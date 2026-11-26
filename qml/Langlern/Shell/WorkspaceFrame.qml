@@ -10,6 +10,10 @@ Rectangle {
     required property Theme theme
     required property WorkspaceState workspace
     required property OfflineServices services
+    property InputSourceSwitcher inputSources: null
+    function languageName(code: string): string {
+        return ({fr: qsTr("法语"), en: qsTr("英语"), de: qsTr("德语"), es: qsTr("西班牙语"), it: qsTr("意大利语"), zh: qsTr("中文")})[code] || code
+    }
     signal openRequested()
     signal exportRequested()
     property string screen: "library"
@@ -170,13 +174,21 @@ Rectangle {
     Shortcut { sequence: "Ctrl+,"; onActivated: settings.open() }
     Popup {
         id: settings
+        objectName: "settingsPopup"
         parent: Overlay.overlay; anchors.centerIn: parent
-        modal: true; padding: 26; width: 400
+        modal: true; padding: 26; width: Math.min(400, parent ? parent.width - 32 : 400)
+        height: Math.min(settingsContent.implicitHeight + 52, parent ? parent.height - 32 : 720)
         background: Rectangle {
             radius: 26; color: frame.theme.card; border.color: frame.theme.line
             Rectangle { z: -1; anchors.fill: parent; anchors.topMargin: 4; anchors.bottomMargin: -4; radius: parent.radius; color: frame.theme.shadow }
         }
-        contentItem: ColumnLayout {
+        contentItem: ScrollView {
+          id: settingsScroll
+          clip: true
+          contentWidth: availableWidth
+          ColumnLayout {
+            id: settingsContent
+            width: settingsScroll.availableWidth
             spacing: 14
             Label { text: qsTr("外观与布局"); font.pixelSize: 20; font.weight: Font.Bold; color: frame.theme.text }
             Label { text: qsTr("主题"); color: frame.theme.muted }
@@ -208,7 +220,96 @@ Rectangle {
             Label { text: qsTr("工具栏"); color: frame.theme.muted }
             DesignCombo { theme: frame.theme; Layout.fillWidth: true; model: [qsTr("顶部"), qsTr("悬浮"), qsTr("侧边")]; currentIndex: frame.workspace.toolbar; onActivated: frame.workspace.toolbar = currentIndex }
             DesignSwitch { theme: frame.theme; text: "English / 中文"; checked: frame.services.english; onToggled: { frame.workspace.english = checked; frame.services.english = checked } }
+            Label { visible: inputSection.visible; text: qsTr("输入法"); color: frame.theme.muted; Layout.topMargin: 4 }
+            ColumnLayout {
+                id: inputSection
+                objectName: "inputSourceSettings"
+                readonly property var switcher: frame.inputSources
+                readonly property string language: switcher ? switcher.language : ""
+                visible: switcher !== null && switcher.supported
+                Layout.fillWidth: true; spacing: 10
+                DesignSwitch {
+                    objectName: "inputSwitchingToggle"
+                    theme: frame.theme; Layout.fillWidth: true
+                    text: qsTr("按文档语言切换系统输入法")
+                    checked: frame.workspace.inputSwitching; onToggled: frame.workspace.inputSwitching = checked
+                }
+                Label {
+                    Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: 12; color: frame.theme.muted
+                    text: inputSection.language.length && frame.shell.pageCount > 0
+                        ? qsTr("当前文档以%1为主。使用 LinguaPDF 时切换，切到其他窗口时恢复原输入法。").arg(frame.languageName(inputSection.language))
+                        : qsTr("打开文档后自动识别语言。使用 LinguaPDF 时切换，切到其他窗口时恢复原输入法。")
+                }
+                DesignCombo {
+                    id: inputChoice
+                    objectName: "inputSourceChoice"
+                    theme: frame.theme; Layout.fillWidth: true
+                    visible: frame.workspace.inputSwitching && inputSection.language.length > 0
+                    // Automatic first, then the sources made for this language, then all others.
+                    model: {
+                        const all = inputSection.switcher ? inputSection.switcher.sources : []
+                        const own = all.filter(s => s.language === inputSection.language)
+                        return [{id: "", name: qsTr("自动选择%1输入法").arg(frame.languageName(inputSection.language))}]
+                            .concat(own, all.filter(s => s.language !== inputSection.language))
+                    }
+                    textRole: "name"; valueRole: "id"
+                    currentIndex: Math.max(0, model.findIndex(s => s.id === (frame.workspace.inputChoices[inputSection.language] || "")))
+                    onActivated: frame.workspace.setInputChoice(inputSection.language, currentValue)
+                    Accessible.name: qsTr("文档语言使用的输入法")
+                }
+                RowLayout {
+                    visible: frame.workspace.inputSwitching && inputSection.switcher !== null && inputSection.switcher.missing
+                    Layout.fillWidth: true; spacing: 10
+                    Label { Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: 12; color: frame.theme.danger; text: qsTr("系统尚未安装%1输入法。").arg(frame.languageName(inputSection.language)) }
+                    DesignButton { theme: frame.theme; text: qsTr("打开系统设置"); onClicked: inputSection.switcher.openSystemSettings() }
+                }
+            }
             DesignButton { theme: frame.theme; text: qsTr("完成"); primary: true; Layout.alignment: Qt.AlignRight; onClicked: settings.close() }
+          }
+        }
+    }
+    // Once per language and run: the document language has no keyboard on this system.
+    property var inputNoticesShown: ({})
+    readonly property bool inputNoticeWanted: inputSources !== null && inputSources.missing && screen === "reader"
+        && !workspace.inputNoticesOff.includes(inputSources.language)
+    onInputNoticeWantedChanged: if (inputNoticeWanted && !inputNoticesShown[inputSources.language]) inputNoticeTimer.restart()
+    // Let the first page appear before the notice covers it.
+    Timer {
+        id: inputNoticeTimer
+        interval: 800
+        onTriggered: {
+            if (!frame.inputNoticeWanted || frame.inputNoticesShown[frame.inputSources.language]) return
+            frame.inputNoticesShown[frame.inputSources.language] = true
+            inputNotice.language = frame.inputSources.language
+            inputNoticeSilence.checked = false
+            inputNotice.open()
+        }
+    }
+    Popup {
+        id: inputNotice
+        objectName: "inputSourceNotice"
+        property string language: ""
+        parent: Overlay.overlay; anchors.centerIn: parent
+        modal: true; padding: 24; width: Math.min(400, parent ? parent.width - 32 : 400)
+        background: Rectangle {
+            readonly property bool blocksInkInput: true
+            radius: 24; color: frame.theme.card; border.color: frame.theme.line
+            Rectangle { z: -1; anchors.fill: parent; anchors.topMargin: 4; anchors.bottomMargin: -4; radius: parent.radius; color: frame.theme.shadow }
+        }
+        onClosed: if (inputNoticeSilence.checked) frame.workspace.silenceInputNotice(language)
+        contentItem: ColumnLayout {
+            spacing: 14
+            Label { text: qsTr("未找到%1输入法").arg(frame.languageName(inputNotice.language)); font.pixelSize: 18; font.weight: Font.Bold; color: frame.theme.text }
+            Label {
+                Layout.fillWidth: true; wrapMode: Text.Wrap; color: frame.theme.muted
+                text: qsTr("这份文档以%1为主，但系统中还没有%1键盘或输入法。在系统设置中添加后回到 LinguaPDF，输入法会自动切换。").arg(frame.languageName(inputNotice.language))
+            }
+            DesignSwitch { id: inputNoticeSilence; objectName: "inputNoticeSilence"; theme: frame.theme; text: qsTr("不再提示"); Layout.fillWidth: true }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight; spacing: 10
+                DesignButton { theme: frame.theme; text: qsTr("打开系统设置"); onClicked: { frame.inputSources.openSystemSettings(); inputNotice.close() } }
+                DesignButton { objectName: "inputNoticeClose"; theme: frame.theme; text: qsTr("知道了"); primary: true; onClicked: inputNotice.close() }
+            }
         }
     }
 }

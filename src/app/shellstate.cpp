@@ -93,6 +93,7 @@ void ShellState::selectFile(const QUrl& url) {
         resetOcr();
         emit answerLinesChanged();
         path_ = file.absoluteFilePath();
+        resetDocumentLanguage();
         selectedName_ = file.fileName();
         const auto storageSession=session_; const auto storagePath=path_;
         QMetaObject::invokeMethod(storage_,[this,storageSession,storagePath] { storage_->open(storageSession,storagePath); },Qt::QueuedConnection);
@@ -120,6 +121,7 @@ void ShellState::clearSelection() {
     resetOcr();
     emit answerLinesChanged();
     path_.clear();
+    resetDocumentLanguage();
     selectedName_.clear();
     statusText_.clear();
     errorCode_.clear();
@@ -327,6 +329,7 @@ void ShellState::acceptFrame(const PdfFrame& frame) {
                 if(shuttingDown_ || session!=session_ || revision!=ocrRevision_)return;
                 ocrBusyPage_=-1;
                 textSelection_.put(page,text);
+                noteLanguage(page,text);
                 const bool selectRegion=ocrRegionSelections_.contains(page) && ocrRegionSelections_.take(page)==textSelection_.interactionRevision();
                 if(selectRegion && model_.visible(page) && text->region!=QRectF(0,0,1,1) && text->error.isEmpty()) {
                     QPointF first,last;bool found=false;
@@ -348,7 +351,7 @@ void ShellState::acceptFrame(const PdfFrame& frame) {
     }
     if (frame.textOnly) {
         model_.setSizes(frame.page,{frame.points});
-        if (frame.text) textSelection_.put(frame.page,frame.text);
+        if (frame.text) { textSelection_.put(frame.page,frame.text); noteLanguage(frame.page,frame.text); }
         else {
             auto failure=std::make_shared<TextPage>(); failure->error=frame.error;
             textSelection_.put(frame.page,std::move(failure));
@@ -426,7 +429,33 @@ void ShellState::setOcrLanguage(QString language) {
     if(language!="fra" && language!="eng" && language!="chi_sim" && language!="fra+eng")return;
     if(ocrLanguage_==language)return;
     resetOcr();ocrLanguage_=std::move(language);textSelection_.clearOcr();updateOcrDemand();emit ocrChanged();scheduleTimer_.start();
+    // Text recognized in the old language says little about the document.
+    for(auto it=pageLanguages_.begin();it!=pageLanguages_.end();) it=it->ocr?pageLanguages_.erase(it):std::next(it);
+    updateDocumentLanguage();
 }
+void ShellState::noteLanguage(int page,const TextSnapshot& text) {
+    if(!text || text->pending || !text->error.isEmpty() || page<0) return;
+    // An OCR pass over a selected region only covers part of the page; keep the larger sample.
+    if(text->characters.isEmpty() && pageLanguages_.contains(page)) return;
+    pageLanguages_.insert(page,{languageEvidence(*text),text->ocr});
+    updateDocumentLanguage();
+}
+void ShellState::updateDocumentLanguage() {
+    QString language;
+    if(!path_.isEmpty()) {
+        LanguageEvidence total;
+        for(const auto& page:std::as_const(pageLanguages_)) total+=page.evidence;
+        // Text on the pages first; scanned books without text fall back to the file name, then
+        // to the OCR language the user set.
+        language=total.dominant();
+        if(language.isEmpty()) language=languageFromName(QFileInfo(path_).completeBaseName());
+        if(language.isEmpty()) language=languageFromOcr(ocrLanguage_);
+    }
+    if(language==documentLanguage_) return;
+    documentLanguage_=language;
+    emit documentLanguageChanged();
+}
+void ShellState::resetDocumentLanguage() { pageLanguages_.clear(); updateDocumentLanguage(); }
 void ShellState::resetOcr() {
     if(ocr_)ocr_->invalidate(++ocrRevision_);
     ocrDemand_.clear();ocrRegionSelections_.clear();ocrBusyPage_=-1;ocrStatus_.clear();emit ocrChanged();
@@ -654,31 +683,10 @@ bool ShellState::toggleCheckBox(double x,double y) {
 }
 bool ShellState::crossMarks(int page) const {
     if(checkMarkStyle_!=0) return checkMarkStyle_==2;
-    // Count common function words per language in the page text (PDF text layer or OCR).
-    static const QSet<QString> french{"le","la","les","des","du","est","et","une","un","vous","je","nous","il","elle","ce","que","qui","pour","pas","sur","au","aux","avec","dans","mon","votre"};
-    static const QSet<QString> german{"der","die","das","und","ist","nicht","ich","sie","mit","ein","eine","zu","den","auf","ihr","wir","sind"};
-    static const QSet<QString> spanish{"el","los","las","y","es","por","con","una","del","usted","yo","está","son"};
-    static const QSet<QString> italian{"il","gli","che","è","per","non","con","una","della","sono","io","lei"};
-    static const QSet<QString> english{"the","and","is","are","you","of","to","in","it","that","with","for","this","what","your","i"};
+    // Common function words per language in the page text (PDF text layer or OCR).
     if(const auto text=textSelection_.snapshot(page); text && !text->characters.isEmpty()) {
-        int cross=0,tick=0,han=0; QString word;
-        auto flush=[&] {
-            if(word.isEmpty()) return;
-            if(french.contains(word) || german.contains(word) || spanish.contains(word) || italian.contains(word)) ++cross;
-            if(english.contains(word)) ++tick;
-            word.clear();
-        };
-        for(const auto& c:text->characters) {
-            const char32_t u=c.unicode;
-            if(u>=0x4e00 && u<=0x9fff) { ++han; flush(); continue; }
-            if(QChar::isLetter(u)) {
-                // Letters only these languages use count on their own.
-                if(QStringLiteral("éèêëàâçîïôûùœäöüßñ").contains(QString::fromUcs4(&u,1).toLower())) ++cross;
-                word+=QString::fromUcs4(&u,1).toLower();
-            } else if(u!=U'\'' && u!=U'\u2019') flush();
-            else word.clear(); // l'école, j'ai: the elided article is not a word here
-        }
-        flush();
+        const auto evidence=languageEvidence(*text);
+        const int cross=evidence.cross, tick=evidence.tick, han=evidence.han;
         if(cross+tick>=3) return cross>tick;
         if(han>=10) return false; // Chinese: 打勾
     }

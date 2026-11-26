@@ -70,6 +70,15 @@ ApplicationWindow {
     }
     Connections { target: window.shell; function onCheckMarkStyleChanged(): void { workspace.checkMark = window.shell.checkMarkStyle } }
     OfflineServices { id: offline }
+    // System keyboard follows the document language while LinguaPDF is the active app.
+    InputSourceSwitcher {
+        id: inputSources
+        objectName: "inputSources"
+        language: window.shell.documentLanguage
+        documentOpen: window.shell.pageCount > 0
+        switching: workspace.inputSwitching
+        choices: workspace.inputChoices
+    }
     Connections {
         target: window.shell
         property var previousSession: window.shell.sessionId
@@ -200,6 +209,7 @@ ApplicationWindow {
         theme: shellTheme
         workspace: workspace
         services: offline
+        inputSources: inputSources
         onOpenRequested: window.chooseFile()
         onExportRequested: exportLoader.active = true
     }

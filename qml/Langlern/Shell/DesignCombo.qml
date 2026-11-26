@@ -37,7 +37,8 @@ ComboBox {
         height: 34
         highlighted: control.highlightedIndex === index
         contentItem: Text {
-            text: control.textRole ? (Array.isArray(control.model) ? entry.modelData[control.textRole] : entry.model[control.textRole]) : entry.modelData
+            // A replaced model can leave a delegate on an entry that is already gone for one update.
+            text: (control.textRole ? (Array.isArray(control.model) ? entry.modelData?.[control.textRole] : entry.model?.[control.textRole]) : entry.modelData) ?? ""
             font: control.font; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter
             color: entry.highlighted ? control.theme.accentText : control.theme.text
         }

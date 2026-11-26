@@ -46,6 +46,8 @@ void usage() {
 int main(int argc,char** argv) {
     // Deterministic Qt dialog automation; the product keeps the system-native default.
     QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
+    // GUI suites open documents in an active window; never switch the developer's keyboard.
+    qputenv("LANGLERN_NO_INPUT_SWITCH","1");
     QGuiApplication app(argc,argv); configureTestApplication(app);
     if(argc==3 && QByteArray(argv[1])=="--interrupted-write") return interruptedWrite(app,QString::fromLocal8Bit(argv[2]));
     if(argc==4 && (QByteArray(argv[1])=="--crash-session" || QByteArray(argv[1])=="--read-session"))
