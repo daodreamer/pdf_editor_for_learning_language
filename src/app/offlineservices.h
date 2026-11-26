@@ -89,6 +89,19 @@ public:
     Q_INVOKABLE void lookup(QString word);
     // Online deep link for the lemma (French: 法语助手). Empty when the language has none.
     Q_INVOKABLE QUrl externalDictionaryUrl(const QString& lemma) const;
+    // DeepL web translator with the selected text in the source box (opened in the browser; not
+    // sent by the app). source: ISO 639-1 document language, empty for DeepL's detection. The
+    // target follows the interface language. Empty when nothing is left after cleanup.
+    Q_INVOKABLE QUrl translationUrl(const QString& text,const QString& sourceLanguage) const;
+    // Selection text as a sentence: PDF line wraps become spaces, a hyphen at a line end joins
+    // the two parts, blank lines and lines opening with a dialogue dash or list mark stay apart.
+    static QString translationText(const QString& text);
+    // More than one word: the translate action is for phrases and sentences; a single word
+    // (including "peut-être", "l'homme") goes to the dictionary. Text without spaces counts as a
+    // phrase from five Han/kana/Hangul characters on (Chinese has no word separators).
+    Q_INVOKABLE bool isPhrase(const QString& text) const;
+    static QUrl deeplUrl(const QString& text,const QString& source,const QString& target);
+    static constexpr int translationLimit=1500; // characters; DeepL's free web box takes 1500
     Q_INVOKABLE void speak(QString text,QString locale=QString());
     Q_INVOKABLE void stopSpeaking();
     Q_INVOKABLE void openAudio(QUrl file);

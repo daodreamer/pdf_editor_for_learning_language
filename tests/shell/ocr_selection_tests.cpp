@@ -319,12 +319,31 @@ private slots:
             for(int i=first;i<=lineEnd;++i){const auto& c=data->characters[i];if(!c.visible)continue;
                 bool covered=false;for(const auto& r:bands)covered=covered||r.toRectF().intersects(c.box);QVERIFY(covered);}
             if(!out.isEmpty()){QTest::qWait(100);QVERIFY(window->grabWindow().save(out+"/real-textbook-multiline-selection.png"));}
+            // Translation: the toolbar offers DeepL; the link carries the paragraph with PDF line wraps joined.
+            auto* translate=findItem(window->contentItem(),"translatePageSelection");QVERIFY(translate);
+            window->requestActivate();QVERIFY(QTest::qWaitForWindowActive(window));QTRY_VERIFY(translate->isVisible());
+            QCOMPARE(shell.documentLanguage(),QStringLiteral("fr"));
+            const auto selected=shell.textSelection()->text();
+            const auto link=service->translationUrl(selected,shell.documentLanguage()).toEncoded();
+            const QByteArray prefix("https://www.deepl.com/translator#fr/zh-hans/");
+            QVERIFY2(link.startsWith(prefix),link.constData());
+            const auto body=QUrl::fromPercentEncoding(link.mid(prefix.size()));
+            QCOMPARE(body,OfflineServices::translationText(selected));
+            QVERIFY2(body.count(u'\n')<selected.count(u'\n'),qPrintable(body));
+            QVERIFY(!body.contains(QStringLiteral("  ")));
+            if(!out.isEmpty()){QFile file(out+"/real-textbook-translation.txt");QVERIFY(file.open(QIODevice::WriteOnly|QIODevice::NewOnly));file.write(selected.toUtf8()+"\n----\n"+body.toUtf8()+"\n");}
         }
         // Repeated double-click without a drag must preserve a whole word.
         QTest::keyClick(window,Qt::Key_Escape);
         const int word=indexOf(data,"expérience");QVERIFY(word>=0);
         doubleClick(at(word+3));
         QTRY_COMPARE(shell.textSelection()->text(),QStringLiteral("expérience"));
+        {
+            // A single word offers lookup but not DeepL translation.
+            window->requestActivate();QVERIFY(QTest::qWaitForWindowActive(window));
+            auto* lookupIcon=findItem(window->contentItem(),"lookupPageSelection");QVERIFY(lookupIcon);QTRY_VERIFY(lookupIcon->isVisible());
+            auto* translate=findItem(window->contentItem(),"translatePageSelection");QVERIFY(translate);QVERIFY(!translate->isVisible());
+        }
         QTest::keyClick(window,Qt::Key_Escape);
         if(!dictionary) qInfo("French dictionary not installed; real textbook lookup validation NOT executed");
         else {

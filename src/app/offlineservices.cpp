@@ -227,6 +227,53 @@ QUrl OfflineServices::externalDictionaryUrl(const QString& lemma) const {
     if(word.isEmpty()||lookupLanguage_!=QLatin1String("fr"))return {};
     return QUrl(QStringLiteral("https://www.frdic.com/dicts/fr/")+QString::fromLatin1(QUrl::toPercentEncoding(word)));
 }
+QString OfflineServices::translationText(const QString& input) {
+    QString text=input;
+    text.replace(QStringLiteral("\r\n"),QStringLiteral("\n"));text.replace(u'\r',u'\n');
+    // A soft hyphen (or PDFium's U+0002 for a generated one) at a line end splits one word.
+    static const QRegularExpression softBreak(QStringLiteral("[\\x{00AD}\\x{0002}][ \\t]*\\n[ \\t]*"));
+    text.remove(softBreak);text.remove(QChar(0x00AD));text.remove(QChar(0x0002));
+    // A visible hyphen at a line end: keep it ("peut-être", "est-ce") and drop the break.
+    static const QRegularExpression hardBreak(QStringLiteral("(\\p{L})-[ \\t]*\\n[ \\t]*(?=\\p{L})"));
+    text.replace(hardBreak,QStringLiteral("\\1-"));
+    static const QRegularExpression item(QStringLiteral("^(?:[—–•·▪*-]|\\d{1,2}[.)](?:\\s|$)|[a-zA-Z][)](?:\\s|$))"));
+    QString out;bool paragraph=false;
+    for(const auto& raw:text.split(u'\n')) {
+        const auto line=raw.simplified();
+        if(line.isEmpty()){paragraph=!out.isEmpty();continue;}
+        if(!out.isEmpty())out+=(paragraph||item.match(line).hasMatch())?u'\n':u' ';
+        out+=line;paragraph=false;
+    }
+    if(out.size()>translationLimit) {
+        out.truncate(translationLimit);
+        const auto space=out.lastIndexOf(QRegularExpression(QStringLiteral("\\s")));
+        if(space>translationLimit/2)out.truncate(space);
+    }
+    return out;
+}
+bool OfflineServices::isPhrase(const QString& text) const {
+    static const QRegularExpression space(QStringLiteral("\\s+"));
+    static const QRegularExpression letter(QStringLiteral("\\p{L}"));
+    static const QRegularExpression ideograph(QStringLiteral("[\\p{Han}\\p{Hiragana}\\p{Katakana}\\p{Hangul}]"));
+    int words=0;
+    for(const auto& token:text.split(space,Qt::SkipEmptyParts)) {
+        if(!token.contains(letter))continue;
+        if(++words>1)return true;
+        if(token.count(ideograph)>=5)return true;
+    }
+    return false;
+}
+QUrl OfflineServices::deeplUrl(const QString& text,const QString& source,const QString& target) {
+    const auto body=translationText(text);
+    if(body.isEmpty())return {};
+    return QUrl::fromEncoded(QByteArrayLiteral("https://www.deepl.com/translator#")+source.toLatin1()+'/'+target.toLatin1()+'/'+QUrl::toPercentEncoding(body));
+}
+QUrl OfflineServices::translationUrl(const QString& text,const QString& sourceLanguage) const {
+    // DeepL web language codes for the languages document detection reports.
+    static const QStringList known={QStringLiteral("fr"),QStringLiteral("de"),QStringLiteral("es"),QStringLiteral("it"),QStringLiteral("en"),QStringLiteral("zh")};
+    const auto source=known.contains(sourceLanguage)?sourceLanguage:QStringLiteral("auto");
+    return deeplUrl(text,source,english_?QStringLiteral("en-us"):QStringLiteral("zh-hans"));
+}
 void OfflineServices::lookup(QString word) {
     word=word.trimmed().left(200);word.remove(QRegularExpression("^[^\\p{L}]+|[^\\p{L}]+$"));
     lookupWord_=word;meaning_.clear();phonetic_.clear();lookupEntries_.clear();lookupFound_=false;lookupBusy_=!word.isEmpty();emit lookupChanged();

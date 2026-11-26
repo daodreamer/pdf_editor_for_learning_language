@@ -9,6 +9,8 @@ Popup {
     required property TextSelection selection
     required property bool active
     property point anchorPoint: Qt.point(0, 0)
+    // ISO 639-1 language of the document ("" when unknown).
+    property string sourceLanguage: ""
     signal lookupRequested()
     parent: Overlay.overlay
     objectName: "pageSelectionActions"
@@ -47,6 +49,16 @@ Popup {
             objectName: "lookupPageSelection"
             symbol: "book"; tip: qsTr("查词")
             onClicked: actions.lookupRequested()
+        }
+        // Phrases and sentences go to DeepL in the browser; a single word only gets the dictionary.
+        IconAction {
+            objectName: "translatePageSelection"
+            symbol: "translate"; tip: qsTr("用 DeepL 翻译（在浏览器中打开）")
+            visible: actions.services.isPhrase(actions.selection.text)
+            onClicked: {
+                const url = actions.services.translationUrl(actions.selection.text, actions.sourceLanguage)
+                if (url.toString().length > 0) Qt.openUrlExternally(url)
+            }
         }
         IconAction {
             objectName: "speakPageSelection"

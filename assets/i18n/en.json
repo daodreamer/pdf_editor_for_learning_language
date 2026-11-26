@@ -161,6 +161,7 @@
   "朗读文本框选中文字": "Read selected answer text aloud",
   "复制选中文字": "Copy selected text",
   "朗读选中文字": "Read selected text aloud",
+  "用 DeepL 翻译（在浏览器中打开）": "Translate with DeepL (opens in browser)",
   "点空白处打字 · 按住拖动书写 · 双击后按住拖动选文": "Click blank space to type · Drag to write · Double-click and drag to select",
   "拖选文字以复制或朗读 · 扫描页自动离线识别": "Select text to copy or read aloud · Scanned pages use offline OCR",
   "OCR 与朗读设置…": "OCR and speech settings…",

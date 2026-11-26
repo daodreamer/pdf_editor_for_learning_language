@@ -544,6 +544,7 @@ ColumnLayout {
         theme: view.theme
         services: view.services
         selection: view.shell.textSelection
+        sourceLanguage: view.shell.documentLanguage
         active: view.visible && view.Window.window.active && !inkInput.selectingText && !selectionMouse.pressed
             && (selectionMouse.activeFocus || inkInput.activeFocus) && !viewport.moving
         onLookupRequested: { view.lookupPoint = Qt.point(anchorPoint.x, anchorPoint.y - 16); view.wordRequested(view.shell.textSelection.text, view.shell.textSelection.context) }

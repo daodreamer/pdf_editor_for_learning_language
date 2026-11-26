@@ -93,6 +93,32 @@ private slots:
         QCOMPARE(service.externalDictionaryUrl(QStringLiteral("œil")),QUrl("https://www.frdic.com/dicts/fr/%C5%93il"));
         QCOMPARE(service.externalDictionaryUrl(QStringLiteral("a/b?c")),QUrl("https://www.frdic.com/dicts/fr/a%2Fb%3Fc"));
     }
+    void deeplSentenceTranslation() {
+        // Line wraps join; a hyphen at a line end stays without the break; soft hyphens vanish.
+        QCOMPARE(OfflineServices::translationText(QStringLiteral("  Je voudrais un\r\ncafé, s’il vous\nplaît.  ")),QStringLiteral("Je voudrais un café, s’il vous plaît."));
+        QCOMPARE(OfflineServices::translationText(QStringLiteral("Est-ce que c’est peut-\nêtre l’appren\u00AD\ndre ?")),QStringLiteral("Est-ce que c’est peut-être l’apprendre ?"));
+        // Paragraphs and dialogue/list lines keep their own line.
+        QCOMPARE(OfflineServices::translationText(QStringLiteral("Bonjour.\n\nÇa va ?\n— Oui.\n1. Lisez\nle texte.")),QStringLiteral("Bonjour.\nÇa va ?\n— Oui.\n1. Lisez le texte."));
+        QVERIFY(OfflineServices::translationText(QStringLiteral(" \n\t")).isEmpty());
+        const QString longText=QString(QStringLiteral("mot ")).repeated(500);
+        const auto cut=OfflineServices::translationText(longText);
+        QVERIFY(cut.size()<=OfflineServices::translationLimit);QVERIFY(cut.endsWith(QStringLiteral("mot")));
+        // Every reserved character stays text in the fragment (DeepL splits it at '/').
+        QCOMPARE(OfflineServices::deeplUrl(QStringLiteral("a/b ?&#\nc"),"fr","zh-hans").toEncoded(),
+                 QByteArray("https://www.deepl.com/translator#fr/zh-hans/a%2Fb%20%3F%26%23%20c"));
+        OfflineServices service;
+        QCOMPARE(service.translationUrl(QStringLiteral("Bonjour"),"fr").toEncoded(),QByteArray("https://www.deepl.com/translator#fr/zh-hans/Bonjour"));
+        QCOMPARE(service.translationUrl(QStringLiteral("Bonjour"),"").toEncoded(),QByteArray("https://www.deepl.com/translator#auto/zh-hans/Bonjour"));
+        QCOMPARE(service.translationUrl(QStringLiteral("Bonjour"),"xx").toEncoded(),QByteArray("https://www.deepl.com/translator#auto/zh-hans/Bonjour"));
+        service.setEnglish(true);
+        QCOMPARE(service.translationUrl(QStringLiteral("Bonjour"),"fr").toEncoded(),QByteArray("https://www.deepl.com/translator#fr/en-us/Bonjour"));
+        QVERIFY(service.translationUrl(QStringLiteral("\n"),"fr").isEmpty());
+        // The translate action only appears for more than one word.
+        for(const auto* word:{"expérience"," rentrera, ","peut-être","l'homme","s’il","« oui »","咖啡","一石二鸟","12 ans"})
+            QVERIFY2(!service.isPhrase(QString::fromUtf8(word)),word);
+        for(const auto* phrase:{"s'il vous plaît","un\ncafé","Je voudrais un café.","我想要一杯咖啡","« Bonjour, Laure »"})
+            QVERIFY2(service.isPhrase(QString::fromUtf8(phrase)),phrase);
+    }
     void frenchLemmaGlossesAndConjugation() {
         // CI points LANGLERN_FR_DICTIONARY at a database built from tests/fixtures/fr-wiktionary-sample.jsonl
         // (real Wiktionary lines); local builds use the full database copied next to the executable.
