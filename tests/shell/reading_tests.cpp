@@ -126,6 +126,17 @@ private slots:
             QWheelEvent e(at,window->mapToGlobal(at),pixels,angle,Qt::NoButton,Qt::NoModifier,Qt::NoScrollPhase,false);
             QGuiApplication::sendEvent(window,&e);
         };
+        // The speed detection reads wall-clock time between notches; qWait can oversleep on a loaded
+        // runner, so fast spins pace their notches by the clock and report the gaps actually sent.
+        QList<qint64> gaps;
+        const auto spinNotches=[&](int count,int intervalMs,int angle){
+            QElapsedTimer pace;pace.start();qint64 last=-1;
+            for(int i=0;i<count;++i){
+                while(pace.elapsed()<qint64(i)*intervalMs) QCoreApplication::processEvents(QEventLoop::AllEvents,1);
+                const qint64 now=pace.elapsed();if(last>=0)gaps.append(now-last);last=now;
+                wheel({0,angle});
+            }
+        };
         const auto settle=[&]{double last=-1;QElapsedTimer t;t.start();while(t.elapsed()<2000){QTest::qWait(40);if(std::abs(y()-last)<.01)break;last=y();}};
         QVERIFY(viewport->property("contentHeight").toDouble()>viewport->height()*12);
         setY(0);
@@ -143,12 +154,13 @@ private slots:
         for(int i=0;i<5;++i){wheel({0,-120});QTest::qWait(300);}
         settle();const double slow=y();
         // A fast spin flips pages: the same five notches travel much farther.
-        setY(0);
-        for(int i=0;i<5;++i){wheel({0,-120});QTest::qWait(20);}
+        setY(0);gaps.clear();
+        spinNotches(5,20,-120);
         settle();const double fast=y();
+        QStringList sent;for(auto g:gaps)sent.append(QString::number(g));qInfo()<<"fast_gaps_ms"<<sent.join(',');
         // A sustained fast spin reaches the per-notch cap of ~0.9 screen.
         setY(0);
-        for(int i=0;i<12;++i){wheel({0,-120});QTest::qWait(25);}
+        spinNotches(12,25,-120);
         settle();const double spin=y();
         QVERIFY2(spin>5*viewport->height(),qPrintable(QString::number(spin)));
         qInfo()<<"wheel_notch"<<notch<<"slow5"<<slow<<"fast5"<<fast<<"spin12"<<spin<<"viewport"<<viewport->height();
@@ -156,7 +168,7 @@ private slots:
         QVERIFY(fast<=5*viewport->height()*0.9+1);
         // Reversing cancels the remaining glide and heads back immediately.
         setY(3000);
-        for(int i=0;i<4;++i){wheel({0,-120});QTest::qWait(15);}
+        spinNotches(4,15,-120);
         const double turning=y();wheel({0,120});settle();
         QVERIFY2(y()<turning,qPrintable(QStringLiteral("%1 -> %2").arg(turning).arg(y())));
         // Touchpad pixel deltas follow the fingers exactly, without glide.

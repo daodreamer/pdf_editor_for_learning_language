@@ -443,7 +443,7 @@ private slots:
         QTest::mousePress(w,Qt::LeftButton,Qt::NoModifier,point(s,viewport,.2,.75));
         QTest::mouseMove(w,point(s,viewport,.25,.75),5);
         QTest::mouseRelease(w,Qt::LeftButton,Qt::NoModifier,point(s,viewport,.25,.75));
-        QTRY_VERIFY_WITH_TIMEOUT(s.annotations()->inkSnapshot().size()==5,3000);
+        { QElapsedTimer t; t.start(); while(s.annotations()->inkSnapshot().size()!=5 && t.elapsed()<3000) QTest::qWait(20); }
         if(s.annotations()->inkSnapshot().size()!=5) {
             // Diagnostics for runners where this stroke went missing: was it taken for a tap?
             const auto p=point(s,viewport,.2,.75);const auto c=viewport->mapFromScene(p);
