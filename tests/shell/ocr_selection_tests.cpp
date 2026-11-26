@@ -341,8 +341,33 @@ private slots:
             const auto composed=entry["conjugation"].toList().value(1).toMap();QCOMPARE(composed["name"].toString(),QStringLiteral("passé composé"));
             const auto firstRow=composed["rows"].toList().value(0).toMap();
             QCOMPARE(firstRow["person"].toString(),QStringLiteral("j'/je"));QCOMPARE(firstRow["form"].toString(),QStringLiteral("ai rentré / suis rentré(e)"));
-            card->setProperty("tenseIndex",1);
+            // Picking a tense chip is remembered for later lookups (learners practise one tense at a time).
+            auto* workspace=window->findChild<WorkspaceState*>();QVERIFY(workspace);QVERIFY(workspace->lookupTense().isEmpty());
+            // Popup content hangs off the overlay: walk the visual tree, not QObject children.
+            QQuickItem* chip=nullptr;
+            std::function<void(QQuickItem*)> walk=[&](QQuickItem* item) {
+                if(chip) return;
+                if(item->isVisible() && item->property("tip").toString()==QStringLiteral("passé composé")) { chip=item; return; }
+                for(auto* child:item->childItems()) walk(child);
+            };
+            walk(window->contentItem());
+            // The card is still settling its position as the table grows; the click handler is what matters here.
+            QVERIFY(chip);QVERIFY(QMetaObject::invokeMethod(chip,"clicked"));
+            QTRY_COMPARE(card->property("tenseIndex").toInt(),1);
             auto* tenseName=findItem(window->contentItem(),"lookupTenseName");QVERIFY(tenseName);QTRY_COMPARE(tenseName->property("text").toString(),QStringLiteral("passé composé"));
+            QCOMPARE(workspace->lookupTense(),QStringLiteral("passé composé"));
+            QTest::keyClick(window,Qt::Key_Escape);QTRY_VERIFY(!card->property("visible").toBool());
+            QTest::keyClick(window,Qt::Key_Escape);
+            // The same future form again: the conjugation now opens on passé composé, not on the future.
+            doubleClick(inWord);QTRY_COMPARE(shell.textSelection()->text(),QStringLiteral("rentrera"));
+            if(!card->property("visible").toBool()) {
+                auto* icon=findItem(window->contentItem(),"lookupPageSelection");QVERIFY(icon);QTRY_VERIFY(icon->isVisible());
+                QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,itemCenter(icon));
+            }
+            QTRY_VERIFY(card->property("visible").toBool());QTRY_VERIFY(service->lookupFound());
+            QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,itemCenter(tab));QTRY_VERIFY(grid->isVisible());
+            QTRY_COMPARE(card->property("tenseIndex").toInt(),1);QTRY_COMPARE(tenseName->property("text").toString(),QStringLiteral("passé composé"));
+            workspace->setLookupTense(QString());
             QTest::keyClick(window,Qt::Key_Escape);QTRY_VERIFY(!card->property("visible").toBool());
             QTest::keyClick(window,Qt::Key_Escape);
         }

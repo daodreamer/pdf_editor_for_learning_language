@@ -676,6 +676,8 @@ Item {
         id: lookup
         theme: pane.theme
         services: pane.services
+        preferredTense: pane.workspace.lookupTense
+        onTenseChosen: function(name) { pane.workspace.lookupTense = name }
         onAddRequested: function(word, meaning, context) { pane.workspace.addWord(word, meaning, context, pane.shell.selectedName, pane.shell.currentPage) }
     }
     // The lookup language is a saved preference; the service only holds the live value.

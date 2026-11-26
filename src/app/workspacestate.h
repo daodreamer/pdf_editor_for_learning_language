@@ -38,6 +38,8 @@ class WorkspaceState : public QObject {
     // "Ask AI": last chat service ("claude" / "chatgpt") and the prompt language choice: "app"
     // (interface language, default), "system" or a language code (AiPrompt::languages()).
     Q_PROPERTY(QString aiTarget READ aiTarget WRITE setAiTarget NOTIFY preferencesChanged)
+    // Conjugation tense (French name) last picked in the lookup card; empty = follow the selected form.
+    Q_PROPERTY(QString lookupTense READ lookupTense WRITE setLookupTense NOTIFY preferencesChanged)
     Q_PROPERTY(QString aiPromptLanguage READ aiPromptLanguage WRITE setAiPromptLanguage NOTIFY preferencesChanged)
 public:
     explicit WorkspaceState(QObject* parent=nullptr);
@@ -70,6 +72,8 @@ public:
     Q_INVOKABLE void silenceInputNotice(const QString& language);
     QString aiTarget() const { return aiTarget_; }
     void setAiTarget(QString value);
+    QString lookupTense() const { return lookupTense_; }
+    void setLookupTense(QString value);
     QString aiPromptLanguage() const { return aiPromptLanguage_; }
     void setAiPromptLanguage(QString value);
     void setTextColor(QString value);
@@ -120,6 +124,7 @@ private:
     QStringList inputNoticesOff_;
     QString aiTarget_=QStringLiteral("claude");
     QString aiPromptLanguage_=QStringLiteral("app");
+    QString lookupTense_;
     QThread writerThread_;
     QObject* writer_=nullptr;
     QTimer timer_;

@@ -14,7 +14,11 @@ Popup {
     property int entryIndex: 0
     property bool showConjugation: false
     property int tenseIndex: 0
+    // French name of the tense the user last picked ("imparfait"…): later lookups open the
+    // conjugation on it, since learners look up many verbs while practising one tense.
+    property string preferredTense: ""
     signal addRequested(string word, string meaning, string context)
+    signal tenseChosen(string name)
 
     readonly property var entries: services.lookupEntries
     readonly property var entry: entries.length > entryIndex ? entries[entryIndex] : null
@@ -34,11 +38,14 @@ Popup {
         open()
     }
     function pickTense(): void {
-        // Open the conjugation on the tense that contains the selected form. Read from entry
-        // directly: this runs from onEntryChanged, before the derived bindings refresh.
+        // Open the conjugation on the tense the user last picked, else on the tense that contains
+        // the selected form. Read from entry directly: this runs from onEntryChanged, before the
+        // derived bindings refresh.
         tenseIndex = 0
         const groups = entry && entry.conjugation ? entry.conjugation : []
         const key = entry && entry.key ? entry.key : ""
+        const preferred = groups.findIndex(group => group.name === preferredTense)
+        if (preferredTense.length > 0 && preferred >= 0) { tenseIndex = preferred; return }
         for (let g = 0; g < groups.length; ++g)
             for (const row of groups[g].rows)
                 if (row.form.split(" / ").includes(key)) { tenseIndex = g; return }
@@ -217,7 +224,7 @@ Popup {
                             required property int index
                             text: modelData.title
                             active: index === card.tenseIndex
-                            onClicked: card.tenseIndex = index
+                            onClicked: { card.tenseIndex = index; card.tenseChosen(modelData.name) }
                             tip: modelData.name
                         }
                     }

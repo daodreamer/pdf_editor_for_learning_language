@@ -38,6 +38,10 @@ static QStringList inputNoticesValue(const QVariant& v) {
 static QString aiTargetValue(const QVariant& v) {
     return v.toString()==QLatin1String("chatgpt") ? QStringLiteral("chatgpt") : QStringLiteral("claude");
 }
+static QString lookupTenseValue(const QVariant& v) {
+    const auto value=v.toString().trimmed();
+    return value.size()<=64 ? value : QString();
+}
 static QString aiPromptLanguageValue(const QVariant& v) {
     const auto value=v.toString();
     return value==QLatin1String("system") || AiPrompt::supported(value) ? value : QStringLiteral("app");
@@ -76,6 +80,7 @@ WorkspaceState::WorkspaceState(QObject* parent):QObject(parent),textSize_(Annota
                 inputNoticesOff_=inputNoticesValue(data.value("inputNoticesOff"));
                 aiTarget_=aiTargetValue(data.value("aiTarget"));
                 aiPromptLanguage_=aiPromptLanguageValue(data.value("aiPromptLanguage"));
+                lookupTense_=lookupTenseValue(data.value("lookupTense"));
             } else error_=tr("书架数据无法读取，原文件已保留。本次不自动覆盖。");
         } else error_=tr("书架数据无法读取，原文件已保留。本次不自动覆盖。");
     }
@@ -110,7 +115,7 @@ QVariantMap WorkspaceState::snapshot() const {
     return {{"version",1},{"books",books_},{"words",words_},{"bookmarks",bookmarks_},{"layout",layout_},{"toolbar",toolbar_},{"paper",paper_},{"nightDim",nightDim_},{"english",english_},{"lookupLanguage",lookupLanguage_},{"frenchVoice",frenchVoice_},{"textSize",textSize_},{"inkWidth",inkWidth_},
         {"textColor",textColor_},{"textBold",textBold_},{"textItalic",textItalic_},{"checkMark",checkMark_},
         {"inputSwitching",inputSwitching_},{"inputChoices",inputChoices_},{"inputNoticesOff",inputNoticesOff_},
-        {"aiTarget",aiTarget_},{"aiPromptLanguage",aiPromptLanguage_}};
+        {"aiTarget",aiTarget_},{"aiPromptLanguage",aiPromptLanguage_},{"lookupTense",lookupTense_}};
 }
 void WorkspaceState::scheduleSave() {
     const auto candidate=snapshot();
@@ -124,7 +129,7 @@ void WorkspaceState::scheduleSave() {
         textItalic_=accepted_.value("textItalic").toBool();checkMark_=qBound(0,accepted_.value("checkMark").toInt(),2);
         inputSwitching_=accepted_.value("inputSwitching",true).toBool();inputChoices_=inputChoicesValue(accepted_.value("inputChoices"));
         inputNoticesOff_=inputNoticesValue(accepted_.value("inputNoticesOff"));
-        aiTarget_=aiTargetValue(accepted_.value("aiTarget"));aiPromptLanguage_=aiPromptLanguageValue(accepted_.value("aiPromptLanguage"));
+        aiTarget_=aiTargetValue(accepted_.value("aiTarget"));aiPromptLanguage_=aiPromptLanguageValue(accepted_.value("aiPromptLanguage"));lookupTense_=lookupTenseValue(accepted_.value("lookupTense"));
         error_=tr("书架数据已达到 8 MiB 上限，本次修改未保存。请删除不再需要的生词或笔记。");emit changed();emit preferencesChanged();return;
     }
     accepted_=candidate;if(!loadBlocked_)error_.clear();timer_.start();
@@ -189,6 +194,7 @@ void WorkspaceState::setTextColor(QString v) { v=textColorValue(v);if(textColor_
 void WorkspaceState::setTextBold(bool v) { if(textBold_==v)return;textBold_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setTextItalic(bool v) { if(textItalic_==v)return;textItalic_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setAiTarget(QString v) { v=aiTargetValue(v);if(aiTarget_==v)return;aiTarget_=v;emit preferencesChanged();scheduleSave(); }
+void WorkspaceState::setLookupTense(QString v) { v=lookupTenseValue(v);if(lookupTense_==v)return;lookupTense_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setAiPromptLanguage(QString v) { v=aiPromptLanguageValue(v);if(aiPromptLanguage_==v)return;aiPromptLanguage_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setCheckMark(int v) { v=qBound(0,v,2);if(checkMark_==v)return;checkMark_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setInkWidth(double v) { if(!std::isfinite(v))return;v=inkWidthValue(v);if(inkWidth_==v)return;inkWidth_=v;emit preferencesChanged();scheduleSave(); }
