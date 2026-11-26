@@ -440,13 +440,15 @@ private slots:
         QTRY_VERIFY(!s.annotations()->selectedId().isEmpty());
         QCOMPARE(s.annotations()->inkSnapshot().size(),4);
         s.finishTextEditing(); QTRY_VERIFY(s.annotations()->selectedId().isEmpty()); QTest::qWait(60);
-        QTest::mousePress(w,Qt::LeftButton,Qt::NoModifier,point(s,viewport,.2,.75));
-        QTest::mouseMove(w,point(s,viewport,.25,.75),5);
-        QTest::mouseRelease(w,Qt::LeftButton,Qt::NoModifier,point(s,viewport,.25,.75));
+        // Well above the bottom corner islands, which reach into the page on small screens
+        // (hosted macOS runners give the window only 1024x656).
+        QTest::mousePress(w,Qt::LeftButton,Qt::NoModifier,point(s,viewport,.2,.62));
+        QTest::mouseMove(w,point(s,viewport,.25,.62),5);
+        QTest::mouseRelease(w,Qt::LeftButton,Qt::NoModifier,point(s,viewport,.25,.62));
         { QElapsedTimer t; t.start(); while(s.annotations()->inkSnapshot().size()!=5 && t.elapsed()<3000) QTest::qWait(20); }
         if(s.annotations()->inkSnapshot().size()!=5) {
             // Diagnostics for runners where this stroke went missing: was it taken for a tap?
-            const auto p=point(s,viewport,.2,.75);const auto c=viewport->mapFromScene(p);
+            const auto p=point(s,viewport,.2,.62);const auto c=viewport->mapFromScene(p);
             qInfo()<<"stroke_missing ink"<<s.annotations()->inkSnapshot().size()<<"notes"<<s.annotations()->snapshot().size()
                 <<"selected"<<s.annotations()->selectedId()<<"mode"<<input->mode()<<"press"<<p<<"window"<<w->size()<<w->devicePixelRatio()
                 <<"interactive"<<s.interactiveContentAt(c.x()+viewport->property("contentX").toDouble(),c.y()+viewport->property("contentY").toDouble())
