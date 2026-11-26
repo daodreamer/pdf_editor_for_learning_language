@@ -35,6 +35,10 @@ class WorkspaceState : public QObject {
     Q_PROPERTY(bool inputSwitching READ inputSwitching WRITE setInputSwitching NOTIFY preferencesChanged)
     Q_PROPERTY(QVariantMap inputChoices READ inputChoices NOTIFY preferencesChanged)
     Q_PROPERTY(QStringList inputNoticesOff READ inputNoticesOff NOTIFY preferencesChanged)
+    // "Ask AI": last chat service ("claude" / "chatgpt") and the prompt language choice: "app"
+    // (interface language, default), "system" or a language code (AiPrompt::languages()).
+    Q_PROPERTY(QString aiTarget READ aiTarget WRITE setAiTarget NOTIFY preferencesChanged)
+    Q_PROPERTY(QString aiPromptLanguage READ aiPromptLanguage WRITE setAiPromptLanguage NOTIFY preferencesChanged)
 public:
     explicit WorkspaceState(QObject* parent=nullptr);
     ~WorkspaceState() override;
@@ -64,6 +68,10 @@ public:
     Q_INVOKABLE void setInputChoice(const QString& language,const QString& id);
     QStringList inputNoticesOff() const { return inputNoticesOff_; }
     Q_INVOKABLE void silenceInputNotice(const QString& language);
+    QString aiTarget() const { return aiTarget_; }
+    void setAiTarget(QString value);
+    QString aiPromptLanguage() const { return aiPromptLanguage_; }
+    void setAiPromptLanguage(QString value);
     void setTextColor(QString value);
     void setTextBold(bool value);
     void setTextItalic(bool value);
@@ -110,6 +118,8 @@ private:
     bool inputSwitching_=true;
     QVariantMap inputChoices_;
     QStringList inputNoticesOff_;
+    QString aiTarget_=QStringLiteral("claude");
+    QString aiPromptLanguage_=QStringLiteral("app");
     QThread writerThread_;
     QObject* writer_=nullptr;
     QTimer timer_;

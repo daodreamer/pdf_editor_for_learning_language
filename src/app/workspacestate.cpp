@@ -1,4 +1,5 @@
 #include "workspacestate.h"
+#include "aiprompt.h"
 #include "inkstroke.h"
 #include <QColor>
 #include <QDateTime>
@@ -34,6 +35,13 @@ static QStringList inputNoticesValue(const QVariant& v) {
     for(const auto& value:v.toList()) if(const auto code=value.toString(); !code.isEmpty() && code.size()<=8 && !result.contains(code) && result.size()<32) result.append(code);
     return result;
 }
+static QString aiTargetValue(const QVariant& v) {
+    return v.toString()==QLatin1String("chatgpt") ? QStringLiteral("chatgpt") : QStringLiteral("claude");
+}
+static QString aiPromptLanguageValue(const QVariant& v) {
+    const auto value=v.toString();
+    return value==QLatin1String("system") || AiPrompt::supported(value) ? value : QStringLiteral("app");
+}
 static double inkWidthValue(const QVariant& v) {
     bool ok=false; const double width=std::round(v.toDouble(&ok)*2)/2; // slider step 0.5 pt
     return ok && std::isfinite(width) ? std::clamp(width,AnnotationConfig::minInkWidth,AnnotationConfig::maxInkWidth) : AnnotationConfig::defaultInkWidth;
@@ -66,6 +74,8 @@ WorkspaceState::WorkspaceState(QObject* parent):QObject(parent),textSize_(Annota
                 inputSwitching_=data.value("inputSwitching",true).toBool();
                 inputChoices_=inputChoicesValue(data.value("inputChoices"));
                 inputNoticesOff_=inputNoticesValue(data.value("inputNoticesOff"));
+                aiTarget_=aiTargetValue(data.value("aiTarget"));
+                aiPromptLanguage_=aiPromptLanguageValue(data.value("aiPromptLanguage"));
             } else error_=tr("书架数据无法读取，原文件已保留。本次不自动覆盖。");
         } else error_=tr("书架数据无法读取，原文件已保留。本次不自动覆盖。");
     }
@@ -99,7 +109,8 @@ void WorkspaceState::save() {
 QVariantMap WorkspaceState::snapshot() const {
     return {{"version",1},{"books",books_},{"words",words_},{"bookmarks",bookmarks_},{"layout",layout_},{"toolbar",toolbar_},{"paper",paper_},{"nightDim",nightDim_},{"english",english_},{"lookupLanguage",lookupLanguage_},{"frenchVoice",frenchVoice_},{"textSize",textSize_},{"inkWidth",inkWidth_},
         {"textColor",textColor_},{"textBold",textBold_},{"textItalic",textItalic_},{"checkMark",checkMark_},
-        {"inputSwitching",inputSwitching_},{"inputChoices",inputChoices_},{"inputNoticesOff",inputNoticesOff_}};
+        {"inputSwitching",inputSwitching_},{"inputChoices",inputChoices_},{"inputNoticesOff",inputNoticesOff_},
+        {"aiTarget",aiTarget_},{"aiPromptLanguage",aiPromptLanguage_}};
 }
 void WorkspaceState::scheduleSave() {
     const auto candidate=snapshot();
@@ -113,6 +124,7 @@ void WorkspaceState::scheduleSave() {
         textItalic_=accepted_.value("textItalic").toBool();checkMark_=qBound(0,accepted_.value("checkMark").toInt(),2);
         inputSwitching_=accepted_.value("inputSwitching",true).toBool();inputChoices_=inputChoicesValue(accepted_.value("inputChoices"));
         inputNoticesOff_=inputNoticesValue(accepted_.value("inputNoticesOff"));
+        aiTarget_=aiTargetValue(accepted_.value("aiTarget"));aiPromptLanguage_=aiPromptLanguageValue(accepted_.value("aiPromptLanguage"));
         error_=tr("书架数据已达到 8 MiB 上限，本次修改未保存。请删除不再需要的生词或笔记。");emit changed();emit preferencesChanged();return;
     }
     accepted_=candidate;if(!loadBlocked_)error_.clear();timer_.start();
@@ -176,6 +188,8 @@ void WorkspaceState::setTextSize(double v) { if(!std::isfinite(v))return;v=textS
 void WorkspaceState::setTextColor(QString v) { v=textColorValue(v);if(textColor_==v)return;textColor_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setTextBold(bool v) { if(textBold_==v)return;textBold_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setTextItalic(bool v) { if(textItalic_==v)return;textItalic_=v;emit preferencesChanged();scheduleSave(); }
+void WorkspaceState::setAiTarget(QString v) { v=aiTargetValue(v);if(aiTarget_==v)return;aiTarget_=v;emit preferencesChanged();scheduleSave(); }
+void WorkspaceState::setAiPromptLanguage(QString v) { v=aiPromptLanguageValue(v);if(aiPromptLanguage_==v)return;aiPromptLanguage_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setCheckMark(int v) { v=qBound(0,v,2);if(checkMark_==v)return;checkMark_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setInkWidth(double v) { if(!std::isfinite(v))return;v=inkWidthValue(v);if(inkWidth_==v)return;inkWidth_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setInputSwitching(bool v) { if(inputSwitching_==v)return;inputSwitching_=v;emit preferencesChanged();scheduleSave(); }

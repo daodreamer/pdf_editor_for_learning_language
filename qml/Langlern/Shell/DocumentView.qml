@@ -12,6 +12,7 @@ ColumnLayout {
     property int inputMode: 0 // 0 automatic, 1 original text selection, 2 answer input, 3 pen, 4 eraser, 5 move ink
     function switchMode(mode: int): void {
         regionSelection = false
+        regionPurpose = "ocr"
         shell.annotations.cancelGesture()
         shell.finishTextEditing()
         shell.textSelection.clear()
@@ -85,16 +86,42 @@ ColumnLayout {
     property bool marking: false
     property bool reading: false
     property bool regionSelection: false
+    // What the region drag is for: "ocr" recognises it; "ai" captures it for the Ask AI popup and then
+    // returns to the tool the user had.
+    property string regionPurpose: "ocr"
+    property int regionReturnMode: 0
+    property AiHandoff ai: null
+    readonly property bool aiCapturing: regionSelection && regionPurpose === "ai"
+    signal aiCaptured(bool ok)
     property bool nightDim: true
     function wash(alpha: real): color { return Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, alpha) }
     function startRegionRecognition(): void {
         shell.finishTextEditing()
         shell.annotations.cancelGesture()
         shell.textSelection.clear()
+        regionPurpose = "ocr"
         regionSelection = true
         inputMode = 1
         selectionMouse.forceActiveFocus()
     }
+    function startAiCapture(): void {
+        if (aiCapturing) { endAiCapture(); return }
+        shell.finishTextEditing()
+        shell.annotations.cancelGesture()
+        shell.textSelection.clear()
+        regionReturnMode = inputMode
+        regionPurpose = "ai"
+        regionSelection = true
+        inputMode = 1
+        selectionMouse.forceActiveFocus()
+    }
+    function endAiCapture(): void {
+        regionSelection = false
+        regionPurpose = "ocr"
+        inputMode = regionReturnMode
+    }
+    // Runs after the drag rectangle is hidden, so the grab shows only the page and the answers.
+    function finishAiCapture(area: rect): void { aiCaptured(ai !== null && ai.capture(viewport.contentItem, area)) }
     onInputModeChanged: shell.ocrSelectionEnabled = inputMode === 1 && !regionSelection
     onRegionSelectionChanged: shell.ocrSelectionEnabled = inputMode === 1 && !regionSelection
     property rect answerHint: Qt.rect(0, 0, 0, 0)
@@ -356,6 +383,15 @@ ColumnLayout {
                 if (dragging && selecting) extend()
             }
             onReleased: {
+                if (view.aiCapturing) {
+                    regionEnd = mapToItem(viewport.contentItem, mouseX, mouseY)
+                    const area = Qt.rect(Math.min(regionStart.x, regionEnd.x), Math.min(regionStart.y, regionEnd.y),
+                        Math.abs(regionEnd.x - regionStart.x), Math.abs(regionEnd.y - regionStart.y))
+                    view.endAiCapture()
+                    dragging = false
+                    if (area.width >= 8 && area.height >= 8) Qt.callLater(view.finishAiCapture, area)
+                    return
+                }
                 if (view.regionSelection) {
                     regionEnd = mapToItem(viewport.contentItem, mouseX, mouseY)
                     view.shell.recognizeRegion(regionStart.x, regionStart.y, regionEnd.x, regionEnd.y)
@@ -369,8 +405,8 @@ ColumnLayout {
                 if (selecting) selectionActions.anchorPoint = mapToItem(selectionActions.parent, mouseX, mouseY)
                 dragging = false
             }
-            onCanceled: { dragging = false; selecting = false; view.regionSelection = false }
-            Keys.onEscapePressed: { selecting = false; view.regionSelection = false; view.shell.textSelection.clear() }
+            onCanceled: { dragging = false; selecting = false; if (view.aiCapturing) view.endAiCapture(); else view.regionSelection = false }
+            Keys.onEscapePressed: { selecting = false; if (view.aiCapturing) view.endAiCapture(); else view.regionSelection = false; view.shell.textSelection.clear() }
             Shortcut {
                 sequences: [StandardKey.Copy]
                 enabled: (selectionMouse.activeFocus || inkInput.activeFocus) && view.shell.textSelection.ready

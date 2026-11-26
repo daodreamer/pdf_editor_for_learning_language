@@ -134,6 +134,7 @@ Item {
                 DesignButton { theme: pane.theme; text: "⚑"; anchors.verticalCenter: parent.verticalCenter; selected: { const pages = pane.workspace.bookmarks; return pages.includes(pane.shell.currentPage) } onClicked: pane.workspace.toggleBookmark(pane.shell.currentPage); Accessible.name: qsTr("切换书签") }
                 DesignButton { theme: pane.theme; text: qsTr("生词本 %1").arg(pane.workspace.words.length); anchors.verticalCenter: parent.verticalCenter; visible: pane.width > 700; onClicked: pane.wordsRequested() }
                 DesignButton { theme: pane.theme; text: "♪"; anchors.verticalCenter: parent.verticalCenter; selected: pane.audioVisible; onClicked: pane.audioVisible = !pane.audioVisible; Accessible.name: qsTr("本地音频") }
+                DesignButton { objectName: "askAiButton"; theme: pane.theme; text: qsTr("问 AI"); anchors.verticalCenter: parent.verticalCenter; selected: document.aiCapturing || aiPopup.visible; onClicked: document.startAiCapture(); Accessible.name: qsTr("截图问 AI") }
                 DesignButton { id: moreButton; objectName: "documentMenuButton"; theme: pane.theme; text: "···"; anchors.verticalCenter: parent.verticalCenter; selected: more.visible; onClicked: more.visible ? more.close() : more.open(); Accessible.name: qsTr("文档菜单") }
             }
         }
@@ -159,6 +160,8 @@ Item {
                 nightDim: pane.workspace.nightDim
                 marking: pane.tool === 3; reading: pane.tool === 4
                 services: pane.services
+                ai: aiHandoff
+                onAiCaptured: function(ok) { if (ok) { aiHandoff.refreshTargets(); aiPopup.open() } }
                 // The last pen width the user picked stays for new strokes and next launches.
                 property bool penRestored: false
                 Component.onCompleted: { penWidth = pane.workspace.inkWidth; penRestored = true }
@@ -173,7 +176,7 @@ Item {
                 anchors.top: parent.top; anchors.topMargin: 4; anchors.horizontalCenter: parent.horizontalCenter
                 width: Math.min(parent.width - ((pane.tool <= 2) ? 270 : 28), hint.implicitWidth + 36); height: 32; radius: 16
                 color: pane.theme.bar; border.color: pane.theme.line
-                Label { id: hint; anchors.fill: parent; anchors.leftMargin: 18; anchors.rightMargin: 18; text: pane.hints[pane.tool]; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignHCenter; color: pane.theme.muted; font.pixelSize: 12 }
+                Label { id: hint; anchors.fill: parent; anchors.leftMargin: 18; anchors.rightMargin: 18; text: document.aiCapturing ? qsTr("拖动框选要问 AI 的区域 · Esc 取消") : pane.hints[pane.tool]; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignHCenter; color: pane.theme.muted; font.pixelSize: 12 }
             }
             AbstractButton {
                 id: penButton
@@ -550,6 +553,124 @@ Item {
             DesignButton { theme: pane.theme; text: pane.services.speechPaused ? qsTr("继续") : qsTr("暂停"); selected: true; implicitHeight: 32; focusPolicy: Qt.NoFocus; onClicked: pane.services.toggleSpeechPause() }
             DesignButton { theme: pane.theme; text: qsTr("停止"); implicitHeight: 32; focusPolicy: Qt.NoFocus; onClicked: pane.services.stopSpeaking() }
         }
+    }
+    // Ask AI: the captured area goes to Claude or ChatGPT with a learning prompt; never sent from here.
+    AiHandoff {
+        id: aiHandoff
+        onFinished: aiToast.show()
+    }
+    Popup {
+        id: aiPopup
+        objectName: "askAiPopup"
+        readonly property var target: aiHandoff.targets.find(entry => entry.id === pane.workspace.aiTarget) || aiHandoff.targets[0]
+        readonly property string targetName: target ? target.name + (target.desktop ? qsTr(" 桌面版") : qsTr(" 网页版")) : ""
+        // Prompt language: the interface language by default, else the system language or a pick.
+        readonly property string promptLanguage: aiHandoff.promptLanguage(pane.workspace.aiPromptLanguage, pane.workspace.english)
+        function languageName(code: string): string { const entry = aiHandoff.promptLanguages.find(item => item.code === code); return entry ? entry.name : "" }
+        function fillPrompt(): void { aiPrompt.text = aiHandoff.prompt(promptLanguage, pane.shell.documentLanguage, pane.shell.selectedName, pane.shell.currentPage) }
+        onPromptLanguageChanged: if (visible) fillPrompt()
+        parent: Overlay.overlay; anchors.centerIn: parent; width: Math.min(520, parent ? parent.width - 32 : 520); padding: 22; modal: true
+        height: Math.min(aiContent.implicitHeight + 44, parent ? parent.height - 32 : 720)
+        onAboutToShow: fillPrompt()
+        onClosed: aiHandoff.clearCapture()
+        background: Rectangle { readonly property bool blocksInkInput: true; radius: 24; color: pane.theme.card; border.color: pane.theme.line }
+        contentItem: ScrollView {
+            id: aiScroll
+            clip: true
+            contentWidth: availableWidth
+            ColumnLayout {
+                id: aiContent
+                width: aiScroll.availableWidth
+                spacing: 12
+                Label { text: qsTr("问 AI"); font.pixelSize: 20; font.bold: true; color: pane.theme.text }
+                Rectangle {
+                    Layout.fillWidth: true; Layout.preferredHeight: Math.min(220, Math.max(80, aiPreview.implicitHeight * width / Math.max(1, aiPreview.implicitWidth)))
+                    radius: 12; color: pane.theme.fill; border.color: pane.theme.line; clip: true
+                    Image { id: aiPreview; objectName: "askAiPreview"; anchors.fill: parent; anchors.margins: 6; source: aiHandoff.preview; fillMode: Image.PreserveAspectFit; smooth: true; asynchronous: false }
+                }
+                RowLayout {
+                    Layout.fillWidth: true; spacing: 10
+                    Label { text: qsTr("提示词语言"); color: pane.theme.text; font.pixelSize: 13 }
+                    DesignCombo {
+                        objectName: "askAiLanguage"; theme: pane.theme
+                        readonly property string systemName: aiPopup.languageName(aiHandoff.systemLanguage)
+                        model: [{choice: "app", label: qsTr("跟随应用（%1）").arg(aiPopup.languageName(pane.workspace.english ? "en" : "zh"))},
+                            {choice: "system", label: systemName.length > 0 ? qsTr("跟随系统（%1）").arg(systemName) : qsTr("跟随系统（不支持，使用应用语言）")}]
+                            .concat(aiHandoff.promptLanguages.map(item => ({choice: item.code, label: item.name})))
+                        textRole: "label"; valueRole: "choice"
+                        currentIndex: Math.max(0, model.findIndex(item => item.choice === pane.workspace.aiPromptLanguage))
+                        onActivated: pane.workspace.aiPromptLanguage = currentValue
+                        Layout.fillWidth: true; Accessible.name: qsTr("提示词语言")
+                    }
+                }
+                ScrollView {
+                    Layout.fillWidth: true; Layout.preferredHeight: 190
+                    TextArea {
+                        id: aiPrompt
+                        objectName: "askAiPrompt"
+                        wrapMode: TextEdit.Wrap; font.pixelSize: 13; color: pane.theme.text; selectByMouse: true
+                        leftPadding: 12; rightPadding: 12; topPadding: 10; bottomPadding: 10
+                        background: Rectangle { radius: 12; color: pane.theme.fill; border.width: aiPrompt.activeFocus ? 2 : 0; border.color: pane.theme.accent }
+                        Accessible.name: qsTr("提示词")
+                    }
+                }
+                Flow {
+                    Layout.fillWidth: true; spacing: 6
+                    Repeater {
+                        model: aiHandoff.targets
+                        DesignButton {
+                            required property var modelData
+                            theme: pane.theme
+                            text: modelData.name + (modelData.desktop ? qsTr(" · 桌面版") : qsTr(" · 网页版"))
+                            selected: aiPopup.target && aiPopup.target.id === modelData.id
+                            onClicked: pane.workspace.aiTarget = modelData.id
+                        }
+                    }
+                }
+                Label {
+                    text: qsTr("提示词要求 AI 翻译、讲解、列出语法点、易错点、易混淆点、使用场景与频率，并逐题批改你的答案；可直接修改。打开后截图和提示词会放进输入框，不会自动发送，请确认后自己发送。")
+                    wrapMode: Text.Wrap; Layout.fillWidth: true; color: pane.theme.muted; font.pixelSize: 12
+                }
+                RowLayout {
+                    Layout.fillWidth: true; spacing: 8
+                    visible: aiHandoff.permissionNeeded && !aiHandoff.pasteAllowed
+                    Label {
+                        text: qsTr("自动粘贴截图需要在系统设置中允许 LinguaPDF 使用“辅助功能”；未允许时请手动粘贴。")
+                        wrapMode: Text.Wrap; Layout.fillWidth: true; color: pane.theme.muted; font.pixelSize: 12
+                    }
+                    DesignButton { theme: pane.theme; text: qsTr("打开设置"); implicitHeight: 30; onClicked: aiHandoff.openPermissionSettings() }
+                }
+                RowLayout {
+                    Layout.fillWidth: true; spacing: 8
+                    Item { Layout.fillWidth: true }
+                    DesignButton { theme: pane.theme; text: qsTr("取消"); onClicked: aiPopup.close() }
+                    DesignButton {
+                        objectName: "askAiSend"; theme: pane.theme; primary: true
+                        text: qsTr("打开 %1").arg(aiPopup.targetName)
+                        enabled: aiHandoff.hasCapture && aiPopup.target !== undefined
+                        onClicked: { if (aiHandoff.send(aiPopup.target.id, aiPrompt.text)) aiPopup.close(); else aiToast.show() }
+                    }
+                }
+            }
+        }
+    }
+    Rectangle {
+        id: aiToast
+        objectName: "askAiStatus"
+        property bool shown: false
+        function show(): void { shown = true; aiToastTimer.restart() }
+        visible: (shown || aiHandoff.busy) && aiHandoff.status.length > 0
+        anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter; anchors.bottomMargin: 72
+        width: Math.min(parent.width - 48, aiToastRow.implicitWidth + 28); height: aiToastRow.implicitHeight + 20; radius: 22
+        color: pane.theme.card; border.color: pane.theme.line
+        RowLayout {
+            id: aiToastRow
+            anchors.fill: parent; anchors.leftMargin: 16; anchors.rightMargin: 8; spacing: 6
+            Label { text: aiHandoff.status; Layout.fillWidth: true; Layout.maximumWidth: 560; wrapMode: Text.Wrap; color: pane.theme.text; font.pixelSize: 12; textFormat: Text.PlainText }
+            DesignButton { theme: pane.theme; text: qsTr("打开设置"); implicitHeight: 30; focusPolicy: Qt.NoFocus; visible: aiHandoff.permissionNeeded && !aiHandoff.pasteAllowed && !aiHandoff.busy; onClicked: aiHandoff.openPermissionSettings() }
+            DesignButton { theme: pane.theme; text: qsTr("关闭"); implicitHeight: 30; focusPolicy: Qt.NoFocus; onClicked: aiToast.shown = false }
+        }
+        Timer { id: aiToastTimer; interval: 12000; onTriggered: aiToast.shown = false }
     }
     LookupCard {
         id: lookup

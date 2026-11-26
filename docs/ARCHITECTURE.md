@@ -532,3 +532,5 @@ ReadingModel集中提供每页left/top/height与二维pageAtPosition命中；模
 2026-11-23 选择框：`CheckBoxes::detect`（`src/pdf/checkboxes.*`）在 PDF 工作线程上对每页一次的固定 2.7 px/pt 专用渲染检测印刷方框，于显示帧之后以 `boxesOnly` 帧返回，`ReadingModel` 按页保存（不随像素缓存淘汰，计入 CPU 统计）。`ShellState::checkBoxAt/toggleCheckBox` 命中检测结果，`AnnotationModel::toggleBoxMark` 以一条历史记录添加或移除框内的 ✓/✗ 笔迹（普通 InkStroke，存储与导出格式不变）；✓/✗ 由 `ShellState::crossMarks` 按页面文字或 OCR 语言决定。打字工具默认样式（颜色/加粗/倾斜）在 `AnnotationModel`，持久化在 `WorkspaceState`。详见 [CHECK_BOXES.md](CHECK_BOXES.md)。
 
 2026-11-26 输入法跟随文档语言：`ShellState::documentLanguage` 由 `languagedetect.*` 对已到达的文字页（文字层或 OCR）累计判断，不足时依次用文件名和 OCR 语言；页面文字到达时增量计算，不额外请求 PDFium。`InputSourceSwitcher`（UI 线程）在应用位于前台且有文档时经 `InputSources`（macOS Text Input Sources / Windows 键盘布局）切换系统输入法，失去前台、关闭文档或退出时恢复。偏好保存在 `WorkspaceState`。详见 [INPUT_SOURCES.md](INPUT_SOURCES.md)。
+
+2026-11-26 截图问 AI（用户明确要求，第一版范围之外的可选功能）：`AiHandoff`（UI 线程）用 `QQuickWindow::grabWindow()` 截取阅读器中框选的区域，经剪贴板和 `claude://` / `https://claude.ai/new?q=` / `https://chatgpt.com/?prompt=` 链接交给用户自己的 Claude 或 ChatGPT。目标切到前台后，经 `AiPlatform` 发送一次系统粘贴按键；不发送消息，不联网，不触及 PDFium 线程，也不改动标注和存储格式。详见 [ASK_AI.md](ASK_AI.md)。
