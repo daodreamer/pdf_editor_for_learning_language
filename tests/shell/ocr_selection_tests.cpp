@@ -141,7 +141,23 @@ private slots:
         QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,start,1);
         QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,start,1);
         hints->setMouseDoubleClickInterval(interval);
-        QTRY_VERIFY(input->selectingText());
+        { QElapsedTimer t; t.start(); while(!input->selectingText() && t.elapsed()<3000) QTest::qWait(20); }
+        if(!input->selectingText()) {
+            // Diagnostics for CI: what covers the double-clicked point, and what the first click did.
+            QStringList covering;
+            std::function<void(QQuickItem*)> walk=[&](QQuickItem* item) {
+                if(!item->isVisible()) return;
+                if(item!=window->contentItem() && item->mapRectToScene(item->boundingRect()).contains(start) && (!item->objectName().isEmpty() || item->property("blocksInkInput").toBool()))
+                    covering.append(item->objectName()+(item->property("blocksInkInput").toBool()?"[blocks]":""));
+                for(auto* child:item->childItems()) walk(child);
+            };
+            walk(window->contentItem());
+            auto* card=window->findChild<QObject*>("lookupCard");
+            qInfo()<<"double_drag_missing start"<<start<<"window"<<window->size()<<"active"<<window->isActive()<<"mode"<<input->mode()
+                <<"selection"<<shell.textSelection()->text()<<"notes"<<shell.annotations()->snapshot().size()<<"ink"<<shell.annotations()->inkSnapshot().size()
+                <<"card"<<(card?card->property("visible").toBool():false)<<"covering"<<covering.join(',');
+        }
+        QVERIFY(input->selectingText());
         // The text cursor holds for the whole drag (hover is suspended while pressed).
         QVERIFY(QGuiApplication::overrideCursor());QCOMPARE(QGuiApplication::overrideCursor()->shape(),Qt::IBeamCursor);
         QTest::mouseMove(window,finish,20);
