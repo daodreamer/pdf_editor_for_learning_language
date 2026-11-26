@@ -1311,6 +1311,8 @@ private slots:
         }
         // Native text still takes priority in automatic mode, no extra note on glyph click.
         QTest::keyClick(window,Qt::Key_T,Qt::ControlModifier|Qt::ShiftModifier);
+        // Leaving the range released page 0's text; it is requested again on return.
+        QTRY_VERIFY(shell.textSelection()->snapshot(0) && !shell.textSelection()->snapshot(0)->characters.isEmpty());
         const auto glyph=shell.textSelection()->snapshot(0)->characters.first().box.center();
         QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,pos(glyph.x(),glyph.y()));
         QTRY_COMPARE(shell.annotations()->snapshot().size(),2);

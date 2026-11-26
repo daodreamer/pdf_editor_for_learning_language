@@ -17,6 +17,7 @@
 #include <QQuickItem>
 #include <QSignalSpy>
 #include <QTemporaryDir>
+#include <QStyleHints>
 #include <QTest>
 #include <QTimer>
 #ifdef Q_OS_WIN
@@ -132,8 +133,14 @@ private slots:
         const auto data=shell.textSelection()->snapshot(0);const int h=indexOf(data,"Hello World");QVERIFY(h>=0);
         const auto start=pagePoint(viewport,shell,0,data->characters[h].box.center());
         const auto finish=pagePoint(viewport,shell,0,data->characters[h+10].box.center());
+        // The second press is a double click by its (synthetic) timestamp, but the first click's
+        // word lookup waits on a real timer of one double-click interval; a stalled CI machine can
+        // let it fire first. Widen the interval for this gesture only.
+        auto* hints=QGuiApplication::styleHints();const int interval=hints->mouseDoubleClickInterval();
+        hints->setMouseDoubleClickInterval(std::max(interval,2000));
         QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,start,1);
         QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,start,1);
+        hints->setMouseDoubleClickInterval(interval);
         QTRY_VERIFY(input->selectingText());
         // The text cursor holds for the whole drag (hover is suspended while pressed).
         QVERIFY(QGuiApplication::overrideCursor());QCOMPARE(QGuiApplication::overrideCursor()->shape(),Qt::IBeamCursor);
