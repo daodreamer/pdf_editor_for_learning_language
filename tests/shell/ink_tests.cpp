@@ -443,7 +443,16 @@ private slots:
         QTest::mousePress(w,Qt::LeftButton,Qt::NoModifier,point(s,viewport,.2,.75));
         QTest::mouseMove(w,point(s,viewport,.25,.75),5);
         QTest::mouseRelease(w,Qt::LeftButton,Qt::NoModifier,point(s,viewport,.25,.75));
-        QTRY_COMPARE(s.annotations()->inkSnapshot().size(),5);
+        QTRY_VERIFY_WITH_TIMEOUT(s.annotations()->inkSnapshot().size()==5,3000);
+        if(s.annotations()->inkSnapshot().size()!=5) {
+            // Diagnostics for runners where this stroke went missing: was it taken for a tap?
+            const auto p=point(s,viewport,.2,.75);const auto c=viewport->mapFromScene(p);
+            qInfo()<<"stroke_missing ink"<<s.annotations()->inkSnapshot().size()<<"notes"<<s.annotations()->snapshot().size()
+                <<"selected"<<s.annotations()->selectedId()<<"mode"<<input->mode()<<"press"<<p<<"window"<<w->size()<<w->devicePixelRatio()
+                <<"interactive"<<s.interactiveContentAt(c.x()+viewport->property("contentX").toDouble(),c.y()+viewport->property("contentY").toDouble())
+                <<"fps"<<presentedFps(w);
+        }
+        QCOMPARE(s.annotations()->inkSnapshot().size(),5);
         QTest::mouseClick(w,Qt::LeftButton,Qt::NoModifier,point(s,viewport,.75,.2)); // far from the last stroke
         QTRY_VERIFY(!s.annotations()->selectedId().isEmpty());
         QCOMPARE(s.annotations()->inkSnapshot().size(),5);

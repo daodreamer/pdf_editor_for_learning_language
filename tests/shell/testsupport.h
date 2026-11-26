@@ -1,5 +1,7 @@
 #pragma once
 #include <QByteArray>
+#include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QFont>
 #include <QGuiApplication>
@@ -77,6 +79,19 @@ inline QQuickItem* findItem(QQuickItem* item,const QString& name) {
     return nullptr;
 }
 inline QPoint itemCenter(QQuickItem* item) { return item->mapToScene(QPointF(item->width()/2,item->height()/2)).toPoint(); }
+
+// Frames the window actually presents per second while it keeps asking for updates. Hosted CI
+// virtual machines can present far fewer frames than a real display; frame-paced behaviour
+// (FrameAnimation glides) is then not measurable there.
+inline double presentedFps(QQuickWindow* window,int ms=600) {
+    int frames=0;
+    auto connection=QObject::connect(window,&QQuickWindow::frameSwapped,window,[&]{ ++frames; window->update(); });
+    window->update();
+    QElapsedTimer timer; timer.start();
+    while(timer.elapsed()<ms) QCoreApplication::processEvents(QEventLoop::AllEvents,10);
+    QObject::disconnect(connection);
+    return frames*1000.0/std::max<qint64>(1,timer.elapsed());
+}
 
 // The fixed real acceptance samples (AGENTS.md); an empty result means "not on this machine".
 inline QString realTextbookPath() {

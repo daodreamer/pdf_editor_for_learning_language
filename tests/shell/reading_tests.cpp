@@ -116,6 +116,9 @@ private slots:
         s.selectFile(QUrl::fromLocalFile(fixture));QTRY_VERIFY(s.storageReady());
         QQuickItem* viewport=nullptr;QTRY_VERIFY((viewport=findItem(window->contentItem(),"pdfViewport")));
         s.setZoom(2);QTRY_VERIFY(!s.busy());QTest::qWait(200);
+        // The glide advances per presented frame; a runner that barely presents frames cannot show it.
+        const double fps=presentedFps(window);qInfo("wheel_presented_fps=%.1f",fps);
+        if(fps<20) QSKIP(qPrintable(QStringLiteral("Window presents %1 frames/s on this runner; frame-paced wheel glide NOT verified").arg(fps,0,'f',1)));
         const auto y=[&]{return viewport->property("contentY").toDouble();};
         const auto setY=[&](double v){viewport->setProperty("contentY",v);QTest::qWait(30);};
         const QPointF at=viewport->mapToScene(QPointF(viewport->width()/2,viewport->height()/2));
