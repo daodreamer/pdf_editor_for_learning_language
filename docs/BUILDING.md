@@ -197,6 +197,8 @@ python -m venv .tools/venv
 
 ## macOS Apple Silicon（2026-11-18 本机实测）
 
+CI：`.github/workflows/shell.yml` 的 `macos` 作业（2026-11-26 新增，`macos-15` Apple Silicon 托管机）按下列命令准备依赖、构建、运行 qmllint 和全部 CTest；法语词库使用样例，测试中的真实教材用例退回仓库样本并在输出中注明。托管机上的结果以对应提交 SHA 的运行记录为准。
+
 环境：Apple Silicon arm64、macOS 27.0 (26A428)、Xcode（AppleClang 21.0.0，MacOSX27.0.sdk）、python.org Python 3.13、Qt 6.8.3 `clang_64`（aqtinstall）、PDFium 157.0.8100.0 arm64、Release。
 
 ```sh

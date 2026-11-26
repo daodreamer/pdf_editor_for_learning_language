@@ -1,4 +1,4 @@
-name: Desktop PDF reader (Windows)
+name: Desktop PDF reader
 on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
@@ -45,4 +45,37 @@ jobs:
           path: |
             ${{ env.PACKAGE }}.zip
             ${{ env.PACKAGE }}.sha256
-  # macOS execution is deferred by the user until the complete project is ready.
+  macos:
+    # Apple Silicon. Same suites as Windows; the real textbook is not available in CI, so the tests
+    # use the repository fixtures (they say so in their output). No app bundle is packaged here.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv .tools/venv
+          .tools/venv/bin/python -m pip install -r tools/requirements-phase0.lock.txt
+          export PATH="$PWD/.tools/venv/bin:$PATH"
+          python tools/bootstrap.py --platform mac
+          python -X utf8 tools/bootstrap-ocr.py
+          python -X utf8 tools/bootstrap-dictionary.py
+          # The full French database is ~593 MB upstream; CI tests lookup against real sample lines instead.
+          python -X utf8 tools/bootstrap-french-dictionary.py --source tests/fixtures/fr-wiktionary-sample.jsonl --output-dir build/fr-sample
+          python -X utf8 tools/bootstrap-speech.py
+          export LANGLERN_FR_DICTIONARY="$PWD/build/fr-sample/fr-wiktionary.sqlite"
+          .deps/Qt/6.8.3/macos/bin/qt-cmake -S . -B build/macos -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 -DPDFium_DIR="$PWD/.deps/pdfium-mac" -DBUILD_TESTING=ON
+          cmake --build build/macos --parallel
+          cmake --build build/macos --target all_qmllint
+          ctest --test-dir build/macos --output-on-failure
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reader-test-results-macos
+          path: |
+            build/macos/Testing/Temporary/
+            build/macos/tests/shell/*.txt
