@@ -48,6 +48,8 @@ int main(int argc,char** argv) {
     QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
     // GUI suites open documents in an active window; never switch the developer's keyboard.
     qputenv("LANGLERN_NO_INPUT_SWITCH","1");
+    // Whole-book background OCR stays off unless a test turns it on (ocr_book suite).
+    qputenv("LANGLERN_NO_BACKGROUND_OCR","1");
     QGuiApplication app(argc,argv); configureTestApplication(app);
     if(argc==3 && QByteArray(argv[1])=="--interrupted-write") return interruptedWrite(app,QString::fromLocal8Bit(argv[2]));
     if(argc==4 && (QByteArray(argv[1])=="--crash-session" || QByteArray(argv[1])=="--read-session"))

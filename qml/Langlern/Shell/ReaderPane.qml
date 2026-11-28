@@ -502,7 +502,7 @@ Item {
             width: ocrScroll.availableWidth
             spacing: 14
             Label { text: qsTr("离线文字识别"); font.pixelSize: 20; font.bold: true; color: pane.theme.text }
-            Label { text: qsTr("免费离线识别。扫描页按需处理；混合页面可以手动重新识别当前页。"); wrapMode: Text.Wrap; Layout.fillWidth: true; color: pane.theme.muted }
+            Label { text: qsTr("免费离线识别。可见扫描页按需处理，空闲时可在后台识别全书；混合页面可以手动重新识别当前页。"); wrapMode: Text.Wrap; Layout.fillWidth: true; color: pane.theme.muted }
             DesignCombo {
                 id: ocrLanguage; theme: pane.theme
                 objectName: "ocrLanguage"
@@ -515,6 +515,42 @@ Item {
             Label { text: pane.shell.ocrStatus; Layout.fillWidth: true; wrapMode: Text.Wrap; color: pane.theme.muted; textFormat: Text.PlainText }
             DesignButton { theme: pane.theme; text: qsTr("重新识别当前页"); primary: true; onClicked: { pane.shell.recognizeCurrentPage(); pane.pick(4); ocr.close() } }
             DesignButton { theme: pane.theme; text: qsTr("框选区域识别"); onClicked: { document.startRegionRecognition(); pane.tool = 4; ocr.close() } }
+            // Whole-book background OCR: idle-only, one page at a time, results kept per document.
+            DesignSwitch {
+                objectName: "ocrBookSwitch"; theme: pane.theme
+                text: qsTr("空闲时识别全书扫描页")
+                checked: pane.shell.ocrBookEnabled
+                onToggled: pane.shell.ocrBookEnabled = checked
+                Layout.fillWidth: true
+            }
+            Label {
+                objectName: "ocrBookProgress"
+                visible: pane.shell.ocrBookPages > 0
+                text: qsTr("已识别 %1 / %2 页").arg(pane.shell.ocrBookDone + pane.shell.ocrBookNative).arg(pane.shell.ocrBookPages)
+                    + (pane.shell.ocrBookNative > 0 ? qsTr("（其中 %1 页有原生文字，已跳过）").arg(pane.shell.ocrBookNative) : "")
+                Layout.fillWidth: true; wrapMode: Text.Wrap; color: pane.theme.text; textFormat: Text.PlainText
+            }
+            Label {
+                objectName: "ocrBookStatus"
+                visible: text.length > 0
+                text: pane.shell.ocrBookStatus
+                Layout.fillWidth: true; wrapMode: Text.Wrap; color: pane.theme.muted; textFormat: Text.PlainText
+            }
+            RowLayout {
+                visible: pane.shell.ocrBookPages > 0
+                Layout.fillWidth: true; spacing: 8
+                DesignButton {
+                    objectName: "ocrBookPause"; theme: pane.theme
+                    enabled: pane.shell.ocrBookEnabled
+                    text: pane.shell.ocrBookPaused ? qsTr("继续") : qsTr("暂停")
+                    onClicked: pane.shell.ocrBookPaused = !pane.shell.ocrBookPaused
+                }
+                DesignButton {
+                    objectName: "ocrBookClear"; theme: pane.theme
+                    text: qsTr("清除本书识别结果")
+                    onClicked: pane.shell.clearBookOcr()
+                }
+            }
             Label { text: qsTr("朗读语言与声音"); color: pane.theme.text }
             DesignCombo {
                 theme: pane.theme

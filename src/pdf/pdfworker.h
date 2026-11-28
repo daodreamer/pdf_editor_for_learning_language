@@ -24,6 +24,9 @@ struct PdfRequest {
     bool previewOnly = false;
     bool textOnly = false;
     bool ocrOnly = false;
+    // Whole-book background step (with ocrOnly): read the text layer first and render the OCR
+    // image only when the page has no characters, so one PDFium job covers one page.
+    bool ocrProbe = false;
     // Also find printed tick boxes (once per page: the result does not depend on zoom).
     bool detectBoxes = false;
 };
@@ -44,6 +47,8 @@ struct PdfFrame {
     TextSnapshot text;
     bool textOnly = false;
     bool ocrOnly = false;
+    bool ocrProbe = false;
+    bool nativeText = false; // ocrProbe: the page has a text layer, no image rendered
     QList<QRectF> answerLines;
     bool answerLinesReady = false;
     // Printed tick boxes, from a dedicated render at CheckBoxes::pixelsPerPoint.

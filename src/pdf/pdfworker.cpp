@@ -191,6 +191,7 @@ void PdfWorker::execute(const PdfRequest& r) {
     result.page = r.page;
     result.textOnly = r.textOnly;
     result.ocrOnly = r.ocrOnly;
+    result.ocrProbe = r.ocrProbe;
     QElapsedTimer timer;
     timer.start();
     try {
@@ -261,6 +262,17 @@ void PdfWorker::execute(const PdfRequest& r) {
         result.geometry.units=QSizeF(std::hypot(right.x(),right.y()),std::hypot(down.x(),down.y()));
         require(result.geometry.valid && result.geometry.units.width()>0 && result.geometry.units.height()>0, "页面变换不可逆。");
 
+        if (r.ocrProbe) {
+            TrackedHandle<ScopedFPDFTextPage> text(FPDFText_LoadPage(page.get()));
+            const int count = text ? FPDFText_CountChars(text.get()) : -1;
+            if (count > 0) {
+                result.nativeText = true;
+                result.errorCode.clear();
+                qInfo("pdf_ocr_probe session=%llu page=%d native_chars=%d worker_ms=%.3f",r.session,r.page,count,timer.nsecsElapsed()/1e6);
+                if (current(r.revision)) emit frameReady(std::move(result));
+                return;
+            }
+        }
         if (r.textOnly) {
             result.errorCode = QStringLiteral("text");
             auto snapshot = std::make_shared<TextPage>();

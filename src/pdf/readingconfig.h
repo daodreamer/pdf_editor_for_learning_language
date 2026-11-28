@@ -21,3 +21,13 @@ struct ReadingConfig {
     static constexpr double margin = 20;
     static constexpr double gap = 16;
 };
+
+// Whole-book background OCR (docs/OCR_SELECTION.md). One page at a time, after every foreground
+// request, only once the user has left the document alone for idleMs.
+struct OcrBookConfig {
+    static constexpr int idleMs = 1500;
+    static constexpr qint64 bookBytes = 256 * 1024 * 1024;   // one document, all profiles
+    static constexpr qint64 totalBytes = 1024LL * 1024 * 1024; // every document; LRU by last use
+    static constexpr int profilesPerBook = 2;                 // e.g. fra and fra+eng kept side by side
+    static constexpr bool enabledByDefault = true;
+};

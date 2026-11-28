@@ -9,6 +9,8 @@
 #include "annotationmodel.h"
 #include "storageworker.h"
 #include "ocrworker.h"
+#include "ocrbookqueue.h"
+#include <QElapsedTimer>
 #include "languagedetect.h"
 #include <functional>
 #include <QTimer>
@@ -52,6 +54,15 @@ class ShellState : public QObject {
     Q_PROPERTY(QString ocrLanguage READ ocrLanguage WRITE setOcrLanguage NOTIFY ocrChanged)
     Q_PROPERTY(QString ocrStatus READ ocrStatus NOTIFY ocrChanged)
     Q_PROPERTY(bool ocrBusy READ ocrBusy NOTIFY ocrChanged)
+    // Whole-book background OCR of scanned pages, persisted per document (docs/OCR_SELECTION.md).
+    Q_PROPERTY(bool ocrBookEnabled READ ocrBookEnabled WRITE setOcrBookEnabled NOTIFY ocrBookChanged)
+    Q_PROPERTY(bool ocrBookPaused READ ocrBookPaused WRITE setOcrBookPaused NOTIFY ocrBookChanged)
+    Q_PROPERTY(int ocrBookDone READ ocrBookDone NOTIFY ocrBookChanged)
+    Q_PROPERTY(int ocrBookNative READ ocrBookNative NOTIFY ocrBookChanged)
+    Q_PROPERTY(int ocrBookPages READ ocrBookPages NOTIFY ocrBookChanged)
+    Q_PROPERTY(bool ocrBookReady READ ocrBookReady NOTIFY ocrBookChanged)
+    Q_PROPERTY(bool ocrBookRunning READ ocrBookRunning NOTIFY ocrBookChanged)
+    Q_PROPERTY(QString ocrBookStatus READ ocrBookStatus NOTIFY ocrBookChanged)
     // Mark drawn into printed tick boxes: 0 follows the page language, 1 tick, 2 cross.
     Q_PROPERTY(int checkMarkStyle READ checkMarkStyle WRITE setCheckMarkStyle NOTIFY checkMarkStyleChanged)
     // Main language of the open document (ISO 639-1, e.g. "fr"), from the text pages seen so far;
@@ -67,6 +78,23 @@ public:
     QString ocrStatus() const { return ocrStatus_; }
     bool ocrBusy() const { return ocrBusyPage_>=0 || !ocrDemand_.isEmpty(); }
     Q_INVOKABLE void recognizeCurrentPage();
+    bool ocrBookEnabled() const { return bookQueue_.enabled(); }
+    void setOcrBookEnabled(bool enabled);
+    bool ocrBookPaused() const { return bookQueue_.paused(); }
+    void setOcrBookPaused(bool paused);
+    int ocrBookDone() const { return bookQueue_.done(); }
+    int ocrBookNative() const { return bookQueue_.native(); }
+    int ocrBookPages() const { return bookQueue_.pages(); }
+    bool ocrBookReady() const { return bookQueue_.ready(); }
+    bool ocrBookRunning() const { return backgroundPage_>=0; }
+    // The background page is in Tesseract (not rendering on PDFium); for tests and diagnostics.
+    bool ocrBookRecognizing() const { return backgroundStage_==BackgroundStage::Ocr; }
+    QString ocrBookStatus() const { return bookStatus_; }
+    // Deletes this document's stored OCR results (every language) and starts over.
+    Q_INVOKABLE void clearBookOcr();
+    const OcrBookQueue& ocrBookQueue() const { return bookQueue_; }
+    // Read-only view of this document's stored OCR for the current language (search later).
+    OcrBookReader ocrBookReader() const;
     Q_INVOKABLE void recognizeRegion(double x1,double y1,double x2,double y2);
     QString selectedName() const { return selectedName_; }
     QUrl selectedUrl() const { return path_.isEmpty()?QUrl{}:QUrl::fromLocalFile(path_); }
@@ -155,6 +183,7 @@ public:
     Q_INVOKABLE void acknowledgeProbe() { emit startupAcknowledged(); }
 signals:
     void ocrChanged();
+    void ocrBookChanged();
     void answerLinesChanged();
     void checkMarkStyleChanged();
     void documentLanguageChanged();
@@ -188,6 +217,29 @@ private:
     int ocrBusyPage_ = -1;
     bool ocrSelectionEnabled_ = false;
     QString ocrLanguage_ = QStringLiteral("fra"), ocrStatus_;
+    QSet<int> ocrForced_;
+    // Whole-book queue: at most one background page, either rendering on PDFium or in OCR.
+    void ensureOcrWorker();
+    void openBook();
+    void cancelBackground();
+    void noteInteraction();
+    int backgroundCandidate();
+    void submitOcr(OcrRequest request);
+    void updateBookStatus();
+    OcrBookQueue bookQueue_;
+    quint64 bookToken_ = 0;
+    QByteArray bookProfile_;
+    bool bookOpening_ = false;
+    void closeBookSession();
+    enum class BackgroundStage { None, Pdf, Ocr } backgroundStage_ = BackgroundStage::None;
+    int backgroundPage_ = -1;
+    quint64 backgroundPdfRevision_ = 0;
+    QTimer backgroundTimer_;
+    QElapsedTimer clock_;
+    QString bookStatus_, bookError_;
+    bool bookAllowed_ = true;
+    int bookFailures_ = 0; // consecutive background failures
+    int bookIdleMs_ = OcrBookConfig::idleMs;
     int checkMarkStyle_ = 0;
     void noteLanguage(int page,const TextSnapshot& text);
     void updateDocumentLanguage();

@@ -75,6 +75,7 @@ WorkspaceState::WorkspaceState(QObject* parent):QObject(parent),textSize_(Annota
                 if(data.contains("textColor")) textColor_=textColorValue(data.value("textColor"));
                 textBold_=data.value("textBold").toBool(); textItalic_=data.value("textItalic").toBool();
                 checkMark_=qBound(0,data.value("checkMark").toInt(),2);
+                ocrBook_=data.value("ocrBook",OcrBookConfig::enabledByDefault).toBool();
                 inputSwitching_=data.value("inputSwitching",true).toBool();
                 inputChoices_=inputChoicesValue(data.value("inputChoices"));
                 inputNoticesOff_=inputNoticesValue(data.value("inputNoticesOff"));
@@ -113,7 +114,7 @@ void WorkspaceState::save() {
 }
 QVariantMap WorkspaceState::snapshot() const {
     return {{"version",1},{"books",books_},{"words",words_},{"bookmarks",bookmarks_},{"layout",layout_},{"toolbar",toolbar_},{"paper",paper_},{"nightDim",nightDim_},{"english",english_},{"lookupLanguage",lookupLanguage_},{"frenchVoice",frenchVoice_},{"textSize",textSize_},{"inkWidth",inkWidth_},
-        {"textColor",textColor_},{"textBold",textBold_},{"textItalic",textItalic_},{"checkMark",checkMark_},
+        {"textColor",textColor_},{"textBold",textBold_},{"textItalic",textItalic_},{"checkMark",checkMark_},{"ocrBook",ocrBook_},
         {"inputSwitching",inputSwitching_},{"inputChoices",inputChoices_},{"inputNoticesOff",inputNoticesOff_},
         {"aiTarget",aiTarget_},{"aiPromptLanguage",aiPromptLanguage_},{"lookupTense",lookupTense_}};
 }
@@ -127,6 +128,7 @@ void WorkspaceState::scheduleSave() {
         textSize_=textSizeValue(accepted_.value("textSize"));inkWidth_=inkWidthValue(accepted_.value("inkWidth"));
         textColor_=textColorValue(accepted_.value("textColor"));textBold_=accepted_.value("textBold").toBool();
         textItalic_=accepted_.value("textItalic").toBool();checkMark_=qBound(0,accepted_.value("checkMark").toInt(),2);
+        ocrBook_=accepted_.value("ocrBook",OcrBookConfig::enabledByDefault).toBool();
         inputSwitching_=accepted_.value("inputSwitching",true).toBool();inputChoices_=inputChoicesValue(accepted_.value("inputChoices"));
         inputNoticesOff_=inputNoticesValue(accepted_.value("inputNoticesOff"));
         aiTarget_=aiTargetValue(accepted_.value("aiTarget"));aiPromptLanguage_=aiPromptLanguageValue(accepted_.value("aiPromptLanguage"));lookupTense_=lookupTenseValue(accepted_.value("lookupTense"));
@@ -196,6 +198,7 @@ void WorkspaceState::setTextItalic(bool v) { if(textItalic_==v)return;textItalic
 void WorkspaceState::setAiTarget(QString v) { v=aiTargetValue(v);if(aiTarget_==v)return;aiTarget_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setLookupTense(QString v) { v=lookupTenseValue(v);if(lookupTense_==v)return;lookupTense_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setAiPromptLanguage(QString v) { v=aiPromptLanguageValue(v);if(aiPromptLanguage_==v)return;aiPromptLanguage_=v;emit preferencesChanged();scheduleSave(); }
+void WorkspaceState::setOcrBook(bool v) { if(ocrBook_==v)return;ocrBook_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setCheckMark(int v) { v=qBound(0,v,2);if(checkMark_==v)return;checkMark_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setInkWidth(double v) { if(!std::isfinite(v))return;v=inkWidthValue(v);if(inkWidth_==v)return;inkWidth_=v;emit preferencesChanged();scheduleSave(); }
 void WorkspaceState::setInputSwitching(bool v) { if(inputSwitching_==v)return;inputSwitching_=v;emit preferencesChanged();scheduleSave(); }

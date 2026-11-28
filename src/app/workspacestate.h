@@ -1,4 +1,5 @@
 #pragma once
+#include "readingconfig.h"
 #include <QObject>
 #include <QVariantList>
 #include <QStringList>
@@ -30,6 +31,8 @@ class WorkspaceState : public QObject {
     Q_PROPERTY(bool textBold READ textBold WRITE setTextBold NOTIFY preferencesChanged)
     Q_PROPERTY(bool textItalic READ textItalic WRITE setTextItalic NOTIFY preferencesChanged)
     Q_PROPERTY(int checkMark READ checkMark WRITE setCheckMark NOTIFY preferencesChanged)
+    // Whole-book background OCR of scanned documents (OcrBookConfig::enabledByDefault).
+    Q_PROPERTY(bool ocrBook READ ocrBook WRITE setOcrBook NOTIFY preferencesChanged)
     // Input source follows the document language; per-language source picks (language → system
     // source id, absent = automatic); languages whose missing-keyboard notice the user turned off.
     Q_PROPERTY(bool inputSwitching READ inputSwitching WRITE setInputSwitching NOTIFY preferencesChanged)
@@ -63,6 +66,8 @@ public:
     bool textBold() const { return textBold_; }
     bool textItalic() const { return textItalic_; }
     int checkMark() const { return checkMark_; }
+    bool ocrBook() const { return ocrBook_; }
+    void setOcrBook(bool value);
     bool inputSwitching() const { return inputSwitching_; }
     void setInputSwitching(bool value);
     QVariantMap inputChoices() const { return inputChoices_; }
@@ -119,6 +124,7 @@ private:
     QString textColor_=QStringLiteral("#1e468c");
     bool textBold_=false, textItalic_=false;
     int checkMark_=0;
+    bool ocrBook_=OcrBookConfig::enabledByDefault;
     bool inputSwitching_=true;
     QVariantMap inputChoices_;
     QStringList inputNoticesOff_;

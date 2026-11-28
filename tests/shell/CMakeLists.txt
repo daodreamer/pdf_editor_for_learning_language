@@ -9,6 +9,7 @@ qt_add_executable(langlern_tests
     storage_tests.cpp
     design_tests.cpp
     ocr_selection_tests.cpp
+    ocr_book_tests.cpp
     natural_speech_tests.cpp
     input_tests.cpp
     ai_tests.cpp)
@@ -37,6 +38,7 @@ set(langlern_suites
     storage_export storage 180
     design_workflows design 120
     ocr_selection ocr 180
+    ocr_book ocrbook 600
     natural_speech speech 180
     input_sources input 120
     ask_ai ai 120)

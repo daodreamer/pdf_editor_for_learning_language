@@ -53,6 +53,7 @@ ApplicationWindow {
         const notes = window.shell.annotations
         const saved = { size: workspace.textSize, color: workspace.textColor, bold: workspace.textBold, italic: workspace.textItalic }
         window.shell.checkMarkStyle = workspace.checkMark
+        window.shell.ocrBookEnabled = workspace.ocrBook
         notes.defaultFontSize = saved.size
         notes.defaultTextColor = saved.color
         notes.defaultBold = saved.bold
@@ -69,6 +70,9 @@ ApplicationWindow {
         }
     }
     Connections { target: window.shell; function onCheckMarkStyleChanged(): void { workspace.checkMark = window.shell.checkMarkStyle } }
+    // Background whole-book OCR switch: saved preference <-> ShellState (both setters ignore equal values).
+    Connections { target: window.shell; function onOcrBookChanged(): void { workspace.ocrBook = window.shell.ocrBookEnabled } }
+    Connections { target: workspace; function onPreferencesChanged(): void { window.shell.ocrBookEnabled = workspace.ocrBook } }
     OfflineServices { id: offline }
     // System keyboard follows the document language while LinguaPDF is the active app.
     InputSourceSwitcher {

@@ -41,6 +41,15 @@ ShellState::ShellState(QObject* parent) : QObject(parent) {
     });
     scheduleTimer_.setSingleShot(true);
     scheduleTimer_.setInterval(ReadingConfig::viewportDelayMs);
+    // Test executables set LANGLERN_NO_BACKGROUND_OCR so unrelated suites keep their timing.
+    bookAllowed_ = qEnvironmentVariableIsEmpty("LANGLERN_NO_BACKGROUND_OCR");
+    // Diagnostic builds/benchmarks only: worst case with no idle gap (benchmarks/run-ocr-book.py).
+    bool idleSet=false;
+    if (const int idle=qEnvironmentVariableIntValue("LANGLERN_OCR_BOOK_IDLE_MS",&idleSet); idleSet && idle>=0) bookIdleMs_=idle;
+    bookQueue_.setEnabled(OcrBookConfig::enabledByDefault);
+    clock_.start();
+    backgroundTimer_.setSingleShot(true);
+    connect(&backgroundTimer_,&QTimer::timeout,this,[this] { if(!inFlight_ && !scheduleTimer_.isActive()) scheduleTimer_.start(); });
     connect(&scheduleTimer_, &QTimer::timeout, this, &ShellState::schedule);
     connect(&model_, &ReadingModel::geometryChanged, this, [this] {
         syncAnnotations();
@@ -51,6 +60,11 @@ ShellState::ShellState(QObject* parent) : QObject(parent) {
         if (!inFlight_ && !scheduleTimer_.isActive()) scheduleTimer_.start();
     });
     connect(worker_, &PdfWorker::requestFinished, this, [this](quint64 revision) {
+        // A background probe that ended without an accepted frame goes back into the queue.
+        if (revision == backgroundPdfRevision_) {
+            backgroundPdfRevision_ = 0;
+            if (backgroundStage_ == BackgroundStage::Pdf) cancelBackground();
+        }
         if (revision != revision_ || shuttingDown_) return;
         inFlight_ = false;
         scheduleTimer_.start();
@@ -84,6 +98,7 @@ void ShellState::selectFile(const QUrl& url) {
         errorCode_ = QStringLiteral("file");
     } else {
         ++session_;
+        noteInteraction(); // a freshly opened book waits a full idle period before background OCR
         QGuiApplication::inputMethod()->reset();
         restoring_=true; annotations_.reset(); restoring_=false;
         storageReady_=false; loadingStorage_=true; editRevision_=savedRevision_=0; identity_.clear();
@@ -91,6 +106,7 @@ void ShellState::selectFile(const QUrl& url) {
         storageStatus_=QStringLiteral("正在校验 PDF 并恢复练习…"); emit storageChanged();
         textSelection_.reset();
         resetOcr();
+        closeBookSession();
         emit answerLinesChanged();
         path_ = file.absoluteFilePath();
         resetDocumentLanguage();
@@ -119,6 +135,7 @@ void ShellState::clearSelection() {
     restoring_=true; annotations_.reset(); restoring_=false;
     textSelection_.reset();
     resetOcr();
+    closeBookSession();
     emit answerLinesChanged();
     path_.clear();
     resetDocumentLanguage();
@@ -135,6 +152,8 @@ void ShellState::clearSelection() {
 }
 
 void ShellState::invalidate() {
+    // PDFium cannot stop a render; the probe's frame will be stale. The page is queued again.
+    if (backgroundStage_ == BackgroundStage::Pdf) cancelBackground();
     ++revision_;
     worker_->cancel(revision_);
     inFlight_ = false;
@@ -181,6 +200,17 @@ void ShellState::schedule() {
         if(ocrPage<0 && !textSelection_.selectedPages().isEmpty())
             for(int p : textSelection_.selectedPages()) if(ocrDemand_.contains(p)) { ocrPage=p; break; }
     }
+    if(ocrPage>=0 && bookQueue_.isDone(ocrPage) && !ocrForced_.contains(ocrPage)) {
+        // Whole-book store has this page: no PDFium render, the OCR thread only reads the file.
+        const auto pending=textSelection_.snapshot(ocrPage);
+        if(!pending || pending->region==QRectF(0,0,1,1)) {
+            ocrDemand_.remove(ocrPage);ocrBusyPage_=ocrPage;cancelBackground();
+            OcrRequest load;load.session=session_;load.revision=++ocrRevision_;load.page=ocrPage;load.identity=identity_;
+            load.language=ocrLanguage_;load.book=bookToken_;load.storeOnly=true;
+            submitOcr(std::move(load));
+            ocrPage=-1;
+        }
+    }
     const bool ocrTask=ocrPage>=0 && !textTask && (candidate<0 || !model_.visible(candidate) || !model_.image(candidate).isNull());
     PdfRequest r{session_,++revision_,path_,std::max(0,candidate),width};
     if (textTask) { r.page=textPage; r.textOnly=true; }
@@ -200,6 +230,17 @@ void ShellState::schedule() {
         if (metadataCursor_ >= pageCount_) {
             busy_ = false;
             emit selectionChanged();
+            // Last of all: one background whole-book page (probe, then OCR image if no text layer).
+            if (const int page = backgroundCandidate(); page >= 0) {
+                r.page = page; r.ocrOnly = true; r.ocrProbe = true; r.width = ReadingConfig::ocrWidth;
+                r.skipPreview = true; r.previewOnly = false; r.detectBoxes = false; r.maxBytes = ReadingConfig::ocrImageBytes;
+                bookQueue_.set(page, OcrBookQueue::State::Busy);
+                backgroundPage_ = page; backgroundStage_ = BackgroundStage::Pdf; backgroundPdfRevision_ = r.revision;
+                updateBookStatus();
+                requestedWidth_ = r.width;
+                inFlight_ = true;
+                worker_->submit(std::move(r));
+            }
             return;
         }
         r.metadataStart = metadataCursor_;
@@ -210,6 +251,7 @@ void ShellState::schedule() {
 }
 void ShellState::goToPage(int page) {
     if (shuttingDown_ || page < 1 || page > pageCount_) return;
+    noteInteraction();
     annotations_.cancelGesture();
     page_ = page - 1;
     model_.setViewport(model_.top(page_),viewportHeight_,viewportWidth_,zoom_);
@@ -232,6 +274,7 @@ void ShellState::updateViewport(double y,double height,double width,double dpr) 
     const auto oldPages = model_.priority();
     const auto oldWidth = model_.targetWidth(page_,dpr_);
     const bool scrolled=std::abs(y-model_.offset())>0.5;
+    if(scrolled || width!=viewportWidth_ || height!=viewportHeight_) noteInteraction();
     viewportAttached_ = true;
     viewportWidth_ = width; viewportHeight_ = height; dpr_ = dpr;
     model_.setViewport(y,height,width,zoom_);
@@ -268,6 +311,7 @@ void ShellState::setZoom(double zoom) {
     if (shuttingDown_ || !std::isfinite(zoom)) return;
     zoom = std::clamp(zoom,0.25,4.0);
     if (zoom_ == zoom) return;
+    noteInteraction();
     annotations_.cancelGesture();
     zoom_ = zoom;
     model_.setViewport(model_.offset(),viewportHeight_,viewportWidth_,zoom_);
@@ -280,6 +324,7 @@ QPointF ShellState::zoomAt(double zoom,double x,double y,double viewX,double vie
     if (shuttingDown_ || !std::isfinite(zoom) || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(viewX) || !std::isfinite(viewY)) return unchanged;
     zoom = std::clamp(zoom,0.25,4.0);
     if (zoom_ == zoom) return unchanged;
+    noteInteraction();
     const int page = pageCount_ > 0 ? model_.pageAtPosition(x,y,true) : -1;
     QPointF fraction;
     if (page >= 0) fraction = {(x-model_.left(page))/model_.pageWidth(),(y-model_.top(page))/model_.height(page)};
@@ -314,44 +359,48 @@ void ShellState::acceptFrame(const PdfFrame& frame) {
         annotations_.setGeometry(frame.page,frame.geometry);
         annotations_.setActivePages(model_.priority());
     }
+    if(frame.ocrProbe) {
+        if(backgroundStage_!=BackgroundStage::Pdf || frame.page!=backgroundPage_)return;
+        backgroundPdfRevision_=0;
+        if(!frame.error.isEmpty() || frame.nativeText) {
+            bookQueue_.set(frame.page,frame.error.isEmpty()?OcrBookQueue::State::Native:OcrBookQueue::State::Failed);
+            if(frame.nativeText && ocr_) QMetaObject::invokeMethod(ocr_,[worker=ocr_.data(),book=bookToken_,page=frame.page]{worker->recordNative(book,page);},Qt::QueuedConnection);
+            backgroundPage_=-1;backgroundStage_=BackgroundStage::None;updateBookStatus();
+            return; // requestFinished schedules the next step
+        }
+        backgroundStage_=BackgroundStage::Ocr;
+        OcrRequest request{session_,++ocrRevision_,frame.page,identity_,ocrLanguage_,frame.image};
+        request.book=bookToken_;request.background=true;request.displayToPdf=frame.geometry.displayToPdf;
+        submitOcr(std::move(request));
+        updateBookStatus();
+        return;
+    }
     if(frame.ocrOnly) {
         if(!ocrDemand_.contains(frame.page))return;
         if(!frame.error.isEmpty()) {
             auto failure=std::make_shared<TextPage>();failure->ocr=true;failure->error=frame.error;
-            ocrDemand_.remove(frame.page);textSelection_.put(frame.page,failure);return;
+            ocrDemand_.remove(frame.page);ocrForced_.remove(frame.page);textSelection_.put(frame.page,failure);return;
         }
-        if(!ocr_) {
-            const auto overrideRoot=qEnvironmentVariable("LANGLERN_WORKSPACE_DIR");
-            const auto root=overrideRoot.isEmpty()?QStandardPaths::writableLocation(QStandardPaths::CacheLocation):overrideRoot;
-            ocr_=new OcrWorker(root+"/ocr-v1");ocr_->moveToThread(&ocrThread_);
-            connect(&ocrThread_,&QThread::finished,ocr_,&QObject::deleteLater);
-            connect(ocr_,&OcrWorker::finished,this,[this](quint64 session,quint64 revision,int page,TextSnapshot text,bool cached,double ms){
-                if(shuttingDown_ || session!=session_ || revision!=ocrRevision_)return;
-                ocrBusyPage_=-1;
-                textSelection_.put(page,text);
-                noteLanguage(page,text);
-                const bool selectRegion=ocrRegionSelections_.contains(page) && ocrRegionSelections_.take(page)==textSelection_.interactionRevision();
-                if(selectRegion && model_.visible(page) && text->region!=QRectF(0,0,1,1) && text->error.isEmpty()) {
-                    QPointF first,last;bool found=false;
-                    for(const auto& c:text->characters)if(c.visible){if(!found){first=c.box.center();found=true;}last=c.box.center();}
-                    if(found) {textSelection_.begin(page,first.x(),first.y(),0,0);textSelection_.extend(page,last.x(),last.y());}
-                }
-                ocrStatus_=text->error.isEmpty()?(text->characters.isEmpty()?tr("当前页未识别到文字，请调整 OCR 语言。"):tr("第 %1 页离线识别完成").arg(page+1)):text->error;
-                qInfo("ocr_result session=%llu page=%d chars=%lld cached=%d elapsed_ms=%.3f",session,page,qint64(text->characters.size()),cached,ms);
-                emit ocrChanged();scheduleTimer_.start();
-            });
-            ocrThread_.setObjectName("Offline OCR");ocrThread_.start(QThread::LowPriority);
-        }
+        cancelBackground(); // foreground OCR first: a running background page is cancelled and requeued
         ocrDemand_.remove(frame.page);ocrBusyPage_=frame.page;
-        ocr_->invalidate(++ocrRevision_);
         const auto pending=textSelection_.snapshot(frame.page);
-        OcrRequest request{session_,ocrRevision_,frame.page,identity_,ocrLanguage_,frame.image,pending?pending->region:QRectF(0,0,1,1)};
-        ocr_->submit(std::move(request));
+        OcrRequest request{session_,++ocrRevision_,frame.page,identity_,ocrLanguage_,frame.image,pending?pending->region:QRectF(0,0,1,1)};
+        request.book=bookToken_;request.force=ocrForced_.contains(frame.page);request.displayToPdf=frame.geometry.displayToPdf;
+        ocrForced_.remove(frame.page);
+        submitOcr(std::move(request));
         return;
     }
     if (frame.textOnly) {
         model_.setSizes(frame.page,{frame.points});
-        if (frame.text) { textSelection_.put(frame.page,frame.text); noteLanguage(frame.page,frame.text); }
+        if (frame.text) {
+            textSelection_.put(frame.page,frame.text); noteLanguage(frame.page,frame.text);
+            // A text layer seen in the foreground spares the background queue its probe.
+            if(!frame.text->characters.isEmpty() && bookQueue_.ready() && bookQueue_.state(frame.page)==OcrBookQueue::State::Unknown) {
+                bookQueue_.set(frame.page,OcrBookQueue::State::Native);
+                if(ocr_) QMetaObject::invokeMethod(ocr_,[worker=ocr_.data(),book=bookToken_,page=frame.page]{worker->recordNative(book,page);},Qt::QueuedConnection);
+                updateBookStatus();
+            }
+        }
         else {
             auto failure=std::make_shared<TextPage>(); failure->error=frame.error;
             textSelection_.put(frame.page,std::move(failure));
@@ -373,6 +422,7 @@ void ShellState::acceptFrame(const PdfFrame& frame) {
         if (pageCount_ != frame.pages) {
             pageCount_ = frame.pages;
             model_.reset(pageCount_);
+            openBook();
         }
         model_.setSizes(frame.page,{frame.points});
         model_.put(frame.page,frame.image,requestedWidth_,!frame.preview,frame.answerLines,frame.answerLinesReady);
@@ -397,6 +447,7 @@ void ShellState::beginShutdown() {
     restoring_=true; annotations_.reset(); restoring_=false;
     textSelection_.reset();
     resetOcr();
+    closeBookSession();
     busy_ = false;
     statusText_ = QStringLiteral("正在关闭文档…");
     emit selectionChanged();
@@ -413,6 +464,7 @@ bool ShellState::beginTextSelection(double x,double y) {
     if (x<left || x>left+width || y<model_.top(page) || y>model_.top(page)+model_.height(page)) {
         textSelection_.clear(); return false;
     }
+    noteInteraction();
     focusPage(page);
     const auto previous=textSelection_.snapshot(page);
     if(previous && previous->ocr && !previous->region.contains(QPointF((x-left)/width,(y-model_.top(page))/model_.height(page))))textSelection_.forgetPage(page);
@@ -428,7 +480,9 @@ void ShellState::setOcrSelectionEnabled(bool enabled) {
 void ShellState::setOcrLanguage(QString language) {
     if(language!="fra" && language!="eng" && language!="chi_sim" && language!="fra+eng")return;
     if(ocrLanguage_==language)return;
-    resetOcr();ocrLanguage_=std::move(language);textSelection_.clearOcr();updateOcrDemand();emit ocrChanged();scheduleTimer_.start();
+    resetOcr();closeBookSession();ocrLanguage_=std::move(language);textSelection_.clearOcr();updateOcrDemand();emit ocrChanged();
+    openBook(); // the new language has its own stored profile; the old one is never read for it
+    scheduleTimer_.start();
     // Text recognized in the old language says little about the document.
     for(auto it=pageLanguages_.begin();it!=pageLanguages_.end();) it=it->ocr?pageLanguages_.erase(it):std::next(it);
     updateDocumentLanguage();
@@ -457,7 +511,9 @@ void ShellState::updateDocumentLanguage() {
 }
 void ShellState::resetDocumentLanguage() { pageLanguages_.clear(); updateDocumentLanguage(); }
 void ShellState::resetOcr() {
+    cancelBackground();
     if(ocr_)ocr_->invalidate(++ocrRevision_);
+    ocrForced_.clear();
     ocrDemand_.clear();ocrRegionSelections_.clear();ocrBusyPage_=-1;ocrStatus_.clear();emit ocrChanged();
 }
 void ShellState::ensureOcr(int page,bool force,QRectF region) {
@@ -480,7 +536,7 @@ void ShellState::updateOcrDemand() {
     for(int p:selected)ensureOcr(p);
     if(ocrSelectionEnabled_)for(int p:model_.priority())if(model_.visible(p))ensureOcr(p);
 }
-void ShellState::recognizeCurrentPage() { ensureOcr(page_,true); }
+void ShellState::recognizeCurrentPage() { if(ocrBusyPage_!=page_ && !ocrDemand_.contains(page_))ocrForced_.insert(page_); ensureOcr(page_,true); }
 void ShellState::recognizeRegion(double x1,double y1,double x2,double y2) {
     if(shuttingDown_ || !std::isfinite(x1+y1+x2+y2))return;
     const int page=model_.pageAtPosition(x1,y1);if(page<0)return;
@@ -738,6 +794,7 @@ void ShellState::initializeStorage() {
     connect(&maxSaveTimer_,&QTimer::timeout,this,&ShellState::saveNow);
     connect(&annotations_,&AnnotationModel::contentChanged,this,[this] {
         if(restoring_ || !storageReady_) return;
+        noteInteraction();
         ++editRevision_; storageStatus_=QStringLiteral("练习已编辑，等待自动保存…"); emit storageChanged();
         saveTimer_.start(); if(!maxSaveTimer_.isActive()) maxSaveTimer_.start();
     });
@@ -748,6 +805,7 @@ void ShellState::initializeStorage() {
         if(writable) { restoring_=true; annotations_.restore(snapshot); restoring_=false; editRevision_=savedRevision_=snapshot.revision; }
         storageStatus_=message.isEmpty() ? QStringLiteral("练习已恢复，自动保存已就绪") : message;
         emit storageChanged();
+        openBook();
         if(pendingTransition_) { auto action=std::move(pendingTransition_); pendingTransition_={}; transitioning_=false; flushBefore(std::move(action)); }
     });
     connect(storage_,&StorageWorker::saved,this,[this](quint64 session,quint64 revision,QString error) {
@@ -809,4 +867,175 @@ void ShellState::optimizeScan(const QUrl& target,const QVariantMap& options) {
     if(!target.isLocalFile()||QFileInfo::exists(target.toLocalFile())){exportStatus_=tr("请选择尚未存在的新 PDF 文件名。");emit storageChanged();return;}
     finishTextEditing();annotations_.cancelGesture();scanning_=true;exportStatus_=tr("正在重建扫描 PDF…");emit storageChanged();
     worker_->optimizeScan(session_,target.toLocalFile(),identity_,options);
+}
+
+// ---- Whole-book background OCR (docs/OCR_SELECTION.md) ----
+void ShellState::ensureOcrWorker() {
+    if(ocr_ || shuttingDown_) return;
+    const auto overrideRoot=qEnvironmentVariable("LANGLERN_WORKSPACE_DIR");
+    const auto root=overrideRoot.isEmpty()?QStandardPaths::writableLocation(QStandardPaths::CacheLocation):overrideRoot;
+    ocr_=new OcrWorker(root+"/ocr-v1",OcrBook::defaultRoot());ocr_->moveToThread(&ocrThread_);
+    connect(&ocrThread_,&QThread::finished,ocr_,&QObject::deleteLater);
+    connect(ocr_,&OcrWorker::finished,this,[this](quint64 session,quint64 revision,int page,TextSnapshot text,bool cached,double ms,bool background){
+        if(shuttingDown_ || session!=session_ || revision!=ocrRevision_)return;
+        if(background) {
+            if(page!=backgroundPage_ || backgroundStage_!=BackgroundStage::Ocr)return;
+            backgroundPage_=-1;backgroundStage_=BackgroundStage::None;
+            if(!text) bookQueue_.release(page);
+            else if(!text->error.isEmpty()) {
+                bookQueue_.set(page,OcrBookQueue::State::Failed);
+                // A missing model or broken engine fails every page alike: stop instead of walking the book.
+                if(++bookFailures_>=3) bookError_=tr("后台识别已停止：%1").arg(text->error);
+            } else {
+                bookFailures_=0;
+                if(bookQueue_.state(page)==OcrBookQueue::State::Busy) bookQueue_.set(page,OcrBookQueue::State::Done);
+            }
+            if(text && text->error.isEmpty()) {
+                // Share with the selection layer only for active pages that still lack OCR text.
+                const auto current=textSelection_.snapshot(page);
+                if(model_.priority().contains(page) && current && !current->ocr && !current->pending && current->characters.isEmpty() && current->error.isEmpty()) {
+                    textSelection_.put(page,text);noteLanguage(page,text);
+                }
+            }
+            qInfo("ocr_book_page session=%llu page=%d chars=%lld cached=%d elapsed_ms=%.3f done=%d native=%d pages=%d",session,page,
+                text?qint64(text->characters.size()):-1,cached,ms,bookQueue_.done(),bookQueue_.native(),bookQueue_.pages());
+            updateBookStatus();
+            if(!inFlight_)scheduleTimer_.start();
+            return;
+        }
+        ocrBusyPage_=-1;
+        if(!text) {
+            // Stored page vanished or failed its checksum: recognise it from a fresh render.
+            if(bookQueue_.isDone(page)) { bookQueue_.set(page,OcrBookQueue::State::Unknown); updateBookStatus(); }
+            ocrDemand_.insert(page);scheduleTimer_.start();return;
+        }
+        if(text->error.isEmpty() && text->region==QRectF(0,0,1,1) && bookQueue_.ready() && bookError_.isEmpty()) {
+            const auto state=bookQueue_.state(page);
+            if(state==OcrBookQueue::State::Unknown || state==OcrBookQueue::State::Busy) { bookQueue_.set(page,OcrBookQueue::State::Done); updateBookStatus(); }
+        }
+        textSelection_.put(page,text);
+        noteLanguage(page,text);
+        const bool selectRegion=ocrRegionSelections_.contains(page) && ocrRegionSelections_.take(page)==textSelection_.interactionRevision();
+        if(selectRegion && model_.visible(page) && text->region!=QRectF(0,0,1,1) && text->error.isEmpty()) {
+            QPointF first,last;bool found=false;
+            for(const auto& c:text->characters)if(c.visible){if(!found){first=c.box.center();found=true;}last=c.box.center();}
+            if(found) {textSelection_.begin(page,first.x(),first.y(),0,0);textSelection_.extend(page,last.x(),last.y());}
+        }
+        ocrStatus_=text->error.isEmpty()?(text->characters.isEmpty()?tr("当前页未识别到文字，请调整 OCR 语言。"):tr("第 %1 页离线识别完成").arg(page+1)):text->error;
+        qInfo("ocr_result session=%llu page=%d chars=%lld cached=%d elapsed_ms=%.3f",session,page,qint64(text->characters.size()),cached,ms);
+        emit ocrChanged();scheduleTimer_.start();
+    });
+    connect(ocr_,&OcrWorker::bookOpened,this,[this](quint64 book,QByteArray profile,QList<int> ocrPages,QList<int> nativePages,QString error){
+        if(shuttingDown_ || book!=bookToken_)return;
+        bookOpening_=false;bookProfile_=profile;
+        bookQueue_.reset(pageCount_);
+        for(int p:ocrPages)bookQueue_.set(p,OcrBookQueue::State::Done);
+        for(int p:nativePages)bookQueue_.set(p,OcrBookQueue::State::Native);
+        bookError_=error;bookQueue_.setReady(error.isEmpty());
+        updateBookStatus();
+        if(!inFlight_)scheduleTimer_.start();
+    });
+    connect(ocr_,&OcrWorker::bookCleared,this,[this](quint64 book,QString error){
+        if(shuttingDown_ || book!=bookToken_)return;
+        bookOpening_=false;
+        openBook();
+        bookError_=error;
+        ocrStatus_=error.isEmpty()?tr("已清除本书识别结果"):error;emit ocrChanged();
+        updateBookStatus();
+    });
+    connect(ocr_,&OcrWorker::bookWriteFailed,this,[this](quint64 book,int page,QString error){
+        if(shuttingDown_ || book!=bookToken_)return;
+        bookQueue_.set(page,OcrBookQueue::State::Failed);
+        bookError_=error;qWarning("ocr_book_write_failed page=%d error=%s",page,qPrintable(error));
+        updateBookStatus();
+    });
+    ocrThread_.setObjectName("Offline OCR");ocrThread_.start(QThread::LowPriority);
+}
+void ShellState::submitOcr(OcrRequest request) {
+    ensureOcrWorker();
+    if(ocr_)ocr_->submit(std::move(request));
+}
+void ShellState::openBook() {
+    if(shuttingDown_ || identity_.isEmpty() || pageCount_<=0 || bookOpening_ || bookQueue_.ready()) return;
+    ensureOcrWorker();
+    if(!ocr_)return;
+    bookQueue_.reset(pageCount_);bookError_.clear();bookFailures_=0;bookOpening_=true;
+    QMetaObject::invokeMethod(ocr_,[worker=ocr_.data(),book=++bookToken_,identity=identity_,language=ocrLanguage_,pages=pageCount_]{
+        worker->openBook(book,identity,language,pages);
+    },Qt::QueuedConnection);
+    updateBookStatus();
+}
+void ShellState::closeBookSession() {
+    cancelBackground();
+    ++bookToken_;bookOpening_=false;bookProfile_.clear();bookError_.clear();
+    bookQueue_.reset(0);
+    if(ocr_)QMetaObject::invokeMethod(ocr_,&OcrWorker::closeBook,Qt::QueuedConnection);
+    updateBookStatus();
+}
+void ShellState::cancelBackground() {
+    if(backgroundPage_<0)return;
+    bookQueue_.release(backgroundPage_);
+    // Only the OCR thread can actually stop (Tesseract cancel callback); a PDFium render ends on
+    // its own and its frame is dropped as stale.
+    if(backgroundStage_==BackgroundStage::Ocr && ocr_)ocr_->invalidate(++ocrRevision_);
+    qInfo("ocr_book_yield page=%d stage=%s",backgroundPage_,backgroundStage_==BackgroundStage::Ocr?"ocr":"pdf");
+    backgroundPage_=-1;backgroundStage_=BackgroundStage::None;backgroundPdfRevision_=0;
+    updateBookStatus();
+}
+void ShellState::noteInteraction() {
+    bookQueue_.noteInteraction(clock_.elapsed());
+}
+int ShellState::backgroundCandidate() {
+    if(!bookAllowed_ || !bookQueue_.active() || !bookError_.isEmpty() || shuttingDown_ || !storageReady_ || identity_.isEmpty()
+        || exporting_ || scanning_ || transitioning_ || backgroundPage_>=0 || ocrBusyPage_>=0 || !ocrDemand_.isEmpty()) return -1;
+    const auto remaining=bookQueue_.idleRemaining(clock_.elapsed(),bookIdleMs_);
+    if(remaining>0) { backgroundTimer_.start(int(remaining)+1); return -1; }
+    return bookQueue_.next(page_);
+}
+void ShellState::setOcrBookEnabled(bool enabled) {
+    if(bookQueue_.enabled()==enabled)return;
+    bookQueue_.setEnabled(enabled);
+    if(!enabled)cancelBackground();
+    updateBookStatus();
+    if(!inFlight_)scheduleTimer_.start();
+}
+void ShellState::setOcrBookPaused(bool paused) {
+    if(bookQueue_.paused()==paused)return;
+    bookQueue_.setPaused(paused);
+    if(paused)cancelBackground();
+    else if(bookQueue_.ready()) { bookError_.clear(); bookFailures_=0; } // resume retries after a write or model error
+    updateBookStatus();
+    if(!inFlight_)scheduleTimer_.start();
+}
+void ShellState::clearBookOcr() {
+    if(shuttingDown_ || identity_.isEmpty())return;
+    resetOcr();
+    textSelection_.clearOcr();
+    ++bookToken_;bookQueue_.reset(pageCount_);bookProfile_.clear();bookError_.clear();
+    ensureOcrWorker();
+    if(!ocr_)return;
+    bookOpening_=true;
+    QMetaObject::invokeMethod(ocr_,[worker=ocr_.data(),book=bookToken_,identity=identity_]{worker->clearBook(book,identity);},Qt::QueuedConnection);
+    updateBookStatus();
+    updateOcrDemand();
+    scheduleTimer_.start();
+}
+OcrBookReader ShellState::ocrBookReader() const {
+    return OcrBookReader(OcrBook::defaultRoot(),identity_,bookProfile_);
+}
+void ShellState::updateBookStatus() {
+    QString status;
+    if(path_.isEmpty() || identity_.isEmpty()) status.clear();
+    else if(!bookError_.isEmpty()) status=bookError_;
+    else if(!bookQueue_.ready()) status=tr("正在读取本书识别记录…");
+    else if(bookQueue_.complete()) {
+        status=tr("全书识别完成：%1 页 OCR，%2 页原生文字").arg(bookQueue_.done()).arg(bookQueue_.native());
+        if(bookQueue_.failed()>0) status+=tr("，%1 页失败（重新打开本书后重试）").arg(bookQueue_.failed());
+    }
+    else if(!bookQueue_.enabled()) status=tr("后台识别已关闭");
+    else if(bookQueue_.paused()) status=tr("后台识别已暂停");
+    else if(backgroundPage_>=0) status=tr("正在后台识别第 %1 页…").arg(backgroundPage_+1);
+    else status=tr("空闲时继续识别");
+    bookStatus_=status;
+    emit ocrBookChanged();
 }
