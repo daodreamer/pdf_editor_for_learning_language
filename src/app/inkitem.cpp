@@ -118,7 +118,7 @@ QSGNode* InkItem::updatePaintNode(QSGNode* old,UpdatePaintNodeData*) {
     if(root && (root->size!=size() || root->projection!=g.pdfToDisplay || root->dpr!=dpr)) { delete root; root=nullptr; }
     if(!root) { root=new InkRoot; root->size=size(); root->projection=g.pdfToDisplay; root->dpr=dpr; }
     // Called during scene graph synchronization with GUI blocked. No model access in render().
-    const auto strokes=model_->displayStrokes(page_);
+    const auto strokes=overlay_ ? model_->overlayStrokes(page_) : model_->displayStrokes(page_);
     QSet<QString> wanted;
     for(const auto& stroke:strokes) wanted.insert(stroke.id);
     for(auto it=root->strokes.begin();it!=root->strokes.end();) {
@@ -128,7 +128,7 @@ QSGNode* InkItem::updatePaintNode(QSGNode* old,UpdatePaintNodeData*) {
     for(const auto& stroke:strokes) {
         if(stroke.points.isEmpty()) continue;
         auto* node=root->strokes.value(stroke.id,nullptr);
-        const bool selected=stroke.id==model_->inkSelection();
+        const bool selected=!overlay_ && stroke.id==model_->inkSelection();
         const auto tailFactor=[&](qsizetype n) { return n>0 && stroke.pressure.size()==stroke.points.size() ? stroke.pressure[n-1] : -1.0f; };
         if(node && (node->first!=stroke.points.first() || node->width!=stroke.width || node->color!=stroke.color || node->selected!=selected
             || node->count>stroke.points.size() || node->tail!=tailFactor(node->count))) {

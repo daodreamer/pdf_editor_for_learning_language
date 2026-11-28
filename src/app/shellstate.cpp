@@ -602,7 +602,7 @@ ShellState::AnswerBlock ShellState::answerBlockAt(int page,QPointF point) const 
     if(!g.valid || image.isNull()) return {};
     const auto notes=annotations_.snapshot();
     auto occupied=[&](const QRectF& line) {
-        for(const auto& n:notes) if(n.page==page) {
+        for(const auto& n:notes) if(n.page==page && !annotations_.noteHidden(n)) {
             const auto rect=QRectF(g.pdfToDisplay.map(n.anchor),QSizeF(n.width/g.units.width(),n.height/g.units.height()));
             if(rect.intersects(line)) return true;
         }
@@ -836,7 +836,7 @@ void ShellState::initializeStorage() {
     });
 }
 AnnotationSnapshot ShellState::annotationSnapshot() const {
-    return {annotations_.snapshot(),annotations_.inkSnapshot(),editRevision_};
+    return {annotations_.snapshot(),annotations_.inkSnapshot(),editRevision_,annotations_.rounds()};
 }
 void ShellState::saveNow() {
     if(storageReady_) emit textCommitRequested();
@@ -854,12 +854,18 @@ void ShellState::flushBefore(std::function<void()> action) {
     }
     applyingTransition_=true; action(); applyingTransition_=false;
 }
-void ShellState::exportPdf(const QUrl& target) {
+void ShellState::exportPdf(const QUrl& target,bool includeHidden) {
     if(shuttingDown_ || transitioning_ || exporting_ || scanning_ || !storageReady_ || !pageCount_) return;
     finishTextEditing(); annotations_.cancelGesture();
     if(!target.isLocalFile()) { exportStatus_=QStringLiteral("请选择本地新 PDF 文件。"); emit storageChanged(); return; }
     exporting_=true; exportStatus_=QStringLiteral("正在导出当前修订；可以继续编辑…"); emit storageChanged();
-    const auto session=session_; const auto path=path_; const auto destination=target.toLocalFile(); const auto identity=identity_; const auto snapshot=annotationSnapshot();
+    const auto session=session_; const auto path=path_; const auto destination=target.toLocalFile(); const auto identity=identity_;
+    // Only the current round is exported; hidden answers are current data and included by default.
+    AnnotationSnapshot snapshot{annotations_.snapshot(),annotations_.inkSnapshot(),editRevision_,{}};
+    if(!includeHidden) {
+        snapshot.notes.removeIf([this](const auto& n){ return annotations_.noteHidden(n); });
+        snapshot.ink.removeIf([this](const auto& s){ return annotations_.inkHidden(s); });
+    }
     QMetaObject::invokeMethod(worker_,[this,session,path,destination,identity,snapshot] { worker_->exportPdf(session,path,destination,identity,snapshot); },Qt::QueuedConnection);
 }
 void ShellState::optimizeScan(const QUrl& target,const QVariantMap& options) {

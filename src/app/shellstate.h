@@ -179,7 +179,7 @@ public:
     Q_INVOKABLE void optimizeScan(const QUrl& target,const QVariantMap& options);
     Q_INVOKABLE void cancelScan() { worker_->cancelScan(); }
     Q_INVOKABLE void saveNow();
-    Q_INVOKABLE void exportPdf(const QUrl& target);
+    Q_INVOKABLE void exportPdf(const QUrl& target, bool includeHidden = true);
     Q_INVOKABLE void acknowledgeProbe() { emit startupAcknowledged(); }
 signals:
     void ocrChanged();

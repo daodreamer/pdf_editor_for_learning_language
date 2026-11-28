@@ -13,6 +13,8 @@ public:
     void close();
     static QByteArray digest(const QString& path);
     static QByteArray encode(const AnnotationSnapshot&, const QByteArray& identity);
+    static int schemaFor(const AnnotationSnapshot&);
+    static int schemaOf(const QByteArray&); // -1 when absent or malformed
     static bool decode(const QByteArray&, const QByteArray& identity, AnnotationSnapshot&, QString& error);
 signals:
     void loaded(quint64 session, AnnotationSnapshot snapshot, QByteArray identity, QString message, bool writable);

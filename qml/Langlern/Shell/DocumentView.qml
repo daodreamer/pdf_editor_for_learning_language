@@ -213,12 +213,58 @@ ColumnLayout {
                     Accessible.role: Accessible.Graphic
                     Accessible.name: qsTr("PDF 第 %1 页").arg(sheet.pageNumber)
                 }
+                // Faint, read-only comparison round (display only; never hit by tools).
+                readonly property string overlayRound: { const v = view.shell.annotations.practiceVersion; return view.shell.annotations.overlayRound(sheet.pageNumber - 1) }
+                InkItem {
+                    objectName: "roundOverlayInk"
+                    anchors.fill: parent
+                    model: view.shell.annotations
+                    page: sheet.pageNumber - 1
+                    overlay: true
+                    visible: sheet.overlayRound.length > 0
+                    opacity: 0.3
+                    clip: true
+                    Accessible.ignored: true
+                }
+                Repeater {
+                    model: sheet.overlayRound.length > 0 ? view.shell.annotations.overlayNotes(sheet.pageNumber - 1) : []
+                    delegate: Text {
+                        required property var modelData
+                        objectName: "roundOverlayNote"
+                        x: modelData.x * sheet.width; y: modelData.y * sheet.height
+                        width: modelData.pdfWidth
+                        scale: sheet.width / modelData.unitsWidth
+                        transformOrigin: Item.TopLeft
+                        text: modelData.text; textFormat: Text.PlainText; wrapMode: Text.Wrap
+                        font: view.shell.annotations.answerFont(modelData.family, modelData.size)
+                        lineHeightMode: modelData.lineSpacing > 0 ? Text.FixedHeight : Text.ProportionalHeight
+                        lineHeight: modelData.lineSpacing > 0 ? modelData.lineSpacing : 1
+                        color: modelData.color; opacity: 0.35
+                        Accessible.ignored: true
+                    }
+                }
                 InkItem {
                     anchors.fill: parent
                     model: view.shell.annotations
                     page: sheet.pageNumber - 1
                     clip: true
                     Accessible.ignored: true
+                }
+                // Hidden answers are still there: say so, with the key that shows them.
+                Rectangle {
+                    objectName: "hiddenAnswersChip"
+                    readonly property int hidden: { const v = view.shell.annotations.practiceVersion + view.shell.annotations.version; return view.shell.annotations.hiddenCount(sheet.pageNumber - 1) }
+                    visible: hidden > 0
+                    z: 2
+                    anchors.top: parent.top; anchors.topMargin: 8; anchors.horizontalCenter: parent.horizontalCenter
+                    width: hiddenLabel.implicitWidth + 24; height: 26; radius: 13
+                    color: view.theme.bar; border.color: view.theme.line; opacity: 0.92
+                    Text {
+                        id: hiddenLabel
+                        anchors.centerIn: parent
+                        text: qsTr("已隐藏 %1 处答案 · 按 H 显示").arg(parent.hidden)
+                        color: view.theme.muted; font.pixelSize: 12
+                    }
                 }
                 SelectionItem {
                     anchors.fill: parent

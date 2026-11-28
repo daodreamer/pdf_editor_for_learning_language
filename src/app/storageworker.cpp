@@ -46,13 +46,18 @@ QByteArray StorageWorker::digest(const QString& path) {
     if(!hash.addData(&f) || size!=f.size() || modified!=QFileInfo(f).lastModified()) return {};
     return hash.result().toHex();
 }
-QByteArray StorageWorker::encode(const AnnotationSnapshot& s,const QByteArray& identity) {
-    QJsonArray notes,ink;
-    for(const auto& n:s.notes) notes.append(QJsonObject{{"id",n.id},{"page",n.page},{"anchor",point(n.anchor)},
+namespace {
+QJsonArray encodeNotes(const QList<TextAnnotation>& list) {
+    QJsonArray notes;
+    for(const auto& n:list) notes.append(QJsonObject{{"id",n.id},{"page",n.page},{"anchor",point(n.anchor)},
         {"right",point(n.right)},{"down",point(n.down)},{"width",n.width},{"height",n.height},{"size",n.fontSize},
         {"text",n.text},{"family",n.family},{"color",n.color.name(QColor::HexArgb)},{"order",QString::number(n.order)},
         {"widthLocked",n.widthLocked},{"minimumHeight",n.minimumHeight},{"maximumWidth",n.maximumWidth},{"lineSpacing",n.lineSpacing},{"styles",QJsonArray::fromVariantList(encodeTextStyles(n.styles))}});
-    for(const auto& i:s.ink) {
+    return notes;
+}
+QJsonArray encodeInk(const QList<InkStroke>& list) {
+    QJsonArray ink;
+    for(const auto& i:list) {
         QJsonArray points; for(auto p:i.points) points.append(point(p));
         QJsonObject stroke{{"id",i.id},{"page",i.page},{"points",points},{"width",i.width},
             {"color",i.color.name(QColor::HexArgb)},{"order",QString::number(i.order)}};
@@ -62,72 +67,130 @@ QByteArray StorageWorker::encode(const AnnotationSnapshot& s,const QByteArray& i
         }
         ink.append(stroke);
     }
-    const auto payload=QJsonDocument(QJsonObject{{"notes",notes},{"ink",ink}}).toJson(QJsonDocument::Compact);
-    return QJsonDocument(QJsonObject{{"schema",1},{"identity",QString::fromLatin1(identity)},
+    return ink;
+}
+}
+int StorageWorker::schemaFor(const AnnotationSnapshot& s) { return s.rounds.isEmpty() ? 1 : 2; }
+QByteArray StorageWorker::encode(const AnnotationSnapshot& s,const QByteArray& identity) {
+    // Lowest schema that holds the data: workspaces without rounds stay readable by older builds.
+    QJsonObject data{{"notes",encodeNotes(s.notes)},{"ink",encodeInk(s.ink)}};
+    if(!s.rounds.isEmpty()) {
+        QJsonArray rounds;
+        for(const auto& r:s.rounds) {
+            QJsonObject round{{"id",r.id},{"page",r.page},{"archived",r.archived.toUTC().toString(Qt::ISODateWithMs)},
+                {"notes",encodeNotes(r.notes)},{"ink",encodeInk(r.ink)}};
+            if(!r.batch.isEmpty()) round.insert("batch",r.batch);
+            rounds.append(round);
+        }
+        data.insert("rounds",rounds);
+    }
+    const auto payload=QJsonDocument(data).toJson(QJsonDocument::Compact);
+    return QJsonDocument(QJsonObject{{"schema",schemaFor(s)},{"identity",QString::fromLatin1(identity)},
         {"revision",QString::number(s.revision)},{"payload",QString::fromUtf8(payload)},
         {"sha256",QString::fromLatin1(QCryptographicHash::hash(payload,QCryptographicHash::Sha256).toHex())}}).toJson(QJsonDocument::Compact);
+}
+int StorageWorker::schemaOf(const QByteArray& bytes) {
+    const auto schema=QJsonDocument::fromJson(bytes).object().value("schema");
+    return schema.isDouble() && schema.toDouble()==std::floor(schema.toDouble()) ? schema.toInt() : -1;
 }
 bool StorageWorker::decode(const QByteArray& bytes,const QByteArray& identity,AnnotationSnapshot& output,QString& error) {
     error.clear();
     try {
         if(bytes.isEmpty() || bytes.size()>maxSnapshotBytes) throw std::runtime_error("size");
         const auto doc=QJsonDocument::fromJson(bytes); const auto o=doc.object();
-        if(o["schema"].toDouble(-1)!=1) { error=QStringLiteral("不支持的快照版本；保留文件并禁止覆盖。"); return false; }
+        const double schema=o["schema"].toDouble(-1);
+        if(schema!=1 && schema!=2) { error=QStringLiteral("不支持的快照版本；保留文件并禁止覆盖。"); return false; }
         if(o["identity"].toString().toLatin1()!=identity) throw std::runtime_error("identity");
         const auto payload=o["payload"].toString().toUtf8();
         if(o["sha256"].toString().toLatin1()!=QCryptographicHash::hash(payload,QCryptographicHash::Sha256).toHex()) throw std::runtime_error("checksum");
         const auto data=QJsonDocument::fromJson(payload).object();
         if(!data["notes"].isArray() || !data["ink"].isArray()) throw std::runtime_error("arrays");
+        // Schema 1 has no rounds; schema 2 always has at least one (encode picks the lowest schema).
+        if(schema==1 ? data.contains("rounds") : (!data["rounds"].isArray() || data["rounds"].toArray().isEmpty())) throw std::runtime_error("rounds");
         AnnotationSnapshot s; bool ok=false;
         s.revision=o["revision"].toString().toULongLong(&ok); if(!ok || s.revision>=9007199254740991ULL) throw std::runtime_error("revision");
-        QSet<QString> ids; QSet<quint64> orders; qsizetype totalPoints=0;
+        // Ids are unique in the whole file; creation orders within the current round or one archived round.
+        QSet<QString> ids; qsizetype totalPoints=0, totalItems=0;
         auto common=[&](const QJsonObject& v,QString& id,int& page,QColor& color) {
             id=v["id"].toString(); color=QColor(v["color"].toString());
             if(QUuid(id).isNull() || ids.contains(id) || !color.isValid()) throw std::runtime_error("id/color");
             ids.insert(id); const double p=number(v,"page",0,1000000);
             if(p!=std::floor(p)) throw std::runtime_error("page"); page=int(p);
         };
-        if(data["notes"].toArray().size()+data["ink"].toArray().size()>100000) throw std::runtime_error("count");
-        QSet<quint64> textOrders;
-        for(const auto& value:data["notes"].toArray()) {
-            const auto v=value.toObject(); TextAnnotation n; common(v,n.id,n.page,n.color);
-            n.anchor=point(v["anchor"]); n.right=point(v["right"]); n.down=point(v["down"]);
-            if(std::abs(QPointF::dotProduct(n.right,n.right)-1)>1e-6 || std::abs(QPointF::dotProduct(n.down,n.down)-1)>1e-6
-                || std::abs(QPointF::dotProduct(n.right,n.down))>1e-6) throw std::runtime_error("axes");
-            n.width=number(v,"width",1e-6,1e9); n.height=number(v,"height",1e-6,1e9); n.fontSize=number(v,"size",1,256);
-            if(v.contains("widthLocked") && !v["widthLocked"].isBool()) throw std::runtime_error("widthLocked");
-            n.widthLocked=v["widthLocked"].toBool(true);
-            if(v.contains("minimumHeight")) n.minimumHeight=number(v,"minimumHeight",1e-6,1e9);
-            if(v.contains("maximumWidth")) n.maximumWidth=number(v,"maximumWidth",0,1e9);
-            if(v.contains("lineSpacing")) n.lineSpacing=number(v,"lineSpacing",0,1e6); // optional; older files: 0
-            if(!v["text"].isString()) throw std::runtime_error("text");
-            n.text=v["text"].toString(); n.family=v["family"].toString();
-            if(v.contains("styles") && (!v["styles"].isArray() || !decodeTextStyles(v["styles"].toArray().toVariantList(),int(n.text.size()),n.styles)))
-                throw std::runtime_error("styles");
-            n.order=v["order"].toString().toULongLong(&ok);
-            if(!ok || n.order>=9007199254740991ULL || textOrders.contains(n.order)) throw std::runtime_error("text order");
-            textOrders.insert(n.order);
-            if(!AnswerFonts::supported(n.family) || n.text.size()>1000000) throw std::runtime_error("text/font");
-            s.notes.append(std::move(n));
-        }
-        for(const auto& value:data["ink"].toArray()) {
-            const auto v=value.toObject(); InkStroke i; common(v,i.id,i.page,i.color);
-            i.width=number(v,"width",.25,32); i.order=v["order"].toString().toULongLong(&ok);
-            if(!ok || i.order>=9007199254740991ULL || orders.contains(i.order)) throw std::runtime_error("order");
-            orders.insert(i.order);
-            if(!v["points"].isArray()) throw std::runtime_error("points");
-            const auto points=v["points"].toArray(); totalPoints+=points.size();
-            if(points.isEmpty() || points.size()>65536 || totalPoints>2000000) throw std::runtime_error("points count");
-            for(const auto& p:points) i.points.append(point(p));
-            if(v.contains("pressure")) {
-                const auto pressure=v["pressure"].toArray();
-                if(!v["pressure"].isArray() || pressure.size()!=points.size()) throw std::runtime_error("pressure");
-                for(const auto& f:pressure) {
-                    if(!f.isDouble() || !std::isfinite(f.toDouble()) || f.toDouble()<0 || f.toDouble()>2) throw std::runtime_error("pressure range");
-                    i.pressure.append(float(f.toDouble()));
-                }
+        auto decodeNotes=[&](const QJsonArray& array,QList<TextAnnotation>& out) {
+            QSet<quint64> textOrders;
+            totalItems+=array.size(); if(totalItems>SnapshotLimits::maxAnnotations) throw std::runtime_error("count");
+            for(const auto& value:array) {
+                const auto v=value.toObject(); TextAnnotation n; common(v,n.id,n.page,n.color);
+                n.anchor=point(v["anchor"]); n.right=point(v["right"]); n.down=point(v["down"]);
+                if(std::abs(QPointF::dotProduct(n.right,n.right)-1)>1e-6 || std::abs(QPointF::dotProduct(n.down,n.down)-1)>1e-6
+                    || std::abs(QPointF::dotProduct(n.right,n.down))>1e-6) throw std::runtime_error("axes");
+                n.width=number(v,"width",1e-6,1e9); n.height=number(v,"height",1e-6,1e9); n.fontSize=number(v,"size",1,256);
+                if(v.contains("widthLocked") && !v["widthLocked"].isBool()) throw std::runtime_error("widthLocked");
+                n.widthLocked=v["widthLocked"].toBool(true);
+                if(v.contains("minimumHeight")) n.minimumHeight=number(v,"minimumHeight",1e-6,1e9);
+                if(v.contains("maximumWidth")) n.maximumWidth=number(v,"maximumWidth",0,1e9);
+                if(v.contains("lineSpacing")) n.lineSpacing=number(v,"lineSpacing",0,1e6); // optional; older files: 0
+                if(!v["text"].isString()) throw std::runtime_error("text");
+                n.text=v["text"].toString(); n.family=v["family"].toString();
+                if(v.contains("styles") && (!v["styles"].isArray() || !decodeTextStyles(v["styles"].toArray().toVariantList(),int(n.text.size()),n.styles)))
+                    throw std::runtime_error("styles");
+                n.order=v["order"].toString().toULongLong(&ok);
+                if(!ok || n.order>=9007199254740991ULL || textOrders.contains(n.order)) throw std::runtime_error("text order");
+                textOrders.insert(n.order);
+                if(!AnswerFonts::supported(n.family) || n.text.size()>1000000) throw std::runtime_error("text/font");
+                out.append(std::move(n));
             }
-            s.ink.append(std::move(i));
+        };
+        auto decodeInk=[&](const QJsonArray& array,QList<InkStroke>& out) {
+            QSet<quint64> orders;
+            totalItems+=array.size(); if(totalItems>SnapshotLimits::maxAnnotations) throw std::runtime_error("count");
+            for(const auto& value:array) {
+                const auto v=value.toObject(); InkStroke i; common(v,i.id,i.page,i.color);
+                i.width=number(v,"width",.25,32); i.order=v["order"].toString().toULongLong(&ok);
+                if(!ok || i.order>=9007199254740991ULL || orders.contains(i.order)) throw std::runtime_error("order");
+                orders.insert(i.order);
+                if(!v["points"].isArray()) throw std::runtime_error("points");
+                const auto points=v["points"].toArray(); totalPoints+=points.size();
+                if(points.isEmpty() || points.size()>65536 || totalPoints>SnapshotLimits::maxTotalPoints) throw std::runtime_error("points count");
+                for(const auto& p:points) i.points.append(point(p));
+                if(v.contains("pressure")) {
+                    const auto pressure=v["pressure"].toArray();
+                    if(!v["pressure"].isArray() || pressure.size()!=points.size()) throw std::runtime_error("pressure");
+                    for(const auto& f:pressure) {
+                        if(!f.isDouble() || !std::isfinite(f.toDouble()) || f.toDouble()<0 || f.toDouble()>2) throw std::runtime_error("pressure range");
+                        i.pressure.append(float(f.toDouble()));
+                    }
+                }
+                out.append(std::move(i));
+            }
+        };
+        decodeNotes(data["notes"].toArray(),s.notes);
+        decodeInk(data["ink"].toArray(),s.ink);
+        QSet<QString> roundIds; QMap<int,QDateTime> lastOfPage;
+        for(const auto& value:data["rounds"].toArray()) {
+            if(!value.isObject()) throw std::runtime_error("round");
+            const auto v=value.toObject(); PracticeRound r;
+            r.id=v["id"].toString();
+            if(QUuid(r.id).isNull() || roundIds.contains(r.id) || ids.contains(r.id)) throw std::runtime_error("round id");
+            roundIds.insert(r.id);
+            const double p=number(v,"page",0,1000000); if(p!=std::floor(p)) throw std::runtime_error("round page"); r.page=int(p);
+            if(v.contains("batch") && (!v["batch"].isString() || QUuid(v["batch"].toString()).isNull())) throw std::runtime_error("batch");
+            r.batch=v["batch"].toString();
+            const auto archived=v["archived"].toString();
+            if(!v["archived"].isString() || !archived.endsWith('Z')) throw std::runtime_error("archived");
+            r.archived=QDateTime::fromString(archived,Qt::ISODateWithMs).toUTC();
+            if(!r.archived.isValid()) throw std::runtime_error("archived time");
+            // Rounds of one page are stored oldest first, at distinct times.
+            if(lastOfPage.contains(r.page) && r.archived<=lastOfPage[r.page]) throw std::runtime_error("round order");
+            lastOfPage[r.page]=r.archived;
+            if(!v["notes"].isArray() || !v["ink"].isArray()) throw std::runtime_error("round arrays");
+            decodeNotes(v["notes"].toArray(),r.notes);
+            decodeInk(v["ink"].toArray(),r.ink);
+            if(r.notes.isEmpty() && r.ink.isEmpty()) throw std::runtime_error("empty round");
+            for(const auto& n:r.notes) if(n.page!=r.page) throw std::runtime_error("round note page");
+            for(const auto& i:r.ink) if(i.page!=r.page) throw std::runtime_error("round ink page");
+            s.rounds.append(std::move(r));
         }
         output=std::move(s); return true;
     } catch(const std::exception&) { error=QStringLiteral("快照损坏、身份不符或数据超限；原文件已保留。"); return false; }
@@ -147,7 +210,8 @@ void StorageWorker::open(quint64 session,const QString& path) {
     if(QFileInfo::exists(file_)) {
         const auto bytes=read(file_);
         const auto schema=QJsonDocument::fromJson(bytes).object().value("schema");
-        if(schema.isDouble() && schema.toInt()!=1) { fail(QStringLiteral("快照版本不受支持；保留文件并禁止覆盖。")); return; }
+        // A known future version is never replaced, even when the backup is readable.
+        if(schema.isDouble() && schema.toDouble()!=1 && schema.toDouble()!=2) { fail(QStringLiteral("快照版本不受支持；保留文件并禁止覆盖。")); return; }
         if(!decode(bytes,identity_,snapshot,error)) {
             if(!decode(read(file_+".bak"),identity_,snapshot,error)) { fail(error); return; }
             const auto evidence=file_+".corrupt-"+QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -178,7 +242,12 @@ void StorageWorker::save(quint64 session,AnnotationSnapshot snapshot) {
         else {
             const auto previous=QFileInfo::exists(file_) ? read(file_) : QByteArray();
             AnnotationSnapshot prior;
+            const auto legacyCopy=file_.chopped(5)+".v1.json";
             if(QFileInfo::exists(file_) && !decode(previous,identity_,prior,error)) {}
+            // First schema 2 write over a schema 1 file: keep that file once, never overwritten,
+            // for an older build or a manual rollback. Without it the main file is not replaced.
+            else if(schemaOf(bytes)==2 && schemaOf(previous)==1 && !QFileInfo::exists(legacyCopy) && !write(legacyCopy,previous))
+                error=QStringLiteral("无法保留升级前的练习副本；未替换快照。");
             else if(!previous.isEmpty() && !write(file_+".bak",previous)) error=QStringLiteral("备份写入失败；未替换快照。");
             else if(!write(file_,bytes)) error=QStringLiteral("自动保存失败；请检查磁盘空间或目录权限，然后重试保存。");
         }

@@ -15,13 +15,21 @@ QHash<int,QByteArray> AnnotationModel::roleNames() const {
     return {{Id,"noteId"},{Page,"notePage"},{Anchor,"noteAnchor"},{BoxWidth,"noteWidth"},{BoxHeight,"noteHeight"},
         {FontSize,"noteFontSize"},{Text,"noteText"},{Family,"noteFamily"},{Color,"noteColor"},{PageUnits,"notePageUnits"},{Order,"noteOrder"},{WidthLocked,"noteWidthLocked"},{Styles,"noteStyles"},{LineSpacing,"noteLineSpacing"}};
 }
-QVariantMap AnnotationModel::pageStats(int page) const {
+namespace {
+template<class Notes,class Strokes>
+QVariantMap answerStats(const Notes& notes,const Strokes& strokes,int page) {
     int answered=0,right=0,wrong=0,ink=0;
-    for(const auto& n:notes_)if(n.page==page&&!n.text.isEmpty()){
+    for(const auto& n:notes)if(n.page==page&&!n.text.isEmpty()){
         if(n.id.endsWith("-review")){right+=n.text==QStringLiteral("✓");wrong+=n.text==QStringLiteral("×");}else ++answered;
     }
-    for(const auto& stroke:strokes_)if(stroke.page==page)++ink;
+    for(const auto& stroke:strokes)if(stroke.page==page)++ink;
     return {{"answered",answered},{"right",right},{"wrong",wrong},{"ink",ink}};
+}
+}
+QVariantMap AnnotationModel::pageStats(int page) const {
+    auto stats=answerStats(notes_,strokes_,page);
+    stats.insert("hidden",hiddenCount(page));
+    return stats;
 }
 QVariant AnnotationModel::data(const QModelIndex& index,int role) const {
     if (!index.isValid() || index.row()<0 || index.row()>=visible_.size()) return {};
@@ -51,7 +59,7 @@ void AnnotationModel::notify(const QString& id,const QList<int>& roles) {
 }
 void AnnotationModel::refreshRows() {
     QStringList wanted;
-    for(const auto& n:notes_) if(active_.contains(n.page) && geometry_.contains(n.page)) wanted.append(n.id);
+    for(const auto& n:notes_) if(active_.contains(n.page) && geometry_.contains(n.page) && !noteHidden(n)) wanted.append(n.id);
     for(int i=int(visible_.size())-1;i>=0;--i) if(!wanted.contains(visible_[i])) {
         beginRemoveRows({},i,i); visible_.removeAt(i); endRemoveRows();
     }
@@ -63,8 +71,10 @@ void AnnotationModel::reset() {
     cancelGesture();
     const auto oldPages=geometry_.keys();
     strokes_.clear(); nextInkOrder_=0; nextTextOrder_=0; clearInkSelection();
+    veils_.clear(); bookHidden_=false; rounds_.clear(); overlay_.clear(); lastArchived_={};
     beginResetModel(); notes_.clear(); visible_.clear(); geometry_.clear(); active_.clear(); selected_.clear();
     beforeEdit_={}; undo_.clear(); redo_.clear(); endResetModel(); emit selectionChanged(); emit historyChanged(); emit contentChanged();
+    practiceTouched();
     for(int page:oldPages) emit inkChanged(page);
 }
 void AnnotationModel::setGeometry(int page,const PageGeometry& geometry) {
@@ -102,6 +112,7 @@ QString AnnotationModel::create(int page,double x,double y,double maximumWidth,d
     if(!geometry_.contains(page) || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(maximumWidth) || !std::isfinite(fieldHeight) || fieldHeight<0 || maximumWidth<0 || x<0 || y<0 || x>=1 || y>=1) return {};
     if(!std::isfinite(lineSpacing) || lineSpacing<0 || lines<1 || lines>64 || (lines>1 && !(lineSpacing>0))) return {};
     cancelGesture(); clearInkSelection(); finishEditing();
+    archiveHiddenBeforeEdit(page);
     // Leave room for a usable editor at the right/bottom edge.
     const auto g=geometry_[page];
     x=std::min(x,std::max(0.0,1-(maximumWidth>0?std::min(48.0,maximumWidth):48)/g.units.width()));
@@ -143,7 +154,7 @@ double AnnotationModel::textWidthLimit(const QString& id) const {
     return n.maximumWidth>0?std::min(available,n.maximumWidth):available;
 }
 void AnnotationModel::select(const QString& id) {
-    if(id==selected_ || !notes_.contains(id)) return;
+    if(id==selected_ || !notes_.contains(id) || noteHidden(notes_.value(id))) return;
     cancelGesture(); clearInkSelection(); finishEditing(); selected_=id; beforeEdit_=notes_[id]; emit selectionChanged();
 }
 void AnnotationModel::finishEditing() {
@@ -262,7 +273,7 @@ void AnnotationModel::cycleMark(const QString& id) {
 bool AnnotationModel::selectNext(const QString& id) {
     if(!notes_.contains(id))return false;
     const auto page=notes_.value(id).page;const auto g=geometry_.value(page);QList<TextAnnotation> answers;
-    for(const auto& n:notes_)if(n.page==page&&!n.id.endsWith("-review"))answers.append(n);
+    for(const auto& n:notes_)if(n.page==page&&!n.id.endsWith("-review")&&!noteHidden(n))answers.append(n);
     if(answers.size()<2)return false;
     std::sort(answers.begin(),answers.end(),[&g](const auto& a,const auto& b){const auto p=g.pdfToDisplay.map(a.anchor),q=g.pdfToDisplay.map(b.anchor);return p.y()!=q.y()?p.y()<q.y():p.x()<q.x();});
     for(int i=0;i<answers.size();++i)if(answers[i].id==id){select(answers[(i+1)%answers.size()].id);return true;}
@@ -276,12 +287,62 @@ void AnnotationModel::apply(const TextAnnotation& from,const TextAnnotation& to)
 void AnnotationModel::undo() {
     cancelGesture(); clearInkSelection();
     finishEditing(); if(undo_.isEmpty()) return;
-    const auto c=undo_.takeLast(); apply(c.after,c.before);apply(c.linkedAfter,c.linkedBefore);applyInk(c.inkAfter,c.inkBefore); redo_.append(c); trimHistory(); emit historyChanged(); emit contentChanged();
+    const auto c=undo_.takeLast(); runCommand(c,false); revealTouched(c); redo_.append(c); trimHistory(); emit historyChanged(); emit contentChanged();
 }
 void AnnotationModel::redo() {
     cancelGesture(); clearInkSelection();
     finishEditing(); if(redo_.isEmpty()) return;
-    const auto c=redo_.takeLast(); apply(c.before,c.after);apply(c.linkedBefore,c.linkedAfter);applyInk(c.inkBefore,c.inkAfter); undo_.append(c); trimHistory(); emit historyChanged(); emit contentChanged();
+    const auto c=redo_.takeLast(); runCommand(c,true); revealTouched(c); undo_.append(c); trimHistory(); emit historyChanged(); emit contentChanged();
+}
+// Rounds move whole item sets between the current round and the archive. Forward order:
+// archive, delete, single-item edits, then restored copies; backward is the exact reverse.
+void AnnotationModel::runCommand(const Command& c,bool forward) {
+    QSet<int> pages;
+    auto take=[&](const PracticeRound& r) {
+        for(const auto& n:r.notes) notes_.remove(n.id);
+        for(const auto& i:r.ink) strokes_.remove(i.id);
+        pages.insert(r.page);
+    };
+    auto putBack=[&](const PracticeRound& r) {
+        for(const auto& n:r.notes) notes_[n.id]=n;
+        for(const auto& i:r.ink) strokes_[i.id]=i;
+        pages.insert(r.page);
+    };
+    auto dropRound=[&](const QString& id) {
+        for(qsizetype k=0;k<rounds_.size();++k) if(rounds_[k].id==id) { rounds_.removeAt(k); break; }
+        for(auto it=overlay_.begin();it!=overlay_.end();) { if(it.value()==id) { pages.insert(it.key()); it=overlay_.erase(it); } else ++it; }
+    };
+    if(forward) {
+        for(const auto& r:c.archived) { take(r); insertRound(r); }
+        for(const auto& r:c.deleted) dropRound(r.id);
+        apply(c.before,c.after); apply(c.linkedBefore,c.linkedAfter); applyInk(c.inkBefore,c.inkAfter);
+        for(const auto& n:c.notesAdded) { notes_[n.id]=n; pages.insert(n.page); }
+    } else {
+        for(const auto& n:c.notesAdded) { notes_.remove(n.id); pages.insert(n.page); }
+        applyInk(c.inkAfter,c.inkBefore); apply(c.linkedAfter,c.linkedBefore); apply(c.after,c.before);
+        for(const auto& r:c.deleted) insertRound(r);
+        for(const auto& r:c.archived) { dropRound(r.id); putBack(r); }
+    }
+    if(!c.archived.isEmpty() || !c.deleted.isEmpty() || !c.notesAdded.isEmpty()) {
+        refreshRows();
+        for(int page:pages) emit inkChanged(page);
+        practiceTouched();
+    }
+}
+// Undo never acts on something invisible: a step that adds or removes hidden answers shows their page.
+void AnnotationModel::revealTouched(const Command& c) {
+    if(veils_.isEmpty()) return;
+    QSet<int> pages;
+    // Any item of the step that falls under a page's veil, whether the step added or removed it.
+    auto note=[&](const TextAnnotation& n) { if(!n.id.isEmpty() && noteHidden(n)) pages.insert(n.page); };
+    auto ink=[&](const InkStroke& s) { if(inkHidden(s)) pages.insert(s.page); };
+    note(c.before); note(c.after); note(c.linkedBefore); note(c.linkedAfter);
+    for(const auto& s:c.inkBefore) ink(s);
+    for(const auto& s:c.inkAfter) ink(s);
+    for(const auto& r:c.archived) { for(const auto& n:r.notes) note(n); for(const auto& s:r.ink) ink(s); }
+    for(int page:pages) { veils_.remove(page); emit inkChanged(page); emit pageRevealed(page); }
+    if(veils_.isEmpty()) bookHidden_=false;
+    if(!pages.isEmpty()) { refreshRows(); practiceTouched(); }
 }
 
 
@@ -327,7 +388,10 @@ qsizetype AnnotationModel::Command::bytes() const {
     return (before.id.capacity()+after.id.capacity()+before.text.capacity()+after.text.capacity()
         +before.family.capacity()+after.family.capacity()+linkedBefore.id.capacity()+linkedAfter.id.capacity()
         +linkedBefore.text.capacity()+linkedAfter.text.capacity()+linkedBefore.family.capacity()+linkedAfter.family.capacity())*2+inkBytes(inkBefore)+inkBytes(inkAfter)
-        +(before.styles.capacity()+after.styles.capacity()+linkedBefore.styles.capacity()+linkedAfter.styles.capacity())*sizeof(TextStyle);
+        +(before.styles.capacity()+after.styles.capacity()+linkedBefore.styles.capacity()+linkedAfter.styles.capacity())*sizeof(TextStyle)
+        // Round item lists are shared with the archive; only the references cost memory here.
+        +(archived.size()+deleted.size())*qsizetype(sizeof(PracticeRound)+80)
+        +[this]{ qsizetype b=notesAdded.capacity()*qsizetype(sizeof(TextAnnotation)); for(const auto& n:notesAdded) b+=(n.id.capacity()+n.text.capacity()+n.family.capacity())*2+n.styles.capacity()*qsizetype(sizeof(TextStyle)); return b; }();
 }
 qsizetype AnnotationModel::historyBytes() const {
     qsizetype bytes=(undo_.capacity()+redo_.capacity())*sizeof(Command);
@@ -360,7 +424,7 @@ QList<InkStroke> AnnotationModel::inkSnapshot() const {
 }
 QList<InkStroke> AnnotationModel::displayStrokes(int page) const {
     QList<InkStroke> result;
-    for(const auto& s:strokes_) if(s.page==page && !(gesture_==Gesture::Move && s.id==preview_.id)) result.append(s);
+    for(const auto& s:strokes_) if(s.page==page && !inkHidden(s) && !(gesture_==Gesture::Move && s.id==preview_.id)) result.append(s);
     if(!preview_.id.isEmpty() && preview_.page==page) result.append(preview_);
     std::sort(result.begin(),result.end(),[](const auto& a,const auto& b){return a.order<b.order;});
     return result;
@@ -374,6 +438,7 @@ void AnnotationModel::applyInk(const QList<InkStroke>& from,const QList<InkStrok
 bool AnnotationModel::beginInk(int page,QPointF p,QColor color,double width,double pressure) {
     cancelGesture(); finishEditing(); clearInkSelection();
     if(!geometry_.contains(page) || !validPoint(p) || !color.isValid() || !std::isfinite(width) || width<.25 || width>32) return false;
+    archiveHiddenBeforeEdit(page);
     gestureError_.clear(); emit gestureErrorChanged();
     color.setAlpha(255); // The MVP toolbar offers opaque ink, avoiding overlap alpha artifacts.
     preview_={QUuid::createUuid().toString(QUuid::WithoutBraces),page,{geometry_[page].displayToPdf.map(p)},color,width};
@@ -406,7 +471,7 @@ bool AnnotationModel::beginMoveInk(int page,QPointF p,double radius) {
 void AnnotationModel::eraseSegment(QPointF from,QPointF to) {
     bool changed=false;
     for(auto it=strokes_.begin();it!=strokes_.end();) {
-        if(it->page==gesturePage_ && hits(*it,from,to,eraserRadius_)) {
+        if(it->page==gesturePage_ && !inkHidden(*it) && hits(*it,from,to,eraserRadius_)) {
             erased_.append(it.value()); it=strokes_.erase(it); changed=true;
         } else ++it;
     }
@@ -486,7 +551,7 @@ QList<InkStroke> AnnotationModel::boxMark(int page,QRectF box) const {
     const double grow=.35*std::max(box.width(),box.height());
     const auto area=box.adjusted(-grow,-grow,grow,grow);
     for(const auto& s:strokes_) {
-        if(s.page!=page || s.points.isEmpty()) continue;
+        if(s.page!=page || s.points.isEmpty() || inkHidden(s)) continue;
         bool inside=true;
         for(const auto& p:s.points) if(!area.contains(g.pdfToDisplay.map(p))) { inside=false; break; }
         if(inside) result.append(s);
@@ -504,6 +569,7 @@ bool AnnotationModel::toggleBoxMark(int page,QRectF box,bool cross,QColor color)
         record(std::move(c)); emit inkChanged(page);
         return false;
     }
+    archiveHiddenBeforeEdit(page);
     color.setAlpha(255);
     // Width follows the printed box (in PDF units): about a pen stroke for a 7-8 pt box.
     const double side=std::min(box.width()*g.units.width(),box.height()*g.units.height());
@@ -534,10 +600,221 @@ void AnnotationModel::restore(const AnnotationSnapshot& snapshot) {
     cancelGesture();
     beginResetModel(); notes_.clear(); strokes_.clear(); visible_.clear();
     selected_.clear(); beforeEdit_={}; undo_.clear(); redo_.clear(); nextInkOrder_=0;
-    nextTextOrder_=0;
+    nextTextOrder_=0; veils_.clear(); bookHidden_=false; overlay_.clear(); lastArchived_={};
     for(const auto& n:snapshot.notes) { notes_[n.id]=n; nextTextOrder_=std::max(nextTextOrder_,n.order+1); }
     for(const auto& s:snapshot.ink) { strokes_[s.id]=s; nextInkOrder_=std::max(nextInkOrder_,s.order+1); }
+    rounds_.clear();
+    for(const auto& r:snapshot.rounds) {
+        insertRound(r);
+        if(!lastArchived_.isValid() || r.archived>lastArchived_) lastArchived_=r.archived;
+        for(const auto& n:r.notes) nextTextOrder_=std::max(nextTextOrder_,n.order+1);
+        for(const auto& s:r.ink) nextInkOrder_=std::max(nextInkOrder_,s.order+1);
+    }
     endResetModel(); refreshRows(); clearInkSelection();
-    emit selectionChanged(); emit historyChanged();
+    emit selectionChanged(); emit historyChanged(); practiceTouched();
     for(int page:geometry_.keys()) emit inkChanged(page);
+}
+
+
+// ---- Hiding ----
+bool AnnotationModel::noteHidden(const TextAnnotation& n) const {
+    const auto veil=veils_.constFind(n.page);
+    if(veil==veils_.cend()) return false;
+    // A grading mark follows its answer.
+    if(n.id.endsWith(QStringLiteral("-review"))) {
+        const auto source=notes_.constFind(n.id.chopped(7));
+        if(source!=notes_.cend()) return source->order<veil->text;
+    }
+    return n.order<veil->text;
+}
+bool AnnotationModel::inkHidden(const InkStroke& s) const {
+    const auto veil=veils_.constFind(s.page);
+    return veil!=veils_.cend() && s.order<veil->ink;
+}
+void AnnotationModel::setPageHidden(int page,bool hidden) {
+    if(page<0 || hidden==veils_.contains(page)) return;
+    cancelGesture(); finishEditing(); clearInkSelection();
+    if(hidden) veils_[page]={nextTextOrder_,nextInkOrder_};
+    else { veils_.remove(page); if(veils_.isEmpty()) bookHidden_=false; }
+    refreshRows(); emit inkChanged(page); practiceTouched();
+}
+void AnnotationModel::setBookHidden(bool hidden) {
+    cancelGesture(); finishEditing(); clearInkSelection();
+    QSet<int> pages(veils_.keyBegin(),veils_.keyEnd());
+    if(hidden) {
+        for(const auto& n:notes_) pages.insert(n.page);
+        for(const auto& s:strokes_) pages.insert(s.page);
+        for(int page:pages) veils_[page]={nextTextOrder_,nextInkOrder_};
+    } else veils_.clear();
+    bookHidden_=hidden;
+    refreshRows(); for(int page:pages) emit inkChanged(page);
+    practiceTouched();
+}
+int AnnotationModel::hiddenCount(int page) const {
+    if(!veils_.contains(page)) return 0;
+    int count=0;
+    for(const auto& n:notes_) count+=n.page==page && !n.id.endsWith(QStringLiteral("-review")) && noteHidden(n);
+    for(const auto& s:strokes_) count+=s.page==page && inkHidden(s);
+    return count;
+}
+int AnnotationModel::hiddenTotal() const {
+    int count=0;
+    for(auto it=veils_.cbegin();it!=veils_.cend();++it) count+=hiddenCount(it.key());
+    return count;
+}
+
+// ---- Practice rounds ----
+void AnnotationModel::insertRound(const PracticeRound& round) {
+    auto at=std::upper_bound(rounds_.begin(),rounds_.end(),round,[](const auto& a,const auto& b) {
+        return a.archived!=b.archived ? a.archived<b.archived : a.id<b.id;
+    });
+    rounds_.insert(at,round);
+}
+QDateTime AnnotationModel::nextArchiveTime() {
+    // Strictly increasing per workspace, so rounds of a page keep their order on disk.
+    auto now=QDateTime::currentDateTimeUtc();
+    if(lastArchived_.isValid() && now<=lastArchived_) now=lastArchived_.addMSecs(1);
+    lastArchived_=now;
+    return now;
+}
+PracticeRound AnnotationModel::archivePage(int page,const QString& batch,bool hiddenOnly) const {
+    PracticeRound r;
+    r.id=QUuid::createUuid().toString(QUuid::WithoutBraces); r.page=page; r.batch=batch;
+    for(const auto& n:notes_) if(n.page==page && (!hiddenOnly || noteHidden(n))) r.notes.append(n);
+    for(const auto& s:strokes_) if(s.page==page && (!hiddenOnly || inkHidden(s))) r.ink.append(s);
+    return r;
+}
+// The first answer written on a hidden page starts a new round: the hidden answers are
+// archived (one undo step of its own) instead of mixing with the new attempt.
+void AnnotationModel::archiveHiddenBeforeEdit(int page) {
+    if(!veils_.contains(page)) return;
+    auto r=archivePage(page,{},true);
+    if(r.notes.isEmpty() && r.ink.isEmpty()) return;
+    r.archived=nextArchiveTime();
+    veils_.remove(page); if(veils_.isEmpty()) bookHidden_=false;
+    Command c; c.archived={r};
+    runCommand(c,true); record(std::move(c));
+    emit roundStarted(page,currentRound(page),true);
+}
+int AnnotationModel::currentRound(int page) const {
+    int count=1;
+    for(const auto& r:rounds_) count+=r.page==page;
+    return count;
+}
+QVariantList AnnotationModel::pageRounds(int page) const {
+    QVariantList result; int number=0;
+    for(const auto& r:rounds_) {
+        if(r.page!=page) continue;
+        auto entry=answerStats(r.notes,r.ink,page);
+        entry.insert("id",r.id); entry.insert("number",++number); entry.insert("book",!r.batch.isEmpty());
+        entry.insert("archived",r.archived.toLocalTime().toString(QStringLiteral("yyyy-MM-dd HH:mm")));
+        result.append(entry);
+    }
+    return result;
+}
+int AnnotationModel::answeredPages() const {
+    QSet<int> pages;
+    for(const auto& n:notes_) pages.insert(n.page);
+    for(const auto& s:strokes_) pages.insert(s.page);
+    return int(pages.size());
+}
+bool AnnotationModel::startRound(int page) {
+    cancelGesture(); finishEditing(); clearInkSelection();
+    auto r=archivePage(page,{},false);
+    if(r.notes.isEmpty() && r.ink.isEmpty()) return false;
+    r.archived=nextArchiveTime();
+    veils_.remove(page); if(veils_.isEmpty()) bookHidden_=false;
+    Command c; c.archived={r};
+    runCommand(c,true); record(std::move(c));
+    emit roundStarted(page,currentRound(page),false);
+    return true;
+}
+int AnnotationModel::startBookRound() {
+    cancelGesture(); finishEditing(); clearInkSelection();
+    QSet<int> pageSet;
+    for(const auto& n:notes_) pageSet.insert(n.page);
+    for(const auto& s:strokes_) pageSet.insert(s.page);
+    if(pageSet.isEmpty()) return 0;
+    QList<int> pages(pageSet.cbegin(),pageSet.cend()); std::sort(pages.begin(),pages.end());
+    const auto batch=QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const auto time=nextArchiveTime();
+    Command c;
+    for(int page:pages) { auto r=archivePage(page,batch,false); r.archived=time; c.archived.append(std::move(r)); }
+    veils_.clear(); bookHidden_=false;
+    runCommand(c,true); record(std::move(c));
+    emit roundStarted(-1,0,false);
+    return int(pages.size());
+}
+QString AnnotationModel::restoreRound(const QString& id) {
+    cancelGesture(); finishEditing(); clearInkSelection();
+    const auto found=std::find_if(rounds_.cbegin(),rounds_.cend(),[&](const auto& r){ return r.id==id; });
+    if(found==rounds_.cend()) return tr("找不到这一轮练习。");
+    const auto source=*found;
+    // Restoring copies the round, so it must fit the workspace limits (current + archive).
+    qsizetype count=notes_.size()+strokes_.size(), points=0;
+    for(const auto& s:strokes_) points+=s.points.size();
+    for(const auto& r:rounds_) { count+=r.notes.size()+r.ink.size(); for(const auto& s:r.ink) points+=s.points.size(); }
+    count+=source.notes.size()+source.ink.size();
+    for(const auto& s:source.ink) points+=s.points.size();
+    if(count>SnapshotLimits::maxAnnotations || points>SnapshotLimits::maxTotalPoints)
+        return tr("恢复后会超出练习容量上限（%1 个标注、%2 个笔迹点）；请先删除较早的轮次。").arg(SnapshotLimits::maxAnnotations).arg(SnapshotLimits::maxTotalPoints);
+    Command c;
+    auto current=archivePage(source.page,{},false);
+    if(!current.notes.isEmpty() || !current.ink.isEmpty()) { current.archived=nextArchiveTime(); c.archived={current}; }
+    // Copies get new ids and creation orders; a grading mark keeps following its answer.
+    auto notes=source.notes; std::sort(notes.begin(),notes.end(),[](const auto& a,const auto& b){ return a.order<b.order; });
+    QHash<QString,QString> ids;
+    for(const auto& n:notes) if(!n.id.endsWith(QStringLiteral("-review"))) ids[n.id]=QUuid::createUuid().toString(QUuid::WithoutBraces);
+    for(auto n:notes) {
+        if(n.id.endsWith(QStringLiteral("-review"))) {
+            const auto answer=ids.value(n.id.chopped(7));
+            if(answer.isEmpty()) continue;
+            n.id=answer+QStringLiteral("-review");
+        } else n.id=ids.value(n.id);
+        n.order=nextTextOrder_++;
+        c.notesAdded.append(std::move(n));
+    }
+    auto ink=source.ink; std::sort(ink.begin(),ink.end(),[](const auto& a,const auto& b){ return a.order<b.order; });
+    for(auto s:ink) { s.id=QUuid::createUuid().toString(QUuid::WithoutBraces); s.order=nextInkOrder_++; c.inkAfter.append(std::move(s)); }
+    veils_.remove(source.page); if(veils_.isEmpty()) bookHidden_=false;
+    runCommand(c,true); record(std::move(c));
+    return {};
+}
+bool AnnotationModel::deleteRound(const QString& id) {
+    cancelGesture(); finishEditing(); clearInkSelection();
+    const auto found=std::find_if(rounds_.cbegin(),rounds_.cend(),[&](const auto& r){ return r.id==id; });
+    if(found==rounds_.cend()) return false;
+    Command c; c.deleted={*found};
+    runCommand(c,true); record(std::move(c));
+    return true;
+}
+void AnnotationModel::setOverlayRound(int page,const QString& id) {
+    if(id.isEmpty()) { if(overlay_.remove(page)) { emit inkChanged(page); practiceTouched(); } return; }
+    const bool known=std::any_of(rounds_.cbegin(),rounds_.cend(),[&](const auto& r){ return r.id==id && r.page==page; });
+    if(!known || overlay_.value(page)==id) return;
+    overlay_[page]=id; emit inkChanged(page); practiceTouched();
+}
+QList<InkStroke> AnnotationModel::overlayStrokes(int page) const {
+    const auto id=overlay_.value(page);
+    if(id.isEmpty()) return {};
+    for(const auto& r:rounds_) if(r.id==id) {
+        auto ink=r.ink; std::sort(ink.begin(),ink.end(),[](const auto& a,const auto& b){ return a.order<b.order; });
+        return ink;
+    }
+    return {};
+}
+QVariantList AnnotationModel::overlayNotes(int page) const {
+    const auto id=overlay_.value(page);
+    const auto g=geometry_.value(page);
+    QVariantList result;
+    if(id.isEmpty() || !g.valid) return result;
+    for(const auto& r:rounds_) if(r.id==id) {
+        for(const auto& n:r.notes) {
+            if(n.text.isEmpty()) continue;
+            const auto p=g.pdfToDisplay.map(n.anchor);
+            result.append(QVariantMap{{"x",p.x()},{"y",p.y()},{"width",n.width/g.units.width()},{"height",n.height/g.units.height()},
+                {"pdfWidth",n.width},{"unitsWidth",g.units.width()},{"text",n.text},{"size",n.fontSize},{"color",n.color},{"family",n.family},{"lineSpacing",n.lineSpacing}});
+        }
+    }
+    return result;
 }

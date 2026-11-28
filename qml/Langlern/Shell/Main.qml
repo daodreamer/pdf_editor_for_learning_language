@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Dialogs
+import QtQuick.Layouts
 
 ApplicationWindow {
     id: window
@@ -165,8 +166,50 @@ ApplicationWindow {
                 nameFilters: [qsTr("PDF 文件 (*.pdf)")]
                 defaultSuffix: "pdf"
                 Component.onCompleted: open()
-                onAccepted: { window.shell.exportPdf(selectedFile); exportLoader.active = false }
+                onAccepted: { window.shell.exportPdf(selectedFile, exportSheet.includeHidden); exportLoader.active = false }
                 onRejected: exportLoader.active = false
+            }
+        }
+    }
+    // What an export contains, said before the file dialog: the current round of every page,
+    // hidden answers included by default (hiding is a view state, not a deletion).
+    Popup {
+        id: exportSheet
+        objectName: "exportSheet"
+        property bool includeHidden: true
+        readonly property int hidden: visible ? window.shell.annotations.hiddenTotal() : 0
+        parent: Overlay.overlay; anchors.centerIn: parent; width: Math.min(420, parent ? parent.width - 32 : 420); padding: 22; modal: true
+        onAboutToShow: includeHidden = true
+        background: Rectangle { readonly property bool blocksInkInput: true; radius: 24; color: shellTheme.card; border.color: shellTheme.line }
+        contentItem: ColumnLayout {
+            spacing: 12
+            Label { text: qsTr("导出新 PDF"); font.pixelSize: 20; font.bold: true; color: shellTheme.text }
+            Label {
+                objectName: "exportSummary"
+                Layout.fillWidth: true; wrapMode: Text.Wrap; color: shellTheme.text
+                text: qsTr("导出每页当前轮的文字答案、笔迹和批改标记；归档的历史练习轮次不导出。原 PDF 保持不变，请选择一个新的文件名。")
+            }
+            DesignSwitch {
+                objectName: "exportIncludeHidden"; theme: shellTheme
+                visible: exportSheet.hidden > 0
+                text: qsTr("包含已隐藏的答案（%1 处）").arg(exportSheet.hidden)
+                checked: exportSheet.includeHidden
+                onToggled: exportSheet.includeHidden = checked
+            }
+            Label {
+                visible: exportSheet.hidden > 0
+                Layout.fillWidth: true; wrapMode: Text.Wrap; color: shellTheme.muted; font.pixelSize: 12
+                text: exportSheet.includeHidden ? qsTr("隐藏只影响屏幕显示，默认照常导出这些答案。")
+                                                : qsTr("这些答案不会出现在导出的 PDF 中，但仍保存在本机练习里。")
+            }
+            RowLayout {
+                Layout.fillWidth: true; spacing: 8
+                Item { Layout.fillWidth: true }
+                DesignButton { theme: shellTheme; text: qsTr("取消"); onClicked: exportSheet.close() }
+                DesignButton {
+                    objectName: "exportChooseFile"; theme: shellTheme; primary: true; text: qsTr("选择文件名…")
+                    onClicked: { exportSheet.close(); exportLoader.active = true }
+                }
             }
         }
     }
@@ -196,8 +239,8 @@ ApplicationWindow {
                         readonly property bool mac: Qt.platform.os === "osx"
                         readonly property string mod: mac ? "⌘" : "Ctrl+"
                         text: (mac
-                            ? qsTr("文件\n⌘O  打开 PDF    ⌘W  关闭文档    ⌘S  保存\n⌘,  外观与布局    ⌘Q  退出\n\n阅读与缩放\n滚动 / 空格 / ⇧空格 / PageUp·PageDown  翻屏\n↑ ↓  滚动    ← →  上一页 / 下一页（放大时左右平移）\n⌘↑ / ⌘↓  首页 / 末页    ⌘⌥G  跳到页码\n⌘+滚动 / 触控板双指捏合  以指针为中心缩放\n⌘+ / ⌘−  放大 / 缩小    ⌘0  适应页宽\n⌃⌘F  全屏    ⌘M  最小化\n\n编辑\n⌘Z / ⇧⌘Z  撤销 / 重做（编辑时为文字历史）\n⌘C  复制选中原文\n⇧⌘A  自动：空白输入 / 原文拖选\n⇧⌘S / ⇧⌘T  原文选择 / 输入答案\n⇧⌘P / ⇧⌘E / ⇧⌘M  画笔 / 整笔擦除 / 移动笔迹\n⇧⌘L  切换主题\nEsc / ⌘↩  完成文字编辑\n⌘⌦（fn+⌘+Delete）  删除选中文字框\nDelete  删除选中笔迹\n\n答案自动保存在本机。导出时使用新的 PDF 文件名。\n⌘?  快捷键    Tab / ⇧Tab  切换焦点")
-                            : qsTr("文件\nCtrl+O  打开 PDF    Ctrl+W / Ctrl+F4  关闭文档    Ctrl+S  保存\nCtrl+,  外观与布局    Ctrl+Q  退出\n\n阅读与缩放\n滚轮 / 空格 / Shift+空格 / PageUp·PageDown  翻屏\n↑ ↓  滚动    ← →  上一页 / 下一页（放大时左右平移）\nHome / End（Ctrl+Home / Ctrl+End）  首页 / 末页    Ctrl+G  跳到页码\nCtrl+滚轮 / 触控板双指捏合  以指针为中心缩放\nCtrl++ / Ctrl+−  放大 / 缩小    Ctrl+0  适应页宽\nF11  全屏\n\n编辑\nCtrl+Z / Ctrl+Y  撤销 / 重做（编辑时为文字历史）\nCtrl+C  复制选中原文\nCtrl+Shift+A  自动：空白输入 / 原文拖选\nCtrl+Shift+S / T  原文选择 / 输入答案\nCtrl+Shift+P / E / M  画笔 / 整笔擦除 / 移动笔迹\nCtrl+Shift+L  切换主题\nEsc / Ctrl+Enter  完成文字编辑\nCtrl+Delete  删除选中文字框\nDelete  删除选中笔迹\n\n答案自动保存在本机。导出时使用新的 PDF 文件名。\nF1  快捷键    Tab / Shift+Tab  切换焦点"))
+                            ? qsTr("文件\n⌘O  打开 PDF    ⌘W  关闭文档    ⌘S  保存\n⌘,  外观与布局    ⌘Q  退出\n\n阅读与缩放\n滚动 / 空格 / ⇧空格 / PageUp·PageDown  翻屏\n↑ ↓  滚动    ← →  上一页 / 下一页（放大时左右平移）\n⌘↑ / ⌘↓  首页 / 末页    ⌘⌥G  跳到页码\n⌘+滚动 / 触控板双指捏合  以指针为中心缩放\n⌘+ / ⌘−  放大 / 缩小    ⌘0  适应页宽\n⌃⌘F  全屏    ⌘M  最小化\n\n编辑\n⌘Z / ⇧⌘Z  撤销 / 重做（编辑时为文字历史）\n⌘C  复制选中原文\n⇧⌘A  自动：空白输入 / 原文拖选\n⇧⌘S / ⇧⌘T  原文选择 / 输入答案\n⇧⌘P / ⇧⌘E / ⇧⌘M  画笔 / 整笔擦除 / 移动笔迹\n⇧⌘L  切换主题\nEsc / ⌘↩  完成文字编辑\n⌘⌦（fn+⌘+Delete）  删除选中文字框\nDelete  删除选中笔迹\n\n重做练习\nH / ⇧H  隐藏或显示本页 / 全书答案（只影响显示）\n··· → 练习轮次  开始新一轮、对照、恢复历史轮次\n\n答案自动保存在本机。导出时使用新的 PDF 文件名。\n⌘?  快捷键    Tab / ⇧Tab  切换焦点")
+                            : qsTr("文件\nCtrl+O  打开 PDF    Ctrl+W / Ctrl+F4  关闭文档    Ctrl+S  保存\nCtrl+,  外观与布局    Ctrl+Q  退出\n\n阅读与缩放\n滚轮 / 空格 / Shift+空格 / PageUp·PageDown  翻屏\n↑ ↓  滚动    ← →  上一页 / 下一页（放大时左右平移）\nHome / End（Ctrl+Home / Ctrl+End）  首页 / 末页    Ctrl+G  跳到页码\nCtrl+滚轮 / 触控板双指捏合  以指针为中心缩放\nCtrl++ / Ctrl+−  放大 / 缩小    Ctrl+0  适应页宽\nF11  全屏\n\n编辑\nCtrl+Z / Ctrl+Y  撤销 / 重做（编辑时为文字历史）\nCtrl+C  复制选中原文\nCtrl+Shift+A  自动：空白输入 / 原文拖选\nCtrl+Shift+S / T  原文选择 / 输入答案\nCtrl+Shift+P / E / M  画笔 / 整笔擦除 / 移动笔迹\nCtrl+Shift+L  切换主题\nEsc / Ctrl+Enter  完成文字编辑\nCtrl+Delete  删除选中文字框\nDelete  删除选中笔迹\n\n重做练习\nH / Shift+H  隐藏或显示本页 / 全书答案（只影响显示）\n··· → 练习轮次  开始新一轮、对照、恢复历史轮次\n\n答案自动保存在本机。导出时使用新的 PDF 文件名。\nF1  快捷键    Tab / Shift+Tab  切换焦点"))
                         lineHeight: 1.6
                         wrapMode: Text.WordWrap
                         color: shellTheme.text
@@ -215,6 +258,6 @@ ApplicationWindow {
         services: offline
         inputSources: inputSources
         onOpenRequested: window.chooseFile()
-        onExportRequested: exportLoader.active = true
+        onExportRequested: exportSheet.open()
     }
 }

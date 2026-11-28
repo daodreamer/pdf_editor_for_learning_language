@@ -1,5 +1,6 @@
 #pragma once
 #include <QColor>
+#include <QDateTime>
 #include <QPointF>
 #include <QList>
 #include <QString>
@@ -43,9 +44,26 @@ struct InkStroke {
     QList<float> pressure;
     bool operator==(const InkStroke&) const = default;
 };
-struct AnnotationSnapshot {
+// Whole-workspace limits (current round plus every archived round), checked on save/restore.
+namespace SnapshotLimits {
+inline constexpr qsizetype maxAnnotations = 100000;
+inline constexpr qsizetype maxTotalPoints = 2000000;
+}
+// One archived practice round of one page (docs/STORAGE_FORMAT.md, schema 2). A book-wide
+// "new round" archives every answered page as its own round sharing one batch id.
+struct PracticeRound {
+    QString id;
+    int page = 0;
+    QString batch; // empty = archived from this page alone
+    QDateTime archived; // UTC
     QList<TextAnnotation> notes;
     QList<InkStroke> ink;
+    bool operator==(const PracticeRound&) const = default;
+};
+struct AnnotationSnapshot {
+    QList<TextAnnotation> notes; // the current round
+    QList<InkStroke> ink;
     quint64 revision = 0;
+    QList<PracticeRound> rounds; // archived rounds, oldest first; empty for schema 1 files
 };
 Q_DECLARE_METATYPE(AnnotationSnapshot)

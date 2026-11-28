@@ -31,14 +31,47 @@ Item {
     Shortcut { sequence: "C"; enabled: pane.visible && !pane.editingField; onActivated: pane.pick(3) }
     Shortcut { sequence: "R"; enabled: pane.visible && !pane.editingField; onActivated: pane.pick(4) }
     Shortcut { sequence: "E"; enabled: pane.visible && !pane.editingField; onActivated: pane.pick(5) }
+    // Redo mode: H hides or shows this page's answers, Shift+H the whole book (display only).
+    // Bare keys like the tool keys, so they never fire while typing an answer; ⌘H stays macOS "Hide".
+    readonly property int practicePage: shell.currentPage - 1
+    function togglePageHidden(): void {
+        const notes = shell.annotations
+        const hide = !notes.pageHidden(practicePage)
+        notes.setPageHidden(practicePage, hide)
+        feedback.text = hide ? qsTr("已隐藏本页答案，可直接重新作答（首次作答即开始新一轮）· 再按 H 显示") : qsTr("已显示本页答案")
+        feedback.open()
+    }
+    function toggleBookHidden(): void {
+        const notes = shell.annotations
+        const hide = !notes.bookHidden
+        notes.setBookHidden(hide)
+        feedback.text = hide ? qsTr("已隐藏全书答案 · %1 全部显示").arg(Qt.platform.os === "osx" ? "⇧H" : "Shift+H") : qsTr("已显示全书答案")
+        feedback.open()
+    }
+    function startPageRound(): void {
+        if (!shell.annotations.startRound(practicePage)) { feedback.text = qsTr("本页还没有答案，无需开始新一轮"); feedback.open() }
+    }
+    Shortcut { objectName: "hidePageShortcut"; sequence: "H"; enabled: pane.visible && !pane.editingField && pane.shell.pageCount > 0; onActivated: pane.togglePageHidden() }
+    Shortcut { objectName: "hideBookShortcut"; sequence: "Shift+H"; enabled: pane.visible && !pane.editingField && pane.shell.pageCount > 0; onActivated: pane.toggleBookHidden() }
+    Connections {
+        target: pane.shell.annotations
+        function onPageRevealed(page: int): void { pane.feedback.text = qsTr("撤销涉及第 %1 页已隐藏的答案，已显示该页").arg(page + 1); pane.feedback.open() }
+        function onRoundStarted(page: int, round: int, automatic: bool): void {
+            pane.feedback.text = page < 0 ? qsTr("已为全书开始新一轮；原答案已归档，可撤销")
+                : automatic ? qsTr("已为第 %1 页开始第 %2 轮，隐藏的答案已归档（撤销可恢复）").arg(page + 1).arg(round)
+                : qsTr("已为第 %1 页开始第 %2 轮；原答案已归档，可撤销").arg(page + 1).arg(round)
+            pane.feedback.open()
+        }
+    }
     // Go to page: ⌘⌥G on macOS (Preview), Ctrl+G on Windows.
     Shortcut {
         sequence: Qt.platform.os === "osx" ? "Ctrl+Alt+G" : "Ctrl+G"
         enabled: pane.visible && pane.shell.pageCount > 0
         onActivated: { pageNumber.contentItem.forceActiveFocus(); pageNumber.contentItem.selectAll() }
     }
+    property alias feedback: feedback
     ToolTip {
-        id: feedback; parent: pane; timeout: 6000
+        id: feedback; objectName: "readerFeedback"; parent: pane; timeout: 6000
         // A quiet rounded toast above the bottom capsules instead of the stock tooltip box.
         x: Math.round((pane.width - width) / 2); y: pane.height - height - 68
         padding: 10; leftPadding: 18; rightPadding: 18
@@ -425,6 +458,12 @@ Item {
                     color: pane.theme.text; lineHeight: 1.8
                 }
                 Label { text: qsTr("输入或手写答案，再用批改工具标记。\n正确与错误标记随答案一同保存、导出。"); Layout.fillWidth: true; wrapMode: Text.WordWrap; color: pane.theme.muted; font.pixelSize: 12 }
+                Label {
+                    text: { const v = pane.shell.annotations.practiceVersion; const r = pane.shell.annotations.currentRound(pane.practicePage); return r > 1 ? qsTr("第 %1 轮 · 历史 %2 轮").arg(r).arg(r - 1) : qsTr("第 1 轮") }
+                    color: pane.theme.text
+                }
+                DesignButton { theme: pane.theme; text: { const v = pane.shell.annotations.practiceVersion; return pane.shell.annotations.pageHidden(pane.practicePage) ? qsTr("显示答案") : qsTr("隐藏答案") } onClicked: pane.togglePageHidden() }
+                DesignButton { theme: pane.theme; text: qsTr("练习轮次…"); onClicked: rounds.open() }
                 DesignButton { theme: pane.theme; text: qsTr("本页书签"); selected: true; onClicked: pane.workspace.toggleBookmark(pane.shell.currentPage) }
                 DesignButton { theme: pane.theme; text: qsTr("生词本"); onClicked: pane.wordsRequested() }
                 Item { Layout.fillHeight: true }
@@ -478,6 +517,19 @@ Item {
         DocumentMenuItem { symbol: "save"; text: qsTr("保存"); keyHint: Qt.platform.os === "osx" ? "⌘S" : "Ctrl+S"; enabled: pane.shell.storageReady; onTriggered: pane.shell.saveNow() }
         DocumentMenuItem { symbol: "export"; objectName: "exportButton"; text: qsTr("导出新 PDF…"); enabled: pane.shell.storageReady && !pane.shell.exporting; onTriggered: pane.exportRequested() }
         DocumentMenuSeparator {}
+        // Redo mode: hide answers to practise again; rounds keep earlier attempts.
+        DocumentMenuItem {
+            symbol: "transparent"; objectName: "menuHidePage"; keyHint: "H"; enabled: pane.shell.storageReady
+            text: { const v = pane.shell.annotations.practiceVersion; return pane.shell.annotations.pageHidden(pane.practicePage) ? qsTr("显示本页答案") : qsTr("隐藏本页答案") }
+            onTriggered: pane.togglePageHidden()
+        }
+        DocumentMenuItem {
+            symbol: "transparent"; objectName: "menuHideBook"; keyHint: Qt.platform.os === "osx" ? "⇧H" : "Shift+H"; enabled: pane.shell.storageReady
+            text: pane.shell.annotations.bookHidden ? qsTr("显示全书答案") : qsTr("隐藏全书答案")
+            onTriggered: pane.toggleBookHidden()
+        }
+        DocumentMenuItem { symbol: "redo"; objectName: "menuPracticeRounds"; text: qsTr("练习轮次…"); enabled: pane.shell.storageReady; onTriggered: rounds.open() }
+        DocumentMenuSeparator {}
         DocumentMenuItem { symbol: "auto"; objectName: "optimizeScanAction"; text: qsTr("扫描优化…"); enabled: pane.shell.storageReady && !pane.shell.scanning && !pane.shell.exporting; onTriggered: pane.optimizeRequested() }
         DocumentMenuItem { symbol: "read"; text: qsTr("OCR 与朗读设置…"); onTriggered: ocr.open() }
         DocumentMenuItem { symbol: "audio"; text: qsTr("停止朗读"); onTriggered: pane.services.stopSpeaking() }
@@ -486,6 +538,134 @@ Item {
         DocumentMenuItem { symbol: "theme"; text: qsTr("外观与布局"); onTriggered: pane.settingsRequested() }
         DocumentMenuSeparator {}
         DocumentMenuItem { symbol: "close"; text: qsTr("关闭文档"); keyHint: Qt.platform.os === "osx" ? "⌘W" : "Ctrl+W"; onTriggered: pane.shell.clearSelection() }
+    }
+    Popup {
+        id: rounds
+        objectName: "practiceRoundsPopup"
+        parent: Overlay.overlay; anchors.centerIn: parent; width: Math.min(440, parent ? parent.width - 32 : 440); padding: 22; modal: true
+        height: Math.min(roundsContent.implicitHeight + 44, parent ? parent.height - 32 : 640)
+        background: Rectangle { readonly property bool blocksInkInput: true; radius: 24; color: pane.theme.card; border.color: pane.theme.line }
+        readonly property var history: { const v = pane.shell.annotations.practiceVersion + pane.shell.annotations.version; return pane.shell.annotations.pageRounds(pane.practicePage) }
+        readonly property var current: { const v = pane.shell.annotations.version; return pane.shell.annotations.pageStats(pane.practicePage) }
+        readonly property string overlay: { const v = pane.shell.annotations.practiceVersion; return pane.shell.annotations.overlayRound(pane.practicePage) }
+        property string pendingDelete: ""
+        property string error: ""
+        onAboutToShow: { pendingDelete = ""; error = "" }
+        contentItem: ScrollView {
+            id: roundsScroll
+            clip: true
+            contentWidth: availableWidth
+            ColumnLayout {
+                id: roundsContent
+                width: roundsScroll.availableWidth
+                spacing: 12
+                Label { text: qsTr("练习轮次 · 第 %1 页").arg(pane.shell.currentPage); font.pixelSize: 20; font.bold: true; color: pane.theme.text }
+                Label {
+                    text: qsTr("开始新一轮会把本页当前答案归档，页面清空后重新作答；历史轮次可对照、恢复或删除。导出只包含当前轮。")
+                    wrapMode: Text.Wrap; Layout.fillWidth: true; color: pane.theme.muted; font.pixelSize: 12
+                }
+                Rectangle {
+                    Layout.fillWidth: true; implicitHeight: currentRow.implicitHeight + 20; radius: 14; color: pane.theme.tint
+                    RowLayout {
+                        id: currentRow
+                        anchors.fill: parent; anchors.margins: 10; spacing: 8
+                        Label {
+                            Layout.fillWidth: true; color: pane.theme.text; wrapMode: Text.Wrap
+                            text: qsTr("第 %1 轮（当前）  答案 %2 · ✓ %3 · × %4 · 笔迹 %5").arg(rounds.history.length + 1)
+                                .arg(rounds.current.answered).arg(rounds.current.right).arg(rounds.current.wrong).arg(rounds.current.ink)
+                                + (rounds.current.hidden > 0 ? qsTr("（%1 处已隐藏）").arg(rounds.current.hidden) : "")
+                        }
+                        DesignButton {
+                            objectName: "startPageRound"; theme: pane.theme; primary: true; text: qsTr("开始新一轮")
+                            enabled: rounds.current.answered + rounds.current.ink + rounds.current.right + rounds.current.wrong > 0
+                            onClicked: pane.startPageRound()
+                        }
+                    }
+                }
+                Repeater {
+                    model: rounds.history.slice().reverse()
+                    delegate: Rectangle {
+                        id: roundRow
+                        required property var modelData
+                        Layout.fillWidth: true; implicitHeight: roundColumn.implicitHeight + 20; radius: 14
+                        color: "transparent"; border.color: pane.theme.line
+                        ColumnLayout {
+                            id: roundColumn
+                            anchors.fill: parent; anchors.margins: 10; spacing: 6
+                            Label {
+                                Layout.fillWidth: true; color: pane.theme.text; wrapMode: Text.Wrap
+                                text: qsTr("第 %1 轮 · %2%3").arg(roundRow.modelData.number).arg(roundRow.modelData.archived).arg(roundRow.modelData.book ? qsTr(" · 全书") : "")
+                            }
+                            Label {
+                                color: pane.theme.muted; font.pixelSize: 12
+                                text: qsTr("答案 %1 · ✓ %2 · × %3 · 笔迹 %4").arg(roundRow.modelData.answered).arg(roundRow.modelData.right).arg(roundRow.modelData.wrong).arg(roundRow.modelData.ink)
+                            }
+                            RowLayout {
+                                spacing: 6
+                                DesignButton {
+                                    objectName: "compareRound"; theme: pane.theme; implicitHeight: 30
+                                    text: qsTr("对照"); selected: rounds.overlay === roundRow.modelData.id
+                                    onClicked: pane.shell.annotations.setOverlayRound(pane.practicePage, selected ? "" : roundRow.modelData.id)
+                                }
+                                DesignButton {
+                                    objectName: "restoreRound"; theme: pane.theme; implicitHeight: 30; text: qsTr("恢复")
+                                    onClicked: rounds.error = pane.shell.annotations.restoreRound(roundRow.modelData.id)
+                                }
+                                Item { Layout.fillWidth: true }
+                                DesignButton {
+                                    objectName: "deleteRound"; theme: pane.theme; implicitHeight: 30
+                                    text: rounds.pendingDelete === roundRow.modelData.id ? qsTr("确认删除") : qsTr("删除")
+                                    onClicked: {
+                                        if (rounds.pendingDelete !== roundRow.modelData.id) { rounds.pendingDelete = roundRow.modelData.id; return }
+                                        rounds.pendingDelete = ""
+                                        pane.shell.annotations.deleteRound(roundRow.modelData.id)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Label {
+                    visible: rounds.error.length > 0
+                    text: rounds.error; wrapMode: Text.Wrap; Layout.fillWidth: true; color: pane.theme.danger; font.pixelSize: 12
+                }
+                Label {
+                    text: qsTr("恢复：当前答案先归档为新一轮，再把所选轮次复制为当前轮。删除可用撤销找回，关闭文档后不可恢复。")
+                    wrapMode: Text.Wrap; Layout.fillWidth: true; color: pane.theme.muted; font.pixelSize: 12
+                }
+                RowLayout {
+                    Layout.fillWidth: true; spacing: 8
+                    DesignButton { objectName: "startBookRound"; theme: pane.theme; text: qsTr("全书开始新一轮…"); onClicked: bookRound.open() }
+                    Item { Layout.fillWidth: true }
+                    DesignButton { theme: pane.theme; text: qsTr("完成"); onClicked: rounds.close() }
+                }
+            }
+        }
+    }
+    Popup {
+        id: bookRound
+        objectName: "bookRoundPopup"
+        parent: Overlay.overlay; anchors.centerIn: parent; width: Math.min(380, parent ? parent.width - 32 : 380); padding: 22; modal: true
+        background: Rectangle { readonly property bool blocksInkInput: true; radius: 24; color: pane.theme.card; border.color: pane.theme.line }
+        readonly property int pages: { const v = pane.shell.annotations.version; return visible ? pane.shell.annotations.answeredPages() : 0 }
+        contentItem: ColumnLayout {
+            spacing: 12
+            Label { text: qsTr("全书开始新一轮"); font.pixelSize: 18; font.bold: true; color: pane.theme.text }
+            Label {
+                Layout.fillWidth: true; wrapMode: Text.Wrap; color: pane.theme.muted
+                text: bookRound.pages > 0 ? qsTr("将 %1 页的当前答案各自归档为一轮，所有页面清空后重新作答。可以撤销，历史轮次可随时对照或恢复。").arg(bookRound.pages)
+                                          : qsTr("全书还没有答案。")
+            }
+            RowLayout {
+                Layout.fillWidth: true; spacing: 8
+                Item { Layout.fillWidth: true }
+                DesignButton { theme: pane.theme; text: qsTr("取消"); onClicked: bookRound.close() }
+                DesignButton {
+                    objectName: "confirmBookRound"; theme: pane.theme; primary: true; text: qsTr("开始新一轮"); enabled: bookRound.pages > 0
+                    onClicked: { pane.shell.annotations.startBookRound(); bookRound.close() }
+                }
+            }
+        }
     }
     Popup {
         id: ocr
