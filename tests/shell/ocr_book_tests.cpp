@@ -264,10 +264,10 @@ private slots:
         QVERIFY(!QFileInfo::exists(root + "/" + a + "/" + p2));
 
         // Per-book cap: a write past it is refused with a visible reason.
-        OcrBookStore small(root, {2048, OcrBookConfig::totalBytes, 2});
-        small.open(b, p1, "fra", 3);
-        QVERIFY(small.write({0, false, sampleText("short"), toPdf}, &error));
-        QVERIFY(!small.write({1, false, sampleText(QString(400, QChar('x'))), toPdf}, &error));
+        OcrBookStore capped(root, {2048, OcrBookConfig::totalBytes, 2});
+        capped.open(b, p1, "fra", 3);
+        QVERIFY(capped.write({0, false, sampleText("short"), toPdf}, &error));
+        QVERIFY(!capped.write({1, false, sampleText(QString(400, QChar('x'))), toPdf}, &error));
         QVERIFY2(error.contains("MiB"), qPrintable(error));
 
         // Total cap: least recently used other books go first, never the open one.
