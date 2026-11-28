@@ -52,7 +52,9 @@ foreach(index RANGE 0 ${last} 3)
     list(GET langlern_suites ${index} test_name)
     list(GET langlern_suites ${suite_index} suite)
     list(GET langlern_suites ${timeout_index} timeout)
-    add_test(NAME ${test_name} COMMAND langlern_tests ${suite} -o ${CMAKE_CURRENT_BINARY_DIR}/${suite}.txt,txt)
+    # The file log is uploaded as a CI artifact; the stdout log lets ctest --output-on-failure
+    # print a failing suite into the job log, so every attempt keeps its failure details.
+    add_test(NAME ${test_name} COMMAND langlern_tests ${suite} -o ${CMAKE_CURRENT_BINARY_DIR}/${suite}.txt,txt -o -,txt)
     set_tests_properties(${test_name} PROPERTIES TIMEOUT ${timeout})
 endforeach()
 add_test(NAME shell_startup COMMAND langlern --startup-probe --quit-after-ready)

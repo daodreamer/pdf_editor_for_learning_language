@@ -32,7 +32,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: reader-test-results
+          name: reader-test-results-attempt${{ github.run_attempt }}
           path: |
             build/windows/Testing/Temporary/
             build/windows/tests/shell/*.txt
@@ -75,7 +75,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: reader-test-results-macos
+          name: reader-test-results-macos-attempt${{ github.run_attempt }}
           path: |
             build/macos/Testing/Temporary/
             build/macos/tests/shell/*.txt

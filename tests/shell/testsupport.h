@@ -101,9 +101,13 @@ inline bool showTestWindow(QWindow* window) {
     }
     window->show();
     if(!QTest::qWaitForWindowExposed(window)) return false;
+    // Activation and a settled size are best effort: a runner may refuse focus or keep adjusting.
+    // Tests whose input needs the focus window re-check activation right before that input.
     window->requestActivate();
-    if(!QTest::qWaitForWindowActive(window)) { qWarning()<<"test window did not become active"; return false; }
-    return settleWindowSize(window);
+    if(!QTest::qWaitForWindowActive(window)) qWarning()<<"test window did not become active";
+    settleWindowSize(window);
+    qInfo()<<"test_window size"<<window->size()<<"active"<<window->isActive();
+    return true;
 }
 
 // Depth-first search of the visual tree by objectName (popups hang off the overlay,

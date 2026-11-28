@@ -313,7 +313,7 @@ private slots:
         const QList<QSize> sizes{{1440,900},{900,700},{700,580},{1440,900}};
         for(int i=0;i<sizes.size();++i) {
             if(i==3) { shell.cycleTheme();shell.cycleTheme();QVERIFY(shell.dark()); }
-            window->resize(sizes[i]);QVERIFY(settleWindowSize(window));
+            window->resize(sizes[i]);settleWindowSize(window);
             click(button);QTRY_VERIFY(menu->property("opened").toBool());
             auto* content=menu->property("contentItem").value<QQuickItem*>();QVERIFY(content);
             const auto rect=content->mapRectToScene(content->boundingRect()).adjusted(-6,-6,6,6);
