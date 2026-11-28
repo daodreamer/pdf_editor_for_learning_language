@@ -65,26 +65,30 @@ private slots:
         engine.setInitialProperties({{"shell",QVariant::fromValue(&s)}});engine.loadFromModule("Langlern.Shell","Main");
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));QVERIFY(window);window->show();QVERIFY(QTest::qWaitForWindowExposed(window));
         s.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/text.pdf"));QTRY_VERIFY(s.storageReady());QTRY_VERIFY(!s.busy());
+        // Tool shortcuts only fire in the focus window and a deactivation cancels a stroke. Hosted
+        // macOS runners activate the window late or hand activation away, so (re)activate before
+        // every tool switch instead of assuming the exposed window is active.
+        const auto tool=[&](Qt::Key key){window->requestActivate();if(!QTest::qWaitForWindowActive(window))return false;QTest::keyClick(window,key,Qt::ControlModifier|Qt::ShiftModifier);return true;};
         s.setZoom(.65);s.setDoublePage(true);QCOMPARE(s.zoom(),1.0);
         QTRY_VERIFY(s.annotations()->geometry(1).valid);QTRY_VERIFY(s.textSelection()->snapshot(1));QTest::qWait(150);
         auto* viewport=findItem(window->contentItem(),"pdfViewport");QVERIFY(viewport);
         const auto point=[&](int page,double x,double y){return viewport->mapToScene(QPointF(s.pageLeft(page)+x*s.pageWidth()-viewport->property("contentX").toDouble(),s.pageTop(page)+y*s.pageHeight(page)-viewport->property("contentY").toDouble())).toPoint();};
         const auto data=s.textSelection()->snapshot(1);int hello=-1;for(int i=0;i<data->characters.size();++i)if(data->characters[i].unicode==U'H'&&data->characters[i].visible){hello=i;break;}QVERIFY(hello>=0);
         const auto first=data->characters[hello].box.center(),last=data->characters[hello+10].box.center();
-        QTest::keyClick(window,Qt::Key_S,Qt::ControlModifier|Qt::ShiftModifier);
+        QVERIFY(tool(Qt::Key_S));
         QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,point(1,first.x(),first.y()));QTest::mouseMove(window,point(1,last.x(),last.y()),30);QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,point(1,last.x(),last.y()));
         QTRY_COMPARE(s.textSelection()->text(),QStringLiteral("Hello World"));QCOMPARE(s.currentPage(),2);
-        QTest::keyClick(window,Qt::Key_T,Qt::ControlModifier|Qt::ShiftModifier);QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,point(1,.2,.5));
+        QVERIFY(tool(Qt::Key_T));QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,point(1,.2,.5));
         QTRY_COMPARE(s.annotations()->snapshot().size(),1);QCOMPARE(s.annotations()->snapshot().first().page,1);
         for(char c:QByteArray("answer"))QTest::keyClick(window,c);QTest::keyClick(window,Qt::Key_Escape);
         QCOMPARE(s.annotations()->snapshot().first().text,QStringLiteral("answer"));
         auto* note=findItem(window->contentItem(),"annotationEditor");QVERIFY(note);QVERIFY(note->mapToScene(QPointF(0,0)).x()>point(0,1,0).x());
-        QTest::keyClick(window,Qt::Key_P,Qt::ControlModifier|Qt::ShiftModifier);
+        QVERIFY(tool(Qt::Key_P));
         QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,point(1,.2,.7));QTest::mouseMove(window,point(1,.6,.7),20);QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,point(1,.6,.7));
         QCOMPARE(s.annotations()->inkSnapshot().size(),1);QCOMPARE(s.annotations()->inkSnapshot().first().page,1);
         const auto normalized=s.annotations()->geometry(1).pdfToDisplay.map(s.annotations()->inkSnapshot().first().points.first());QVERIFY(std::abs(normalized.x()-.2)<.005);QVERIFY(std::abs(normalized.y()-.7)<.005);
         const auto output=qEnvironmentVariable("LANGLERN_SCREENSHOT_DIR");if(!output.isEmpty()){QTest::qWait(100);QVERIFY(window->grabWindow().save(QDir(output).filePath("two-page.png")));}
-        QTest::keyClick(window,Qt::Key_E,Qt::ControlModifier|Qt::ShiftModifier);QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,point(1,.4,.7));QVERIFY(s.annotations()->inkSnapshot().isEmpty());
+        QVERIFY(tool(Qt::Key_E));QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,point(1,.4,.7));QVERIFY(s.annotations()->inkSnapshot().isEmpty());
         const auto savedAnchor=s.annotations()->snapshot().first().anchor;
         s.setZoom(1.2);QTRY_VERIFY(!s.busy());QTest::qWait(100);
         const auto noteAnchor=s.annotations()->geometry(1).pdfToDisplay.map(savedAnchor);
@@ -94,7 +98,7 @@ private slots:
         const auto inView=[&](QPointF p){return viewport->mapRectToScene(viewport->boundingRect()).contains(p);};
         if(!inView(point(1,.2,.7)) || !inView(point(1,.4,.7))) { s.goToPage(2);QTRY_VERIFY(!s.busy());QTest::qWait(100); }
         QVERIFY2(inView(point(1,.2,.7)) && inView(point(1,.4,.7)),"pen target on page 1 is outside the viewport");
-        QTest::keyClick(window,Qt::Key_P,Qt::ControlModifier|Qt::ShiftModifier);QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,point(1,.2,.7));QTest::mouseMove(window,point(1,.4,.7),20);
+        QVERIFY(tool(Qt::Key_P));QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,point(1,.2,.7));QTest::mouseMove(window,point(1,.4,.7),20);
         QVERIFY(s.annotations()->gestureActive());s.setDoublePage(false);QVERIFY(!s.annotations()->gestureActive());QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,point(0,.4,.7));QVERIFY(s.annotations()->inkSnapshot().isEmpty());
         QCOMPARE(s.annotations()->snapshot().first().anchor,savedAnchor);s.setDoublePage(true);
         s.goToPage(6);QTest::qWait(80);QCOMPARE(s.currentPage(),6);s.updateViewport(s.scrollOffset(),viewport->height(),viewport->width(),window->devicePixelRatio());QCOMPARE(s.currentPage(),6);
