@@ -239,7 +239,10 @@ private slots:
     void doublePageShortLastSpreadKeepsTarget() {
         const auto path=caseWorkspace->filePath("landscape.pdf");
         {QPdfWriter writer(path);writer.setResolution(72);writer.setPageSize(QPageSize(QSizeF(800,600),QPageSize::Point));QPainter painter(&writer);for(int i=0;i<4;++i){if(i)QVERIFY(writer.newPage());painter.drawText(40,80,QStringLiteral("Page %1").arg(i+1));}}
-        ShellState s;s.updateViewport(0,700,1000,1);s.selectFile(QUrl::fromLocalFile(path));QTRY_VERIFY(s.storageReady());QTRY_COMPARE(s.model().nextUnknown(),-1);
+        ShellState s;s.updateViewport(0,700,1000,1);s.selectFile(QUrl::fromLocalFile(path));QTRY_VERIFY(s.storageReady());
+        // Storage loads on its own thread and can finish before the first PDF frame; until then the
+        // model is empty, so nextUnknown()==-1 holds trivially and goToPage(3) is out of range.
+        QTRY_COMPARE(s.pageCount(),4);QTRY_COMPARE(s.model().nextUnknown(),-1);
         s.setDoublePage(true);s.goToPage(3);QCOMPARE(s.currentPage(),3);QVERIFY(s.scrollOffset()<s.pageTop(2));
         s.updateViewport(s.scrollOffset(),700,1000,1);QCOMPARE(s.currentPage(),3);
         s.focusPage(3);s.updateViewport(s.scrollOffset(),700,1000,1);QCOMPARE(s.currentPage(),4);
