@@ -63,7 +63,7 @@ private slots:
         ShellState s;QQmlApplicationEngine engine;QStringList warnings;
         connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError>& errors){for(const auto& e:errors)warnings.append(e.toString());});
         engine.setInitialProperties({{"shell",QVariant::fromValue(&s)}});engine.loadFromModule("Langlern.Shell","Main");
-        auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));QVERIFY(window);window->show();QVERIFY(QTest::qWaitForWindowExposed(window));
+        auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));QVERIFY(window);QVERIFY(showTestWindow(window));
         s.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/text.pdf"));QTRY_VERIFY(s.storageReady());QTRY_VERIFY(!s.busy());
         // Tool shortcuts only fire in the focus window and a deactivation cancels a stroke. Hosted
         // macOS runners activate the window late or hand activation away, so (re)activate before
@@ -116,7 +116,7 @@ private slots:
         connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError>& errors){for(const auto& e:errors)warnings.append(e.toString());});
         engine.setInitialProperties({{"shell",QVariant::fromValue(&s)}});engine.loadFromModule("Langlern.Shell","Main");
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));QVERIFY(window);
-        window->resize(1200,800);window->show();QVERIFY(QTest::qWaitForWindowExposed(window));
+        window->resize(1200,800);QVERIFY(showTestWindow(window));
         s.selectFile(QUrl::fromLocalFile(fixture));QTRY_VERIFY(s.storageReady());
         QQuickItem* viewport=nullptr;QTRY_VERIFY((viewport=findItem(window->contentItem(),"pdfViewport")));
         s.setZoom(2);QTRY_VERIFY(!s.busy());QTest::qWait(200);
@@ -196,7 +196,7 @@ private slots:
         connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError>& errors){for(const auto& e:errors)warnings.append(e.toString());});
         engine.setInitialProperties({{"shell",QVariant::fromValue(&s)}});engine.loadFromModule("Langlern.Shell","Main");
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));QVERIFY(window);
-        window->resize(size);window->show();QVERIFY(QTest::qWaitForWindowExposed(window));
+        window->resize(size);QVERIFY(showTestWindow(window));
         s.selectFile(QUrl::fromLocalFile(path));QTRY_VERIFY_WITH_TIMEOUT(s.storageReady(),30000);
         QQuickItem* viewport=nullptr;QTRY_VERIFY((viewport=findItem(window->contentItem(),"pdfViewport")));
         QTRY_COMPARE(s.pageCount(),153);s.setZoom(zoom);s.goToPage(20);
@@ -389,10 +389,7 @@ private slots:
         QVERIFY(window);
         window->setPersistentSceneGraph(false);
         window->setPersistentGraphics(false);
-        window->show();
-        QVERIFY(QTest::qWaitForWindowExposed(window));
-        window->requestActivate();
-        QVERIFY(QTest::qWaitForWindowActive(window));
+        QVERIFY(showTestWindow(window));
         QQuickItem* viewport=nullptr;
         const auto visibleReady=[&] {
             if (!viewport || s.pageCount()==0 || viewport->height()<=0) return false;

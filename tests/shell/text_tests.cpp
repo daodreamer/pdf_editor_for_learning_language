@@ -36,8 +36,7 @@ private slots:
         engine.loadFromModule("Langlern.Shell","Main");
         QVERIFY(!engine.rootObjects().isEmpty());
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().first()); QVERIFY(window);
-        window->show();
-        QVERIFY(QTest::qWaitForWindowExposed(window));
+        QVERIFY(showTestWindow(window));
         shell.selectFile(QUrl::fromLocalFile(fixture));
         auto* s=shell.textSelection();
         QTRY_VERIFY(s->snapshot(0));

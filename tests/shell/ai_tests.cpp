@@ -172,7 +172,7 @@ private slots:
         component.setData("import QtQuick\nItem { width: 300; height: 200; Rectangle { x: 100; y: 50; width: 80; height: 60; color: '#d02040' } }",QUrl());
         std::unique_ptr<QQuickItem> root(qobject_cast<QQuickItem*>(component.create()));QVERIFY2(root,qPrintable(component.errorString()));
         root->setParentItem(view.contentItem());
-        view.show();QVERIFY(QTest::qWaitForWindowExposed(&view));
+        QVERIFY(showTestWindow(&view));
         FakeDesktop system;AiHandoff ai(system.backend(),fast());
         QVERIFY(!ai.capture(root.get(),QRectF(10,10,3,3))); // too small
         QVERIFY(ai.capture(root.get(),QRectF(100,50,80,60)));
@@ -192,7 +192,7 @@ private slots:
         connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError>& errors){for(const auto& e:errors)warnings.append(e.toString());});
         engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}});engine.loadFromModule("Langlern.Shell","Main");
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));QVERIFY(window);
-        window->resize(1280,860);window->show();QVERIFY(QTest::qWaitForWindowExposed(window));
+        window->resize(1280,860);QVERIFY(showTestWindow(window));
         shell.selectFile(QUrl::fromLocalFile(path));
         QTRY_VERIFY_WITH_TIMEOUT(shell.storageReady(),30000);QTRY_VERIFY_WITH_TIMEOUT(!shell.busy(),30000);
         const int page=shell.pageCount()>=34 ? 34 : 1;

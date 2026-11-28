@@ -557,8 +557,7 @@ private slots:
         engine.setInitialProperties({{"shell", QVariant::fromValue(&shell)}});
         engine.loadFromModule("Langlern.Shell", "Main");
         auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(window);
-        window->show(); QVERIFY(QTest::qWaitForWindowExposed(window));
-        window->requestActivate(); QVERIFY(QTest::qWaitForWindowActive(window));
+        QVERIFY(showTestWindow(window));
         shell.setOcrBookEnabled(mode == "on");
         shell.selectFile(QUrl::fromLocalFile(path));
         QQuickItem* viewport = nullptr;

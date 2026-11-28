@@ -367,7 +367,7 @@ private slots:
         engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}});
         engine.loadFromModule("Langlern.Shell","Main");
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(window);
-        window->resize(1200,860); window->show(); QVERIFY(QTest::qWaitForWindowExposed(window));
+        window->resize(1200,860); QVERIFY(showTestWindow(window));
         shell.selectFile(QUrl::fromLocalFile(fixture)); QTRY_VERIFY(shell.storageReady()); QTRY_VERIFY(shell.annotations()->geometry(0).valid);
         auto& model=*shell.annotations();
         answer(model,0,QStringLiteral("visible answer"));

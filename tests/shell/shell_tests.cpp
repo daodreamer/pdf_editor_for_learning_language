@@ -143,7 +143,7 @@ private slots:
         QTRY_VERIFY(shell.sessionId()!=beforeReplacement && shell.selectedUrl()==originalUrl);
         QTRY_VERIFY(!shell.busy());
         QTRY_VERIFY(shell.storageReady());
-        bool replaced = false, armed = false;
+        bool replaced = false, armed = false, oldRenderPending = false;
         // Replace the document while the large render is in flight. A preview no
         // longer replaces the sharp page already shown, so key off the busy state
         // once the large render has been requested. Switch documents after the
@@ -151,7 +151,12 @@ private slots:
         const auto interception = connect(&shell, &ShellState::imageChanged, &shell, [&] {
             if (armed && !replaced && !shell.pageImage().isNull() && shell.busy()) {
                 replaced = true;
-                QMetaObject::invokeMethod(&shell, [&] { shell.selectFile(scanUrl); }, Qt::QueuedConnection);
+                QMetaObject::invokeMethod(&shell, [&] {
+                    // A slow GUI thread can receive the sharp frame (queued behind the preview) before
+                    // this call runs; then nothing is obsolete. Only a still-pending render must be dropped.
+                    oldRenderPending = shell.busy();
+                    shell.selectFile(scanUrl);
+                }, Qt::QueuedConnection);
             }
         });
         armed = true;
@@ -161,7 +166,8 @@ private slots:
         QTRY_VERIFY(!shell.busy());
         QCOMPARE(shell.pageCount(), 1);
         QVERIFY(!shell.pageImage().isNull());
-        QTRY_VERIFY(!discarded.isEmpty());
+        qInfo() << "replaced_with_old_render_pending" << oldRenderPending << "discarded" << discarded.size();
+        if (oldRenderPending) QTRY_VERIFY(!discarded.isEmpty());
         disconnect(interception);
         const auto beforeClose = closed.size();
         shell.clearSelection();
@@ -253,10 +259,7 @@ private slots:
         auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().first());
         QVERIFY(window);
         QVERIFY(!window->findChild<QQuickItem*>(QStringLiteral("pdfViewport")));
-        window->show();
-        QVERIFY(QTest::qWaitForWindowExposed(window));
-        window->requestActivate();
-        QVERIFY(QTest::qWaitForWindowActive(window));
+        QVERIFY(showTestWindow(window));
         const auto screenshotDir = qEnvironmentVariable("LANGLERN_SCREENSHOT_DIR");
         if (!screenshotDir.isEmpty()) {
             const auto save = [&](const QString& name) {
@@ -357,8 +360,7 @@ private slots:
         window->hide();
         window->releaseResources();
         QTest::qWait(150);
-        window->show();
-        QVERIFY(QTest::qWaitForWindowExposed(window));
+        QVERIFY(showTestWindow(window));
         QTest::qWait(150);
         const auto restored = window->grabWindow();
         QVERIFY(!restored.isNull());

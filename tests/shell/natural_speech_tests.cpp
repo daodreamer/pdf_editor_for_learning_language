@@ -110,7 +110,14 @@ private slots:
         run.future=std::async(std::launch::async,[&]{NaturalSpeech speech;Result result;result.error=speech.speak(QStringLiteral("Bonjour à toutes et à tous. Aujourd'hui, nous allons lire un texte en français et découvrir de nouveaux mots. Prenez votre temps pour écouter cette phrase."),QString::fromLatin1(NaturalVoices::male),run.control(),result.metrics);return result;});
         QTRY_VERIFY_WITH_TIMEOUT(run.played.load()>0 || run.ready(),60000);
         if(run.ready()){const auto early=run.future.get();QFAIL(qPrintable(early.error.isEmpty()?QStringLiteral("Playback unexpectedly finished before pause test"):early.error));}
-        run.paused.store(true);QTest::qWait(200);const auto paused=run.played.load();QTest::qWait(250);QCOMPARE(run.played.load(),paused);
+        run.paused.store(true);
+        // "Played" counts buffers the audio queue has finished with. Buffers it took before the pause, or
+        // a pause applied late on a loaded runner, still complete afterwards. Wait (bounded) until progress
+        // stops, then require it to stay frozen.
+        auto paused=run.played.load();
+        {QElapsedTimer settle;settle.start();for(;;){QTest::qWait(150);const auto now=run.played.load();if(now==paused)break;paused=now;QVERIFY2(settle.elapsed()<2000,"playback kept advancing 2 s after pause");}
+         qInfo("speech_pause_settle_ms=%lld",settle.elapsed());}
+        QTest::qWait(250);QCOMPARE(run.played.load(),paused);
         run.rate.store(1.5);run.paused.store(false);QTRY_VERIFY_WITH_TIMEOUT(run.played.load()>paused,5000);
         QElapsedTimer stop;stop.start();++run.revision;
         QTRY_VERIFY_WITH_TIMEOUT(run.ready(),4000);const auto result=run.future.get();

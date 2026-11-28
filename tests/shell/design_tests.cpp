@@ -260,7 +260,7 @@ private slots:
         ShellState shell;QQmlApplicationEngine engine;
         engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}});engine.loadFromModule("Langlern.Shell","Main");
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));QVERIFY(window);
-        window->show();QVERIFY(QTest::qWaitForWindowExposed(window));
+        QVERIFY(showTestWindow(window));
         auto* frame=window->findChild<QQuickItem*>("workspaceFrame");QVERIFY(frame);
         auto* library=window->findChild<QQuickItem*>("libraryPage");QVERIFY(library);
         auto* services=window->findChild<OfflineServices*>();QVERIFY(services);
@@ -305,7 +305,7 @@ private slots:
         connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError>& errors){for(const auto& e:errors)warnings.append(e.toString());});
         engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}});engine.loadFromModule("Langlern.Shell","Main");
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));QVERIFY(window);
-        window->show();QVERIFY(QTest::qWaitForWindowExposed(window));
+        QVERIFY(showTestWindow(window));
         shell.selectFile(QUrl::fromLocalFile(path));QTRY_VERIFY_WITH_TIMEOUT(shell.storageReady(),30000);
         auto* button=window->findChild<QQuickItem*>("documentMenuButton");QVERIFY(button);
         auto* menu=window->findChild<QObject*>("documentMenu");QVERIFY(menu);
@@ -313,7 +313,7 @@ private slots:
         const QList<QSize> sizes{{1440,900},{900,700},{700,580},{1440,900}};
         for(int i=0;i<sizes.size();++i) {
             if(i==3) { shell.cycleTheme();shell.cycleTheme();QVERIFY(shell.dark()); }
-            window->resize(sizes[i]);QTest::qWait(150);
+            window->resize(sizes[i]);QVERIFY(settleWindowSize(window));
             click(button);QTRY_VERIFY(menu->property("opened").toBool());
             auto* content=menu->property("contentItem").value<QQuickItem*>();QVERIFY(content);
             const auto rect=content->mapRectToScene(content->boundingRect()).adjusted(-6,-6,6,6);
@@ -371,7 +371,7 @@ private slots:
         connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError>& errors){for(const auto& e:errors)warnings.append(e.toString());});
         engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}});engine.loadFromModule("Langlern.Shell","Main");
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));QVERIFY(window);
-        window->show();QVERIFY(QTest::qWaitForWindowExposed(window));
+        QVERIFY(showTestWindow(window));
         auto* frame=window->findChild<QQuickItem*>("workspaceFrame");QVERIFY(frame);
         auto* workspace=window->findChild<WorkspaceState*>();QVERIFY(workspace);
         // Windows 11 tints the native caption to the shell ground; older systems keep the stock bar.

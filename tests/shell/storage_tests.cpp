@@ -207,7 +207,7 @@ private slots:
             engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}});
             engine.loadFromModule("Langlern.Shell","Main");
             auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(window);
-            window->show(); QVERIFY(QTest::qWaitForWindowExposed(window));
+            QVERIFY(showTestWindow(window));
             const auto exportTarget=source.filePath("before-save-failure.pdf");
             shell.exportPdf(QUrl::fromLocalFile(exportTarget));
             QTRY_VERIFY_WITH_TIMEOUT(!shell.exporting(),30000);
@@ -252,7 +252,7 @@ private slots:
             connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError>& errors) { for(const auto& e:errors) warnings.append(e.toString()); });
             engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}}); engine.loadFromModule("Langlern.Shell","Main");
             QVERIFY(!engine.rootObjects().isEmpty()); auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().first()); QVERIFY(window);
-            window->show(); QVERIFY(QTest::qWaitForWindowExposed(window)); shell.setZoom(.4); shell.goToPage(1); QTRY_VERIFY(!shell.busy()); QTest::qWait(200);
+            QVERIFY(showTestWindow(window)); shell.setZoom(.4); shell.goToPage(1); QTRY_VERIFY(!shell.busy()); QTest::qWait(200);
             QVERIFY(window->grabWindow().save(artifactRoot+"/reader-before-export.png"));
             QVERIFY2(warnings.isEmpty(),qPrintable(warnings.join('\n'))); window->hide();
         }

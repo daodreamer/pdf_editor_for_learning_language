@@ -8,6 +8,9 @@
 #include <QQuickItem>
 #include <QQuickStyle>
 #include <QQuickWindow>
+#include <QScreen>
+#include <QTest>
+#include <QDebug>
 #include <QSGRendererInterface>
 #include <QString>
 #include <cstdlib>
@@ -69,6 +72,38 @@ inline void configureTestApplication(QGuiApplication& app) {
 #else
     Q_UNUSED(app);
 #endif
+}
+
+// The window system may resize a window some time after a show or resize request (macOS
+// shrinks windows that do not fit the screen; hosted runners have 1024x768 screens). A late
+// resize rebuilds the page layout and deliberately cancels in-flight gestures, so wait until
+// the size has stayed the same for a while before driving input.
+inline bool settleWindowSize(QWindow* window) {
+    QElapsedTimer total; total.start();
+    QSize last=window->size(); QElapsedTimer stable; stable.start();
+    while(total.elapsed()<3000) {
+        QTest::qWait(25);
+        if(window->size()!=last) { last=window->size(); stable.restart(); }
+        else if(stable.elapsed()>=250) return true;
+    }
+    qWarning()<<"window size still changing after 3 s:"<<window->size();
+    return false;
+}
+// Show a GUI fixture the same way on every runner: sized to fit the screen's available area
+// (so the system never shrinks it later), exposed, active (QML shortcuts only fire in the
+// focus window, and a deactivation cancels ink), and at a settled size.
+inline bool showTestWindow(QWindow* window) {
+    if(auto* screen=window->screen()) {
+        // Leave room for the title bar and window frame, which the size excludes.
+        const QSize room=screen->availableGeometry().size()-QSize(16,48);
+        if(room.isValid() && (window->width()>room.width() || window->height()>room.height()))
+            window->resize(window->size().boundedTo(room).expandedTo(window->minimumSize()));
+    }
+    window->show();
+    if(!QTest::qWaitForWindowExposed(window)) return false;
+    window->requestActivate();
+    if(!QTest::qWaitForWindowActive(window)) { qWarning()<<"test window did not become active"; return false; }
+    return settleWindowSize(window);
 }
 
 // Depth-first search of the visual tree by objectName (popups hang off the overlay,

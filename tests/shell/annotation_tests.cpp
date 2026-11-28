@@ -397,7 +397,7 @@ private slots:
         connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError>& errors){for(const auto& e:errors)warnings.append(e.toString());});
         engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}}); engine.loadFromModule("Langlern.Shell","Main");
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(window);
-        window->resize(1300,900); window->show(); QVERIFY(QTest::qWaitForWindowExposed(window));
+        window->resize(1300,900); QVERIFY(showTestWindow(window));
         shell.selectFile(QUrl::fromLocalFile(LANGLERN_FIXTURE("check-boxes.pdf")));
         QTRY_VERIFY(shell.storageReady()); QTRY_COMPARE(shell.pageCount(),2);
         QTRY_VERIFY_WITH_TIMEOUT(shell.model().hasCheckBoxes(0),10000);
@@ -579,7 +579,7 @@ private slots:
         ShellState shell; QQmlApplicationEngine engine;
         engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}}); engine.loadFromModule("Langlern.Shell","Main");
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(window);
-        window->resize(1300,950); window->show(); QVERIFY(QTest::qWaitForWindowExposed(window));
+        window->resize(1300,950); QVERIFY(showTestWindow(window));
         shell.selectFile(QUrl::fromLocalFile(path)); QTRY_VERIFY_WITH_TIMEOUT(shell.storageReady(),30000);
         QTRY_VERIFY_WITH_TIMEOUT(shell.pageCount()>0,30000);
         auto settled=[&] { for(int page:shell.model().priority()) if(!shell.model().ready(page,shell.model().targetWidth(page,window->devicePixelRatio()))) return false; return true; };
@@ -667,7 +667,7 @@ private slots:
         ShellState shell; QQmlApplicationEngine engine;
         engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}}); engine.loadFromModule("Langlern.Shell","Main");
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(window);
-        window->show(); QVERIFY(QTest::qWaitForWindowExposed(window));
+        QVERIFY(showTestWindow(window));
         shell.selectFile(QUrl::fromLocalFile(path)); QTRY_VERIFY_WITH_TIMEOUT(shell.storageReady(),30000);
         QTRY_COMPARE(shell.pageCount(),153); shell.setZoom(.65);
         auto settled=[&] { for(int page:shell.model().priority()) if(!shell.model().ready(page,shell.model().targetWidth(page,window->devicePixelRatio()))) return false; return true; };
@@ -793,7 +793,7 @@ private slots:
         connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError>& errors){for(const auto& e:errors)warnings.append(e.toString());});
         engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}}); engine.loadFromModule("Langlern.Shell","Main");
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(window);
-        window->show(); QVERIFY(QTest::qWaitForWindowExposed(window));
+        QVERIFY(showTestWindow(window));
         shell.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/answer-lines.pdf"));
         QTRY_VERIFY(shell.storageReady()); QTRY_COMPARE(shell.pageCount(),4); QTRY_VERIFY(!shell.busy());
         shell.setZoom(.65); QTRY_VERIFY(!shell.busy());
@@ -971,7 +971,7 @@ private slots:
         connect(&engine,&QQmlEngine::warnings,&engine,[&](const QList<QQmlError>& errors){for(const auto& e:errors) warnings.append(e.toString());});
         engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}}); engine.loadFromModule("Langlern.Shell","Main");
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(window);
-        window->show(); QVERIFY(QTest::qWaitForWindowExposed(window));
+        QVERIFY(showTestWindow(window));
         shell.selectFile(QUrl::fromLocalFile(fixture));
         QTRY_VERIFY(shell.storageReady()); QTRY_VERIFY(shell.annotations()->geometry(0).valid);
         shell.setZoom(.6); QTRY_VERIFY(!shell.busy()); QTest::qWait(100);
@@ -1046,7 +1046,7 @@ private slots:
         connect(&engine,&QQmlEngine::warnings,&engine,[&](const QList<QQmlError>& errors){for(const auto& e:errors)warnings.append(e.toString());});
         engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}}); engine.loadFromModule("Langlern.Shell","Main");
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(window);
-        window->show(); QVERIFY(QTest::qWaitForWindowExposed(window));
+        QVERIFY(showTestWindow(window));
         shell.selectFile(QUrl::fromLocalFile(fixture)); QTRY_VERIFY(shell.storageReady()); QTRY_VERIFY(shell.annotations()->geometry(0).valid);
         shell.setZoom(.8); QTRY_VERIFY(!shell.busy()); QTest::qWait(100);
         const auto id=shell.annotations()->create(0,.3,.2);
@@ -1158,7 +1158,7 @@ private slots:
         engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}});
         engine.loadFromModule("Langlern.Shell","Main");
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0)); QVERIFY(window);
-        window->show(); QVERIFY(QTest::qWaitForWindowExposed(window));
+        QVERIFY(showTestWindow(window));
         shell.selectFile(QUrl::fromLocalFile(fixture));
         QTRY_VERIFY(shell.storageReady()); QTRY_VERIFY(shell.annotations()->geometry(0).valid);
         shell.setZoom(.6); QTRY_VERIFY(!shell.busy()); QTest::qWait(100);
@@ -1215,7 +1215,7 @@ private slots:
         engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}});
         engine.loadFromModule("Langlern.Shell","Main"); QVERIFY(!engine.rootObjects().isEmpty());
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().first()); QVERIFY(window);
-        window->show(); QVERIFY(QTest::qWaitForWindowExposed(window));
+        QVERIFY(showTestWindow(window));
         shell.selectFile(QUrl::fromLocalFile(fixture));
         QTRY_VERIFY(shell.annotations()->geometry(0).valid); QTRY_VERIFY(shell.textSelection()->snapshot(0));
         QTRY_VERIFY(shell.storageReady());
