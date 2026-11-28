@@ -125,7 +125,12 @@ private slots:
         ShellState shell;QQmlApplicationEngine engine;QStringList warnings;
         connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError>& errors){for(const auto& e:errors)warnings.append(e.toString());});
         engine.setInitialProperties({{"shell",QVariant::fromValue(&shell)}});engine.loadFromModule("Langlern.Shell","Main");
-        auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));QVERIFY(window);window->show();QVERIFY(QTest::qWaitForWindowExposed(window));
+        auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().value(0));QVERIFY(window);
+        // Main asks for 1440x900; on a smaller screen (hosted macOS runners: 1024x768) the system shrinks
+        // the window asynchronously after it is exposed. That resize rebuilds the page layout, which
+        // deliberately cancels any in-flight gesture, so it can land mid double-drag. Start at a size that
+        // already fits so the layout is final before the first click.
+        window->resize(QSize(1000,640));window->show();QVERIFY(QTest::qWaitForWindowExposed(window));
         shell.selectFile(QUrl::fromLocalFile(QStringLiteral(LANGLERN_FIXTURES)+"/text.pdf"));
         QTRY_VERIFY(shell.storageReady());QTRY_VERIFY(shell.textSelection()->snapshot(0));QTRY_VERIFY(!shell.busy());QTest::qWait(100);
         auto* viewport=findItem(window->contentItem(),"pdfViewport");QVERIFY(viewport);
